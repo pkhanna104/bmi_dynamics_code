@@ -10,6 +10,7 @@ from db import dbfunctions as dbfn
 from statsmodels.formula.api import ols
 import pandas
 import co_obs_tuning_matrices
+import analysis_config
 import fit_LDS
 from resim_ppf import file_key 
 import prelim_analysis as pa
@@ -57,10 +58,10 @@ for _, (c, cnm) in enumerate(zip(co_obs_cmap, ['co', 'obs'])):
 
 import co_obs_tuning_matrices, subspace_overlap
 from resim_ppf import file_key 
-grom_input_type = co_obs_tuning_matrices.input_type
+grom_input_type = analysis_config.data_params['grom_input_type']
 jeev_input_type = file_key.task_filelist
 
-pref = co_obs_tuning_matrices.pref
+pref = analysis_config.config['grom_pref']
 n_entries_hdf = 800;
 
 fig_dir = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/'
@@ -658,7 +659,7 @@ def panda_to_dict(D):
 
 def get_KG_decoder_grom(day_ix):
     co_obs_dict = pickle.load(open(co_obs_tuning_matrices.pref+'co_obs_file_dict.pkl'))
-    input_type = co_obs_tuning_matrices.input_type
+    input_type = analysis_config.data_params['grom_input_type']
 
     ### First CO task for that day: 
     te_num = input_type[day_ix][0][0]
@@ -964,7 +965,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     tuning_dict = {}
     if animal == 'grom':
         order_dict = co_obs_tuning_matrices.ordered_input_type
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
         order_dict = file_key.ordered_task_filelist
@@ -1490,7 +1491,7 @@ def model_individual_cell_tuning_curves_task_spec_input(hdf_filename='_models_to
     tuning_dict = {}
     if animal == 'grom':
         order_dict = co_obs_tuning_matrices.ordered_input_type
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
         order_dict = file_key.ordered_task_filelist
@@ -1734,7 +1735,7 @@ def model_individual_cell_tuning_curves_co_obs_spec_dyn(hdf_filename='_models_to
     tuning_dict = {}
     if animal == 'grom':
         order_dict = co_obs_tuning_matrices.ordered_input_type
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
         order_dict = file_key.ordered_task_filelist
@@ -2040,7 +2041,7 @@ def model_individual_cell_tuning_curves_co_obs_tsk_tg_dyn(hdf_filename='_models_
     tuning_dict = {}
     if animal == 'grom':
         order_dict = co_obs_tuning_matrices.ordered_input_type
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
         order_dict = file_key.ordered_task_filelist
@@ -5171,10 +5172,6 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
     fbth.tight_layout()
     fbth.savefig('gen_w_vs_x.svg')
 
-
-
-
-
 def plot_yt_given_st(animal='grom', model_set_number = 8, min_obs = 15):
     model_dict = pickle.load(open('/Users/preeyakhanna/fa_analysis/tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
     mod_state1     = 'prespos_1psh_0spksm_0_spksp_0'
@@ -6088,7 +6085,7 @@ def print_num_trials_per_day_CO_OBS():
     for i_a, animal in enumerate(['grom', 'jeev']):
         if animal == 'grom':
             order_dict = co_obs_tuning_matrices.ordered_input_type
-            input_type = co_obs_tuning_matrices.input_type
+            input_type = analysis_config.data_params['grom_input_type']
 
         elif animal == 'jeev':
             order_dict = file_key.ordered_task_filelist
@@ -6875,7 +6872,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
     tuning_dict = {}
     if animal == 'grom':
         order_dict = co_obs_tuning_matrices.ordered_input_type
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
         order_dict = file_key.ordered_task_filelist
@@ -7625,7 +7622,7 @@ def plot_new_linear_tuning_w_action_neural(plot_days = True):
 def test():
     import co_obs_tuning_matrices
     from resim_ppf import file_key 
-    grom_input_type = co_obs_tuning_matrices.input_type
+    grom_input_type = analysis_config.data_params['grom_input_type']
     jeev_input_type = file_key.task_filelist
 
     # Main fcns:
@@ -7678,7 +7675,7 @@ def plot_a_t_given_a_tm1(min_obs = 10):
 
     mag_boundaries = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
 
-    for ia, (animal, input_type) in enumerate(zip(['grom'], [co_obs_tuning_matrices.input_type])):#, 'jeev'], [co_obs_tuning_matrices.input_type, file_key.task_filelist])):
+    for ia, (animal, input_type) in enumerate(zip(['grom'], [analysis_config.data_params['grom_input_type']])):#, 'jeev'], [analysis_config.data_params['grom_input_type'], file_key.task_filelist])):
 
         for i_d, day in enumerate([input_type[0]]):
 

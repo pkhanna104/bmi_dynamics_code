@@ -7,6 +7,7 @@ import scipy.stats
 import test_full_no_adapt as tfna
 from resim_ppf import *
 import pickle
+import analysis_config
 
 trialList = np.zeros((11, 3))
 trialList[1,:]  = [5, 2, 11]
@@ -82,7 +83,7 @@ def targ_ix_to_loc_obs(targ_ix):
 	# 	jdat = sio.loadmat('/Users/preeyakhanna/fa_analysis/resim_ppf/jeev_obs_positions_from_amy.mat')
 	
 	#### Within same directory ####
-	jdat = sio.loadmat('jeev_obs_positions_from_amy.mat')
+	jdat = sio.loadmat(analysis_config.config['BMI_DYN'] + 'resim_ppf/jeev_obs_positions_from_amy.mat')
 	tix = []
 	for it, tg in enumerate(targ_ix):
 		final_targ_num = jdat['trialList'][tg, -1] - 1 #Python indexing
@@ -97,7 +98,7 @@ def obs_target_gen(trial_types='all'):
 	# 	jdat = sio.loadmat('/Users/preeyakhanna/fa_analysis/resim_ppf/jeev_obs_positions_from_amy.mat')
 	
 	#### Within same directory ####
-	jdat = sio.loadmat('jeev_obs_positions_from_amy.mat')
+	jdat = sio.loadmat(analysis_config.config['BMI_DYN'] + 'resim_ppf/jeev_obs_positions_from_amy.mat')
 	hard = [6, 7, 8, 9]
 	easy = [0, 1, 2, 3, 4, 5]
 

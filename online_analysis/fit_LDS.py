@@ -1,6 +1,7 @@
 from __future__ import division
 from online_analysis import co_obs_tuning_matrices, subspace_overlap, behav_neural_PSTH
 from online_analysis import test_fa_ov_vs_u_cov_ov as tfo
+import analysis_config
 import prelim_analysis as pa
 from resim_ppf import ppf_pa 
 from resim_ppf import file_key as fk
@@ -35,7 +36,7 @@ ax_to_targ[6] = [2, 1]
 ax_to_targ[7] = [2, 2]
 marker = ['.', '*', 'o']
 
-input_test = [co_obs_tuning_matrices.input_type[0]]
+input_test = [analysis_config.data_params['grom_input_type'][0]]
 input_test_j = [fk.task_filelist[0]]
 
 from matplotlib import cm
@@ -1220,7 +1221,7 @@ def plot_separate_vs_single_models(input_type, animal, nstates=15):
 def plot_ntrials_nunits_nbins_vs_R2(input_type, metrics, nstates=20):
     '''
     Summary: 
-    Input param: input_type: co_obs_tuning_matrices.input_type
+    Input param: input_type: analysis_config.data_params['grom_input_type']
     Input param: metrics: output from 'plot_separate_vs_single_models'
     Input param: nstates:
     Output param: plots of R2, etc. vs. # neurons, # trials, # bins / trial
@@ -1260,7 +1261,7 @@ def plot_ntrials_nunits_nbins_vs_R2(input_type, metrics, nstates=20):
 def to_run_overnight_v0():
     from online_analysis import fit_LDS
     from online_analysis import co_obs_tuning_matrices
-    input_type = co_obs_tuning_matrices.input_type
+    input_type = analysis_config.data_params['grom_input_type']
 
     try:
         r2_dict = fit_LDS.simult_PSTH_vs_single_trial_sweep_nstates(input_type, animal='grom',
@@ -1273,19 +1274,19 @@ def to_run_overnight_v0():
 
     kwargs = dict(n_states_all=[20])
     try:
-        fit_LDS.fit_LDS_CO_Obs(co_obs_tuning_matrices.input_type, separate_models=True, **kwargs)
+        fit_LDS.fit_LDS_CO_Obs(analysis_config.data_params['grom_input_type'], separate_models=True, **kwargs)
     except:
         print 'failed separate models '
 
     try:
-        fit_LDS.fit_LDS_CO_Obs(co_obs_tuning_matrices.input_type, separate_models=False, **kwargs)
+        fit_LDS.fit_LDS_CO_Obs(analysis_config.data_params['grom_input_type'], separate_models=False, **kwargs)
     except:
         print 'failed same models'
 
 def to_run_overnight_6_7_17_day0_only():
     from online_analysis import fit_LDS
     from online_analysis import co_obs_tuning_matrices
-    input_type = [co_obs_tuning_matrices.input_type[0]]
+    input_type = [analysis_config.data_params['grom_input_type'][0]]
     import pickle
 
     #########################
@@ -1342,7 +1343,7 @@ def overnight_bin_sweep(animal):
     if animal == 'grom':
         binsweep = np.arange(2*1000/60., 1000*12/60., 2*1000/60.)
         direct = 'grom2016'
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
     elif animal == 'jeev':
         binsweep = np.arange(.005, .15, .025)*1000.
         direct = 'jeev2013'
@@ -1383,7 +1384,7 @@ def overnight_stats_sweep(animal, day_list = range(3), n_trials_base = 56, n_mod
     if animal == 'jeev':
         input_type = fk.task_filelist
     elif animal == 'grom':
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
 
     for i_d, day in enumerate(input_type):       
         if i_d in day_list:
@@ -1752,7 +1753,7 @@ def to_run_overlaps(epoch_size=32, mx = 10, skip_days = [], pre_go=1, animal='gr
     ####################################
     #input_type = [[[4377], [4378, 4382]]]
     if animal == 'grom':
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
     elif animal == 'jeev':
         input_type = fk.task_filelist
         input_names = fk.task_input_type
@@ -2187,7 +2188,7 @@ def plot_dynamics_predictions(input_type):
 
 def plot_overlaps(i_d):
     day_dict = pickle.load(open('test_day_dict_'+str(i_d)+'.pkl'))
-    day = co_obs_tuning_matrices.input_type[i_d]
+    day = analysis_config.data_params['grom_input_type'][i_d]
     f, ax = plt.subplots(nrows = 1, ncols = 4)
     ax_dict = {}
     ax_dict[0, 0] = 0 # Co-Co
@@ -2263,7 +2264,7 @@ def plot_overlaps(i_d):
     
 def plot_ov_all(animal, day_dict):
     if animal == 'grom':
-        input_type = co_obs_tuning_matrices.input_type #[i] for i in range(4)]
+        input_type = analysis_config.data_params['grom_input_type'] #[i] for i in range(4)]
         #day_dict = pickle.load(open('test_day_dict_'+str(8)+'.pkl'))
     elif animal == 'jeev':
         input_type = fk.task_input_type
@@ -2418,7 +2419,7 @@ def get_repertoire_ov_numerical(x0, x1, ndiv=25):
 def extract_PSTH(animal, binsize_ms=100, pre_go=0):
     pre_go_bins = int(np.round(pre_go*(1000./(binsize_ms))))
     if animal == 'grom':
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
         pre = '/Volumes/TimeMachineBackups/grom2016/grom_PSTH_per_targ_max_bins_possible.pkl'
     elif animal == 'jeev':
         input_type = fk.task_filelist
@@ -2475,7 +2476,7 @@ def dyn_ratio_of_PSTH(animal, pre_go, binsize_ms=100):
     ################
     pre_go_bins = int(np.round(pre_go*(1000./(binsize_ms))))
     if animal == 'grom':
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
         pre = '/Volumes/TimeMachineBackups/grom2016/grom_PSTH_per_targ_max_bins_possible.pkl'
         save = '/Volumes/TimeMachineBackups/grom2016/'
     elif animal == 'jeev':
@@ -2560,7 +2561,7 @@ def dyn_ratio_of_PSTH(animal, pre_go, binsize_ms=100):
 
 def plot_dyn_ratio(animal, bin_cnt_max = 'all'):
     if animal == 'grom':
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
         save = '/Volumes/TimeMachineBackups/grom2016/'
     elif animal == 'jeev':
         input_type = fk.task_filelist
