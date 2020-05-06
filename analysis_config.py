@@ -18,8 +18,12 @@ data_params['grom_input_type'] = [[[4377], [4378, 4382]], [[4395], [4394]], [[44
 [4497, 4498, 4504]], [[4510], [4509, 4514]], [[4523, 4525], [4520, 4522]], [[4536], 
 [4532, 4533]], [[4553], [4549]], [[4558], [4560]]]
 
+data_params['grom_ordered_input_type'] = [[[0], [1, 2]], [[1], [0]], [[0], [1, 2]], [[2], [0, 1, 3]], [[1],
+    [0, 2]], [[2, 3], [0, 1]], [[2], [0, 1]], [[1], [0]], [[0], [1]]]
+
 #### Dates used: ###
 data_params['grom_names'] = ['3-2', '3-4', '3-7', '3-15', '3-16', '3-17', '3-18', '3-19', '3-19_2']
+
 
 #### Monkey J, datafiles (task entries from mat files from Amy/Maryam) #####
 data_params['jeev_input_type'] = [
@@ -34,6 +38,12 @@ data_params['jeev_input_type'] = [
 				 
 				 [['jeev082813_VFB_PPF_B100_NS5_NU20_Z1_swap49a50a_97a58a_assist_ofc_cont_swap121a97a_cont_cont_add121_cont_cont_fixData'], # 31e
 				 ['jeev082813_VFB_PPF_B100_NS5_NU20_Z1_swap49a50a_97a58a_assist_ofc_cont_swap121a97a_cont_cont_add121_cont_cont_Barrier1fixData']]] # 31f
+
+data_params['jeev_ordered_input_type'] = [[[0], [1]], 
+						 [[1], [0]], 
+						 [[0], [1]], 
+						 [[0], [1]],
+						 ]
 
 ##################################
 ####### Useful formating #########

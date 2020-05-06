@@ -373,12 +373,11 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
         elif reach_tm_is_kg_vel:
             kg = kwargs['kalman_gain']
             #reach_tm_all.append(hdf.root.task[g:r]['internal_decoder_state'][:, :, 0])
-            reach_tm_all.append(bin_spk_i*np.mat(kg).T)
-
+            #reach_tm_all.append(bin_spk_i*np.mat(kg).T)
             ### pos/vel x time 
-            all_data['kg_vel'].append(np.dot(bin_spk_i, kg).T)
+            all_data['kg_vel'].append(np.dot(bin_spk_i, kg.T))
         else:
-            reach_tm_all = np.hstack((reach_tm_all, np.zeros(( bin_spk_i.shape[0] ))+((r-g)*1000./60.) ))
+            #reach_tm_all = np.hstack((reach_tm_all, np.zeros(( bin_spk_i.shape[0] ))+((r-g)*1000./60.) ))
             all_data['rch_tm'].append(np.zeros((nT, )) + (r-g)*1000./60.)
         
     print go_ix.shape, rew_ix.shape, bin_spk_i.shape, nbins, hdf_ix_i.shape
