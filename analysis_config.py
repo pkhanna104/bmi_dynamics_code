@@ -49,4 +49,4 @@ data_params['jeev_ordered_input_type'] = [[[0], [1]],
 ####### Useful formating #########
 ##################################
 pref_colors = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab', 
-		'teal', 'steelblue', 'midnightblue', 'darkmagenta']
+		'teal', 'steelblue', 'midnightblue', 'darkmagenta', 'black']

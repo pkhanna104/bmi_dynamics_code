@@ -10,7 +10,19 @@ import tables
 
 import matplotlib.pyplot as plt
 
+import sklearn.linear_model
+import scipy.stats
+
 pref = analysis_config.config['grom_pref']
+n_entries_hdf = 800
+
+class Model_Table(tables.IsDescription):
+    param = tables.Float64Col(shape=(n_entries_hdf, ))
+    pvalue = tables.Float64Col(shape=(n_entries_hdf, ))
+    r2 = tables.Float64Col(shape=(1,))
+    aic = tables.Float64Col(shape=(1,))
+    bic = tables.Float64Col(shape=(1,))
+    day_ix = tables.Float64Col(shape=(1,))
 
 #### Methods to get data needed for spike models ####
 def get_spike_kinematics(animal, day, order, history_bins, **kwargs):
@@ -450,5 +462,265 @@ def plot_data_temp(data_temp, animal, use_bg = False):
                 ax.set_ylim([1.2, 5.0])
                 ax.set_xticks([])
                 ax.set_yticks([])
-    import pdb; pdb.set_trace()
 
+
+##### Training / testing sets ######
+def get_training_testings(n_folds, data_temp):
+    
+    ### Get training and testing datasets: 
+    N_pts = [];
+
+    ### List which points are from which task: 
+    for tsk in range(2):
+
+        ### Get task specific indices; 
+        ix = np.nonzero(data_temp['tsk'] == tsk)[0]
+
+        ### Shuffle the task indices
+        N_pts.append(ix[np.random.permutation(len(ix))])
+    
+    train_ix = dict();
+    test_ix = dict(); 
+
+    ### Get training and testing data
+    for i_f, fold_perc in enumerate(np.arange(0, 1., 1./n_folds)):
+        test_ix[i_f] = []
+        train_ix[i_f] = []; 
+
+        ### Task -- pull test/train points 
+        for tsk in range(2):
+            ntmp = len(N_pts[tsk])
+            tst = N_pts[tsk][int(fold_perc*ntmp):int((fold_perc+(1./n_folds))*ntmp)]
+            trn = np.array([j for i, j in enumerate(N_pts[tsk]) if j not in tst])
+            
+            test_ix[i_f].append(tst)
+            train_ix[i_f].append(trn)
+
+        test_ix[i_f] = np.hstack((test_ix[i_f]))
+        train_ix[i_f] = np.hstack((train_ix[i_f]))
+
+        tmp = np.unique(np.hstack((test_ix[i_f], train_ix[i_f])))
+
+        ### Make sure that unique point is same as all data
+        assert len(tmp) == len(data_temp)
+    return test_ix, train_ix 
+
+
+#### GET Variable names from params #######
+def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, neur_lag = 0, include_action_lags=False):
+    ### Get variable name
+
+    nms = []
+
+    if var_name == 'psh':
+        if include_action_lags:
+            for l in lag_ixs:
+                if l<=0:
+                    nms.append(var_name+'x_tm'+str(np.abs(l)))
+                    nms.append(var_name+'y_tm'+str(np.abs(l)))
+                else:
+                    nms.append(var_name+'x_tp'+str(np.abs(l)))
+                    nms.append(var_name+'y_tp'+str(np.abs(l)))                                  
+        else:
+            nms.append(var_name+'x_tm0')
+            nms.append(var_name+'y_tm0')
+
+    elif var_name == 'neur':
+        for nl in neur_lag:
+            if nl <= 0:
+                t = 'm'
+            elif nl > 0:
+                t = 'p'
+            for n in range(nneur):
+                nms.append('spk_t'+t+str(int(np.abs(nl)))+'_n'+str(n))
+
+    elif var_name == 'tg':
+        nms.append('trg_posx')
+        nms.append('trg_posy')
+    
+    else:
+        for l in lag_ixs:
+            if l <=0: 
+                nms.append(var_name+'y_tm'+str(np.abs(l)))
+                nms.append(var_name+'x_tm'+str(np.abs(l)))
+            else:
+                nms.append(var_name+'y_tp'+str(np.abs(l)))
+                nms.append(var_name+'x_tp'+str(np.abs(l)))            
+    
+    nm_str = ''
+    for s in nms:
+        nm_str = nm_str + s + '+'
+    return nms, nm_str[:-1]
+
+
+####### MODEL ADDING ########
+######### Call from generate_models.sweep_ridge_alpha #########
+# h5file, model_, _ = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=name, 
+#     test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key)
+
+def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=None, 
+    fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, 
+    KG_pot = None, fit_task_specific_model_test_task_spec = False):
+
+    ##### Ridge Models ########
+    if type(model_v) is sklearn.linear_model.ridge.Ridge:
+        # CLF/RIDGE models: 
+        model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
+            fit_task_specific_model_test_task_spec)
+        
+        if type(model_v) is list:
+            nneurons = model_v[0].nneurons
+        else:
+            nneurons = model_v.nneurons
+    
+    else:
+        raise Exception('Deprecated -- test OLS / CLS')
+        # OLS / CLF models: 
+        # nneurons = model_v.predict().shape[1]
+        # model_v, predictions = add_params_to_mult(model_v, test_data, predict_key, only_potent_predictor, KG_pot)
+    
+    
+    if first:
+
+        ### Make a new table / column; ####
+        tab = h5file.createTable("/", model_nm+'_fold_'+str(int(fold)), Model_Table)
+        col = h5file.createGroup(h5file.root, model_nm+'_fold_'+str(int(fold))+'_nms')
+        
+        try:
+            vrs = np.array(model_v.coef_names, dtype=np.str)
+            h5file.createArray(col, 'vars', vrs)
+        except:
+            print 'skipping adding varaible names'
+    else:
+        tab = getattr(h5file.root, model_nm+'_fold_'+str(int(fold)))
+    
+    #print nneurons, model_nm, 'day: ', day_ix
+
+    for n in range(nneurons):
+        row = tab.row
+    
+        #Add params: 
+        #vrs = getattr(getattr(h5file.root, model_nm+'_fold_'+str(int(fold))+'_nms'), 'vars')[:]
+        param = np.zeros((n_entries_hdf, ))
+        pv = np.zeros((n_entries_hdf, ))
+        for iv, v in enumerate(xvars):
+
+            ######### RIDGE ########
+            if fit_task_specific_model_test_task_spec:
+                param[iv] = model_v[0].coef_[n, iv]
+                pv[iv] = model_v[0].pvalues[n, iv]
+            else:
+                param[iv] = model_v.coef_[n, iv]
+                pv[iv] = model_v.pvalues[n, iv]
+
+            ######### OLS ########
+            # try:
+            #     # OLS: 
+            #     param[iv] = model_v.params[n][v]
+            #     pv[iv] = model_v.pvalues[iv, n]
+            # except:
+
+        row['param'] = param
+        row['pvalue'] = pv
+        row['day_ix'] = day_ix
+
+        if fit_task_specific_model_test_task_spec:
+            row['r2'] = model_v[0].rsquared[n]
+            row['aic'] = model_v[0].aic[n]
+            row['bic'] = model_v[0].bic[n]
+        else:
+            row['r2'] = model_v.rsquared[n]
+            row['aic'] = model_v.aic[n]
+            row['bic'] = model_v.bic[n]
+        
+        row.append()
+
+    return h5file, model_v, predictions
+
+ 
+def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
+    KG_pot = None, fit_task_specific_model_test_task_spec = False):
+    
+    # Called from h5_add_model: 
+    # model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
+    #     fit_task_specific_model_test_task_spec)
+    
+    x_test = [];
+    for vr in x_var_names:
+        x_test.append(test_data[vr][: , np.newaxis])
+    X = np.mat(np.hstack((x_test)))
+    Y = np.mat(test_data[predict_key])
+
+    assert(X.shape[0] == Y.shape[0])
+    assert(X.shape[1] == len(x_var_names))
+
+    if fit_task_specific_model_test_task_spec:
+        ix0 = np.nonzero(test_data['tsk'] == 0)[0]
+        ix1 = np.nonzero(test_data['tsk'] == 1)[0]
+
+        X0 = X[ix0, :]; Y0 = Y[ix0, :];
+        X1 = X[ix1, :]; Y1 = Y[ix1, :]; 
+
+        #### Get prediction -- why not use the predict method? #####
+        pred0 = np.mat(X0)*np.mat(model[0].coef_).T + model[0].intercept_[np.newaxis, :]
+        pred1 = np.mat(X1)*np.mat(model[1].coef_).T + model[1].intercept_[np.newaxis, :]
+
+        pred = pred0; 
+        model1 = model[1]; 
+        model =  model[0]; 
+
+        ### Reduce size of HDF file by removing; 
+        #model.X = X0; 
+        #model.y = Y0; 
+
+    #mport pdb; pdb.set_trace()
+
+    ### From training; 
+    # This is added in add_ridge
+    # model.nneurons = model.y.shape[1]
+    # model.nobs = model.X.shape[0]
+
+    if only_potent_predictor:
+        X = np.dot(KG_pot, X.T).T
+        print 'only potent predictor'
+
+    pred = np.mat(X)*np.mat(model.coef_).T + model.intercept_[np.newaxis, :]
+    pred_ = model.predict(X); 
+    assert(np.all(pred == pred_))
+
+    ########## Get statistics ##################
+    SSR = np.sum((np.array(pred - Y))**2, axis=0) 
+    dof = X.shape[0] - X.shape[1]
+    sse = SSR / float(dof)
+
+    ####### Neuron specific variance accounted for #####
+    SST = np.sum(np.array( Y - np.mean(Y, axis=0))**2, axis=0 )
+    
+    ####### IF SST == 0 --> then set SST == SSR so that predictino shows up as perfect; 
+    if len(np.nonzero(SST == 0)[0]) > 0:
+        SST[np.nonzero(SST==0)[0]] = SSR[np.nonzero(SST==0)[0]]
+    try:
+        X2 = np.linalg.pinv(np.dot(X.T, X))
+    except:
+        raise Exception('Can do pinv fo X / X.T')
+
+    ######### Not really sure what this is #######
+    se = np.array([ np.sqrt(np.diagonal(sse[i] * X2)) for i in range(sse.shape[0]) ])
+    model.t_ = np.mat(model.coef_) / se
+    model.pvalues = 2 * (1 - scipy.stats.t.cdf(np.abs(model.t_), Y.shape[0] - X.shape[1]))
+    
+    ######## Vital ########
+    model.rsquared = 1 - (SSR/SST)
+    
+    nobs2=model.nobs/2.0 # decimal point is critical here!
+    llf = -np.log(SSR) * nobs2
+    llf -= (1+np.log(np.pi/nobs2))*nobs2
+
+    ####### AIC / BIC #########
+    model.aic = -2 *llf + 2 * (X.shape[1] + 1)
+    model.bic = -2 *llf + np.log(model.nobs) * (X.shape[1] + 1)
+    
+    if fit_task_specific_model_test_task_spec:
+        return [model, model1], [pred0, pred1]
+    else:
+        return model, pred
