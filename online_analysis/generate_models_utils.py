@@ -20,6 +20,7 @@ class Model_Table(tables.IsDescription):
     param = tables.Float64Col(shape=(n_entries_hdf, ))
     pvalue = tables.Float64Col(shape=(n_entries_hdf, ))
     r2 = tables.Float64Col(shape=(1,))
+    r2_pop = tables.Float64Col(shape=(1,))
     aic = tables.Float64Col(shape=(1,))
     bic = tables.Float64Col(shape=(1,))
     day_ix = tables.Float64Col(shape=(1,))
@@ -626,10 +627,12 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
 
         if fit_task_specific_model_test_task_spec:
             row['r2'] = model_v[0].rsquared[n]
+            row['r2_pop'] = model_v[0].rsquared_pop
             row['aic'] = model_v[0].aic[n]
             row['bic'] = model_v[0].bic[n]
         else:
             row['r2'] = model_v.rsquared[n]
+            row['r2_pop'] = model_v.rsquared_pop
             row['aic'] = model_v.aic[n]
             row['bic'] = model_v.bic[n]
         
@@ -690,11 +693,14 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
 
     ########## Get statistics ##################
     SSR = np.sum((np.array(pred - Y))**2, axis=0) 
+    SSR_pop = np.sum((np.array(pred - Y))**2)
+
     dof = X.shape[0] - X.shape[1]
     sse = SSR / float(dof)
 
     ####### Neuron specific variance accounted for #####
     SST = np.sum(np.array( Y - np.mean(Y, axis=0))**2, axis=0 )
+    SST_pop = np.sum(np.array( Y - np.mean(Y) )**2)
     
     ####### IF SST == 0 --> then set SST == SSR so that predictino shows up as perfect; 
     if len(np.nonzero(SST == 0)[0]) > 0:
@@ -711,6 +717,7 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
     
     ######## Vital ########
     model.rsquared = 1 - (SSR/SST)
+    model.rsquared_pop = 1 - (SSR_pop/SST_pop)
     
     nobs2=model.nobs/2.0 # decimal point is critical here!
     llf = -np.log(SSR) * nobs2

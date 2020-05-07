@@ -410,7 +410,7 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
         
         return model_2, pred, pred2
 
-def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True):
+def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, r2_ind_or_pop = 'pop'):
 
     if model_set_number == 1:
         # model_names = ['prespos_0psh_1spksm_0_spksp_0', 'prespos_1psh_1spksm_0_spksp_0', 'hist_fut_4pos_1psh_1spksm_0_spksp_0',
@@ -497,8 +497,14 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                     tbl = getattr(hdf.root, model_nm+'_alpha_'+alpha+'_fold_'+str(fold))
                     day_index = np.nonzero(tbl[:]['day_ix'] == i_d)[0]
 
-                    #### Add day index to alphas
-                    alp_i.append(tbl[day_index]['r2'])
+                    if r2_ind_or_pop == 'ind':
+                        #### Add day index to alphas
+                        #### Uses alpha of individual neurons to decide optimal alpha
+                        alp_i.append(tbl[day_index]['r2'])
+                    
+                    elif r2_ind_or_pop == 'pop':
+                        import pdb; pdb.set_trace()
+                        alp_i.append(tbl[day_index]['r2_pop'][0])
 
                 ### plot alpha vs. mean day: 
                 if skip_plots:
@@ -509,6 +515,7 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                         marker='|', color='k')
 
                 ### max_alpha[i_d, model_nm] = []
+                import pdb; pdb.set_trace()
                 alp.append([alpha_float, np.nanmean(np.hstack((alp_i)))])
 
             if skip_plots:
