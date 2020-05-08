@@ -728,7 +728,6 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
     return max_alpha
 
 
-
 #### Decoder UTILS ####
 def get_KG_decoder_grom(day_ix):
     co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))

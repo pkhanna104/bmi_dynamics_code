@@ -649,6 +649,10 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
     #     fit_task_specific_model_test_task_spec)
     
     x_test = [];
+
+
+    task_dict_add_model
+    
     for vr in x_var_names:
         x_test.append(test_data[vr][: , np.newaxis])
     X = np.mat(np.hstack((x_test)))
