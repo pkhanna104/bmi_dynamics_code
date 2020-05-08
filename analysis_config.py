@@ -8,6 +8,7 @@ config['sub_df_path'] = '/Users/preeyakhanna/fa_analysis/grom_data/'
 config['grom_pref'] = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
 config['jeev_pref'] = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/'
 config['BMI_DYN'] = '/Users/preeyakhanna/bmi_dynamics_code/'
+
 #########################################
 ############ Data paths  ################
 #########################################
@@ -23,6 +24,7 @@ data_params['grom_ordered_input_type'] = [[[0], [1, 2]], [[1], [0]], [[0], [1, 2
 
 #### Dates used: ###
 data_params['grom_names'] = ['3-2', '3-4', '3-7', '3-15', '3-16', '3-17', '3-18', '3-19', '3-19_2']
+data_params['grom_ndays'] = 9
 
 
 #### Monkey J, datafiles (task entries from mat files from Amy/Maryam) #####
@@ -44,6 +46,7 @@ data_params['jeev_ordered_input_type'] = [[[0], [1]],
 						 [[0], [1]], 
 						 [[0], [1]],
 						 ]
+data_params['jeev_ndays'] = 4
 
 ##################################
 ####### Useful formating #########
