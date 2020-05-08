@@ -2,14 +2,15 @@
 # Updated April 2017-Copy_with_custom_fit_by_day_radial_tuning-July 2017-Figure1FG,3G-Copy1
 
 import pickle, os
-from online_analysis import co_obs_tuning_matrices
+
+import co_obs_tuning_matrices, subspace_overlap, analysis_config
 from resim_ppf import file_key as fk
+
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
 import pickle
 import scipy.stats
-import subspace_overlap
 
 from matplotlib.colors import LinearSegmentedColormap
 colors = [(1, 1, 1), (46/255., 48/255., 146/255.)]  # W-->Blue
@@ -27,13 +28,14 @@ lightred = [222/255.,100/255.,108/255.]
 lightgrey = [109/255.,110/255.,112/255.]
 
 # This is saved in grom, but has data for grom and jeev: 
-pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
-mag_bins = pickle.load(open(pref+'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+#pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
+mag_bins = pickle.load(open(analysis_config.config['grom_pref']+'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
 
 ### First set of plots: 
 ###########################
 ### Get metrics : ########
 ###########################
+
 def plot_all(animals=['jeev', 'grom'], normalize=True):
     
     # Get the sim plots; 
@@ -68,14 +70,17 @@ def generate_hist_tuning(animal='jeev'):
         this fcn is to generate that file 
     '''
     ### Gromit ####
+    ### fname_pref is the file name to save 
+    ### 
     if animal == 'grom':
-        input_type = co_obs_tuning_matrices.input_type
+        input_type = analysis_config.data_params['grom_input_type']
         co_obs_tuning_matrices.get_all_tuning(input_type, None, None, animal = 'grom',
                 fname_pref = 'hist_tuning_w_fit_mag_boundaries_grom_16_trials_dist_', radial_binning=True, 
                 mag_thresh='/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/radial_boundaries_fit_based_on_perc_feb_2019.pkl',
                 sample_n_trials=16, pre_go = 0.)
+    
     elif animal == 'jeev':
-        input_type = fk.task_filelist
+        input_type = analysis_config.data_params['jeev_input_type']
         co_obs_tuning_matrices.get_all_tuning(input_type, None, None, animal = 'jeev',
                 fname_pref = 'hist_tuning_w_fit_mag_boundaries_jeev_16_trials_dist_', radial_binning=True, 
                 mag_thresh='/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/radial_boundaries_fit_based_on_perc_feb_2019.pkl',

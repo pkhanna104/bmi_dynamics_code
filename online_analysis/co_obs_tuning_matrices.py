@@ -1,19 +1,21 @@
 import prelim_analysis as pa
 from matplotlib import mlab, cm
 import matplotlib.pyplot as plt
+
 import os
 import numpy as np
-#from db import dbfunctions as dbfn
 import pickle
-import os
-#import seaborn
 import math
 import scipy.ndimage
+
 from resim_ppf import ppf_pa
 import resim_ppf
+
 import scipy.io as sio
 import sklearn.decomposition as skdecomp
 import tables
+
+import analysis_config
 
 gbins = np.linspace(-3., 3., 20)
 jbins = np.linspace(-9., 9., 40)
@@ -48,6 +50,8 @@ def get_tuning_hists(te_num, binx=None, biny=None, sample_within_task_dist=False
     '''
 
     if animal == 'grom':
+
+        pref = analysis_config.config['grom_pref']
 
         # Get SSKF for animal: 
         try:
@@ -288,6 +292,8 @@ def get_all_tuning(input_type, binx, biny, fname_pref=None, animal='grom',
         if type(mag_thresh) is str:
             mg_thr = pickle.load(open(mag_thresh))
             mt = np.array(mg_thr[animal, i_d])
+            print('Day %d, Plot Mag Thresh: %s' %(i_d, str(mt)))
+
         elif type(mag_thresh) is np.ndarray:
             mt = mag_thresh
         else:
@@ -299,7 +305,7 @@ def get_all_tuning(input_type, binx, biny, fname_pref=None, animal='grom',
             # For each task entry
             for i, te in enumerate(task_te):
                 
-                tuning_hist, tuning_hist_dist, mag_thresh, bins_all, targ_ix, MAG, ANG, cursor_state, neural_push = get_tuning_hists(te, 
+                tuning_hist, tuning_hist_dist, _, bins_all, targ_ix, MAG, ANG, cursor_state, neural_push = get_tuning_hists(te, 
                     binx, biny, sample_within_task_dist=True, sample_n_trials=sample_n_trials,
                     animal=animal, radial_binning=radial_binning, mag_thresh=mt, pre_go = pre_go)
                 key = 'day'+str(i_d), 'tsk'+str(i_t), 'n'+str(i)
@@ -320,9 +326,10 @@ def get_all_tuning(input_type, binx, biny, fname_pref=None, animal='grom',
                 hist_dict['bins'] = binx
             if biny is not None:
                 hist_dict_dist['bins'] = binx
-            if mag_thresh is not None:
+            if mt is not None:
                 hist_dict_dist['mag_thresh'] = mt
             
+            pref = analysis_config.config[animal+'_pref']
             pickle.dump(hist_dict, open(pref+fname_pref+'day'+str(i_d)+'.pkl', 'wb'))
             pickle.dump(hist_dict_dist, open(pref+fname_pref+'day'+str(i_d)+'dist.pkl', 'wb'))
             
@@ -1041,8 +1048,8 @@ def extract_radial_bin_edges_grom_jeev():
     Saves data for each animal
     '''
     input_type2 = {}
-    input_type2['grom'] = input_type
-    input_type2['jeev'] = resim_ppf.task_filelist
+    input_type2['grom'] = analysis_config.data_params['grom_input_type']
+    input_type2['jeev'] = analysis_config.data_params['jeev_input_type']
 
     boundaries = {}
 
@@ -1058,7 +1065,7 @@ def extract_radial_bin_edges_grom_jeev():
                 # For each task entry
                 for i, te in enumerate(task_te):
                     day_dict.append(get_spks(animal, te))
-
+                    
             # Squish all bins into an array: 
             day_dict = np.array(np.vstack((day_dict)))
 
@@ -1067,11 +1074,15 @@ def extract_radial_bin_edges_grom_jeev():
 
             boundaries[animal, i_d] = [np.percentile(mag, 25), np.percentile(mag, 50), np.percentile(mag, 75)]
     
+    pref = analysis_config.config['grom_pref']
     pickle.dump(boundaries, open(pref+'radial_boundaries_fit_based_on_perc_feb_2019.pkl', 'wb'))
     return pref+'radial_boundaries_fit_based_on_perc_feb_2019.pkl', boundaries
 
 def get_spks(animal, te, keep_trls_sep = False):
     if animal == 'grom':
+
+        pref = analysis_config.config['grom_pref']
+
         co_obs_dict = pickle.load(open(pref+'co_obs_file_dict.pkl'))
         hdf = co_obs_dict[te, 'hdf']
         hdfix = hdf.rfind('/')
