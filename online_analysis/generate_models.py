@@ -1,7 +1,7 @@
 #### Methods to generate models used to predict neural activity ####
 from analysis_config import config 
 import analysis_config
-import generate_models_utils
+import generate_models_utils, generate_models_list
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,7 +10,9 @@ import gc
 import tables, pickle
 
 from sklearn.linear_model import Ridge
+import scipy
 
+######### STEP 1 -- Get alpha value #########
 def sweep_alpha_all(run_alphas=True, model_set_number = 3):
 
     max_alphas = dict(grom=[], jeev=[])
@@ -48,111 +50,14 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
         do this for different model types
     '''
 
-    ### Models to sweep ###
-    model_var_list = []
-    include_action_lags = True;
-
-
-    ####### STATE VARIABLE: 
-    #######    1 -- velocity & position 
-    #######    -1 --  position 
-    #######    2 -- velocity & position & target
-    #######    3 -- velocity & position & target & task
-    #######    0 -- none; 
-    
-    ####### Include action_lags --> whether to include push_{t-1} etc. 
-    ###### Include past_y{t-1} if zero -- nothing. If > 1, include that many past lags
-
-
-    if model_set_number == 1:
-        ###                     Lags,               name,                   include state?, include y_{t-1}, include y_{t+1} ###
-        model_var_list.append([np.array([0]),     'prespos_0psh_1spksm_0_spksp_0',      0, 0, 0])     ### t=0, only action
-        model_var_list.append([np.array([-1]),    'hist_1pos_-1psh_1spksm_0_spksp_0',  -1, 0, 0])     ### t=-1, action and position only
-        model_var_list.append([np.array([-1]),    'hist_1pos_1psh_1spksm_0_spksp_0',    1, 0, 0])     ### t=-1, action and prev state
-        model_var_list.append([np.array([-1]),    'hist_1pos_2psh_1spksm_0_spksp_0',    2, 0, 0])     ### t=-1, action and prev state + target
-        model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_0_spksp_0',    3, 0, 0])     ### t=-1, action and prev state + target + task
-        model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_1_spksp_0',    3, 1, 0])     ### t=-1, action and prev state + target + task plus neural dynamics
-        # model_var_list.append([np.arange(-history_bins_max, history_bins_max+1), 'hist_fut_4pos_1psh_1spksm_0_spksp_0', 1, 0, 0]) ### t=-4,4, action and state
-        # model_var_list.append([np.arange(-history_bins_max, history_bins_max+1), 'hist_fut_4pos_1psh_1spksm_1_spksp_0', 1, 1, 0]) ### t=-4,4, action and state, y_{t-1}
-        # model_var_list.append([np.arange(-history_bins_max, history_bins_max+1), 'hist_fut_4pos_1psh_1spksm_1_spksp_1', 1, 1, 1]) ### t=-4,4, action and state, y_{t-1}, y_{t+1}
-        predict_key = 'spks'
-        include_action_lags = False; ### Only action at t = 0; 
-
-    elif model_set_number == 2:
-        ### Lags, name, include state?, include y_{t-1}, include y_{t+1} ###
-        #nclude_state, include_past_yt, include_fut_yt
-
-        ### Also want only neural, only history of neural, and a_t plus history of neural. 
-        model_var_list.append([np.array([0]),                 'prespos_0psh_0spksm_1_spksp_0',         0, 1, 0])     #### Model 1: a_{t+1} | y_{t+1} --> should be 100%
-        model_var_list.append([np.array([-1]),                'hist_1pos_0psh_0spksm_1_spksp_0',       0, 1, 0])     #### Model 1: a_{t+1} | y_{t}
-        model_var_list.append([np.array([-1]),                'hist_1pos_0psh_1spksm_0_spksp_0',       0, 0, 0])     #### Model 1: a_{t+1} | a_t
-        model_var_list.append([np.array([-1]),                'hist_1pos_0psh_1spksm_1_spksp_0',       1, 0, 0])     #### Model 2: a_{t+1} | a_t, y_t
-        model_var_list.append([np.array([-4, -3, -2, -1]),    'hist_4pos_0psh_1spksm_0_spksp_0',       0, 0, 0])     #### Model 3: a_{t+1} | a_t, a_{t-1},...
-        model_var_list.append([np.array([-4, -3, -2, -1]),    'hist_4pos_0psh_1spksm_1_spksp_0',       0, 1, 0])     #### Model 4: a_{t+1} | a_t, a_{t-1},..., y_t; 
-        model_var_list.append([np.array([-4, -3, -2, -1]),    'hist_4pos_0psh_1spksm_4_spksp_0',       0, 4, 0])     #### Model 5: a_{t+1} | a_t, a_{t-1},..., y_t, y_{t-1},...;
-        predict_key = 'psh'
-
-    elif model_set_number == 3:
-        ### Model predicting spikes with a) current spikes b) previous spikes, c) previous actions 
-        ###                                                                              include state // y_{t-1} // y_{t+1} ###
-        model_var_list.append([np.array([0]),                 'prespos_0psh_0spksm_1_spksp_0',         0, 1, 0])     #### Model 1: y_{t+1} | y_{t+1} --> should be 100%
-        model_var_list.append([np.array([-1]),                'hist_1pos_0psh_0spksm_1_spksp_0',       0, 1, 0])     #### Model 1: y_{t+1} | y_{t}
-        model_var_list.append([np.array([-1]),                'hist_1pos_0psh_1spksm_0_spksp_0',       0, 0, 0])     #### Model 1: y_{t+1} | a_t
-        predict_key = 'spks'
-        include_action_lags = False; ### Only action at t = 0; 
-
-    elif model_set_number == 4:
-        #### Here we only want action at time T, and only state at the given lag, not all lags;
-        model_var_list.append([np.array([0]), 'prespos_0psh_1spksm_0_spksp_0',       0, 0, 0])     ### t=0, only action
-        model_var_list.append([np.array([0]), 'prespos_0psh_1spksm_1_spksp_0',       0, 1, 0])     ### t=0, only action & n_t 
-        model_var_list.append([np.array([0]), 'prespos_1psh_1spksm_0_spksp_0',       1, 0, 0])     ### t=0,  action and state
-        model_var_list.append([np.array([0]), 'prespos_1psh_1spksm_1_spksp_0',       1, 1, 0])     ### t=0, only action and state and n_t 
-        model_var_list.append([np.array([-1]), 'hist_1pos_1psh_1spksm_0_spksp_0',     1, 0, 0])     ### t=0,  action and state @ -1
-        model_var_list.append([np.array([-1]),  'hist_1pos_1psh_1spksm_1_spksp_0',    1, 1, 0])     ### t=0, only action and state t-1 & n_t 
-        model_var_list.append([np.array([-2]), 'hist_2pos_1psh_1spksm_0_spksp_0',     1, 0, 0])     ### t=0,  action and state @ -1
-        model_var_list.append([np.array([-2]), 'hist_2pos_1psh_1spksm_1_spksp_0',     1, 1, 0])     ### t=0, only action and state t-2 adn n_t 
-        predict_key = 'spks'
-        history_bins_max = 2; 
-        include_action_lags = False ### only add action at current time point; 
-
-    elif model_set_number == 5:
-        model_var_list.append([np.array([-1]), 'hist_1pos_1psh_0spks_0_spksp_0', 0, 0, 0]) ### state only for regression again.  
-        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_1spks_1_spksp_0', 0, 1, 0]) ### everything except state: (spks / psh)
-        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spks_1_spksp_0', 0, 1, 0]) ### everything excpet state: (spks)
-        model_var_list.append([np.array([-1]), 'hist_1pos_1psh_0spks_1_spksp_0', 1, 1, 0]) ### Include both for comparison to jointly fitting. 
-        model_var_list.append([np.array([-1]), 'hist_1pos_1psh_1spks_1_spksp_0', 1, 1, 0]) ### Include both for comparison to jointly fitting. 
-        predict_key = 'spks'
-
-    elif model_set_number == 6:
-        model_var_list.append([np.array([-1]), 'hist_1pos_1psh_0spks_0_spksp_0', 1, 0, 0]) ### Only state; 
-        predict_key = 'psh'
-
-    elif model_set_number == 7:
-        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity; 
-        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_1spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity & action; 
-        predict_key = 'spks'
-
-    elif model_set_number == 8:
-        ### Dissecting previous state encoding vs. neural encoding. 
-        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity; 
-        model_var_list.append([np.array([-1]), 'hist_1pos_1psh_0spksm_0_spksp_0', 1, 0, 0]) ### previous state
-        model_var_list.append([np.array([-1]), 'hist_1pos_3psh_0spksm_0_spksp_0', 3, 0, 0]) #### previous state + targ + task
-        predict_key = 'spks'
-
-
-    elif model_set_number == 9:
-        ### Summary of all models -- R2 instead of just mean diffs ###
-        model_var_list.append([np.arary([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0])
-        model_var_list.append([np.arary([-1]), 'hist_1pos_0psh_1spksm_0_spksp_0', 0, 0, 0])
-        model_var_list.append([np.arary([0]),   'prespos_0psh_1spksm_0_spksp_0',  0, 0, 0])
-        model_var_list.append([np.arary([0]),   'prespos_1psh_0spksm_0_spksp_0',  1, 0, 0])
-        model_var_list.append([np.arary([-1]), 'hist_1pos_1psh_0spksm_0_spksp_0', 1, 0, 0])
+    #### Get models from here ###
+    model_var_list, predict_key, include_action_lags, _ = generate_models_list.get_model_var_list(model_set_number)
 
     x = datetime.datetime.now()
     hdf_filename = animal + '_sweep_alpha_days_models_set%d.h5' %model_set_number
 
     pref = config[animal + '_pref']
-    hdf_filename = pref + hdf_filename; 
+    hdf_filename = pref + hdf_filename
 
     ###### Clear out all HDF files that may be been previously created #####
     for obj in gc.get_objects():   # Browse through ALL objects
@@ -223,58 +128,14 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
             ### Get number of neruons you expect ####
             nneur = sub_spk_temp_all.shape[2]
 
+            variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
             ### For each variable in the model: 
-            for im, (model_vars, model_nm, include_state, include_past_yt, include_fut_yt) in enumerate(model_var_list):
-                
-                ### Include state --> 
-                if include_state == 1:
-                    vel_model_nms, vel_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'vel')
-                    pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
-                    tg_model_nms = tsk_model_nms = []; 
-                    
-                #### ONLY POSITION
-                elif include_state == -1:
-                    vel_model_nms = []; 
-                    pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
-                    tg_model_nms = tsk_model_nms = []; 
+            for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
 
-                elif include_state == 2:
-                    vel_model_nms, vel_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'vel')
-                    pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
+                ### Unpack model_var_list; 
+                _, model_nm, _, _, _ = model_var_list_i; 
 
-                    ### Also include target_info: 
-                    tg_model_nms, tg_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'tg')    
-                    tsk_model_nms = [];                 
-
-                elif include_state == 3:
-                    vel_model_nms, vel_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'vel')
-                    pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
-
-                    ### Also include target_info: 
-                    tg_model_nms, tg_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'tg')
-                    tsk_model_nms, tsk_model_str = ['tsk', '']
-
-                elif include_state == 0:
-                    vel_model_nms = pos_model_nms = []; tg_model_nms = tsk_model_nms = []; 
-                
-                ### Add push always -- this push uses the model_vars; 
-                push_model_nms, push_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'psh', include_action_lags = include_action_lags) 
-
-                ### Past neural activity
-                if include_past_yt > 0:
-                    neur_nms1, neur_model_str1 = generate_models_utils.lag_ix_2_var_nm(model_vars, 'neur', nneur, np.arange(-1*include_past_yt, 0))
-                else:
-                    neur_nms1 = []; 
-
-                ### Next neural activity; 
-                if include_fut_yt > 0:
-                    neur_nms2, neur_model_str2 = generate_models_utils.lag_ix_2_var_nm(model_vars, 'neur', nneur, np.arange(1, 1*include_fut_yt + 1))
-                else:
-                    neur_nms2 = []; 
-
-                ### Get all the variables together ###
-                variables = np.hstack(( [vel_model_nms, pos_model_nms, tg_model_nms, tsk_model_nms, push_model_nms, neur_nms1, neur_nms2] ))
-
+                ####### HERE ######
                 #############################
                 ### Model with parameters ###
                 #############################
@@ -296,6 +157,281 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
     h5file.close()
     print 'H5 File Done: ', hdf_filename
     return hdf_filename
+
+######## STEP 2 -- Fit the models ###########
+### Main tuning function -- run this for diff animals; 
+def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs', 
+    animal='grom', 
+    n_folds = 5, 
+    norm_neur = False, 
+    return_models = True, 
+    model_set_number = 8, 
+    ndays = None,
+    include_null_pot = False,
+    only_potent_predictor = False,
+    fit_task_specific_model_test_task_spec = False):
+    
+    ### Deprecated variables 
+    only_vx0_vy0_tsk_mod=False; 
+    task_prediction = False; 
+    compute_res = False; 
+    ridge=True; 
+
+    '''
+    Summary: 
+    
+    Modified 9/13/19 to add neural tuning on top of this; 
+    Modified 9/16/19 to add model return on top of this; 
+    Modiefied 9/17/19 to use specialized alphas for each model, and change notation to specify y_{t-1} and/or y_{t+1}
+    Modified 5/7/20 to use "generate models list to determine most model parameters"
+
+    Input param: hdf_filename: name to save params to 
+    Input param: animal: 'grom' or jeev'
+    Input param: history_bins_max: number of bins to use into the past and 
+        future to model spike counts (binsize = 100ms)
+
+    Input param: only_vx0_vy0_tsk_mod: True if you only want to model res ~ velx_tm0:tsk + vely_tm0:tsk instead
+        of all variables being task-modulated
+        --- update 5/7/20 -- removing this option, will raise exception; 
+
+    Input param: task_prediction: True if you want to include way to predict task (0: CO, 1: Obs) from kinematics
+    Input param: **kwargs: 
+        task_pred_prefix -- what is this? 
+        --- appears to be deprecated; 
+
+        use_lags: list of lags to actually use (e.g. np.arange(-4, 5, 2))
+        normalize_neurons: whether to compute a within-day mFR and sdFR so that high FR neurons don't dominate R2 
+            calculations
+    Output param: 
+    '''
+    model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(model_set_number)
+
+    ### Get model params from the models list: 
+    pref = analysis_config.config[animal + '_pref']
+
+    #### Generate final HDF name ######
+    if hdf_filename is None: 
+        x = datetime.datetime.now()
+        hdf_filename = animal + '_' + x.strftime("%Y_%m_%d_%H_%M_%S") + '.h5'
+        hdf_filename = pref + hdf_filename; 
+
+    else:
+        if fit_task_specific_model_test_task_spec:
+            hdf_filename = pref + animal + hdf_filename + '_model_set%d_task_spec.h5' %model_set_number
+        else:
+            hdf_filename = pref + animal + hdf_filename + '_model_set%d.h5' %model_set_number
+
+    ### Place to save models: 
+    model_data = dict(); 
+
+    ### Get the ridge dict: 
+    ridge_dict = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+
+    for obj in gc.get_objects():   # Browse through ALL objects
+        if isinstance(obj, tables.File):   # Just HDF5 files
+            try:
+                obj.close()
+            except:
+                pass #
+
+    tuning_dict = {}
+    if animal == 'grom':
+        order_dict = analysis_config.data_params['grom_ordered_input_type']
+        input_type = analysis_config.data_params['grom_input_type']
+
+    elif animal == 'jeev':
+        order_dict = analysis_config.data_params['jeev_ordered_input_type']
+        input_type = analysis_config.data_params['jeev_input_type']
+
+    if ndays is None:
+        pass
+    else:
+        order_dict = [order_dict[i] for i in range(ndays)]
+        input_type = [input_type[i] for i in range(ndays)]
+
+    h5file = tables.openFile(hdf_filename, mode="w", title=animal+'_tuning')
+
+    if task_prediction:
+        task_dict_file = {} 
+        if 'task_pred_prefix' not in kwargs.keys():
+            raise Exception
+
+    mFR = {}
+    sdFR = {}
+
+    ##### For each day ####
+    for i_d, day in enumerate(input_type):
+        
+        # Get spike data from data fcn
+        data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
+            order_dict[i_d], history_bins_max)
+
+        models_to_include = []
+        for m in model_var_list:
+            models_to_include.append(m[1])
+
+        ### Get kalman gain etc. 
+        if animal == 'grom':
+            KG, KG_null_proj, KG_potent_orth = get_KG_decoder_grom(i_d)
+
+        elif animal == 'jeev':
+            KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
+
+        ### Make sure the KG_potent decoders are 2D ####
+        assert np.linalg.matrix_rank(KG_potent_orth) == 2
+
+        ###############################################################
+        ################ CODE TO REVIEW / RESTRUCTURE #################
+        ###############################################################
+
+        ### Seems like we want to save variables ?? ####
+        ### Replicate datastructure for saving later: 
+        if return_models:
+
+            ### Want to save neural push, task, target 
+            model_data[i_d, 'spks'] = sub_spikes.copy();
+            model_data[i_d, 'task'] = np.squeeze(np.array(data_temp['tsk']))
+            model_data[i_d, 'trg'] = np.squeeze(np.array(data_temp['trg']))
+            model_data[i_d, 'np'] = np.squeeze(np.array(sub_push_all))
+            model_data[i_d, 'bin_num'] = np.squeeze(np.array(data_temp['bin_num']))
+            model_data[i_d, 'pos'] = np.vstack((np.array(data_temp['posx_tm0']), np.array(data_temp['posy_tm0']))).T
+            model_data[i_d, 'vel'] = np.vstack((np.array(data_temp['velx_tm0']), np.array(data_temp['vely_tm0']))).T
+            model_data[i_d, 'vel_tm1'] = np.vstack((np.array(data_temp['velx_tm1']), np.array(data_temp['vely_tm1']))).T
+            model_data[i_d, 'trl'] = np.squeeze(np.array(data_temp['trl']))
+            
+            ### Models -- save predicitons
+            for mod in models_to_include:
+
+                ### Models to save ##########
+                if model_set_number in [1, 3, 4, 8]:
+
+                    ### Keep spikes ####
+                    model_data[i_d, mod] = np.zeros_like(sub_spikes) 
+
+                    if include_null_pot:
+                        ### if just use null / potent parts of predictions and propogate those guys
+                        model_data[i_d, mod, 'null'] = np.zeros_like(sub_spikes)
+                        model_data[i_d, mod, 'pot'] = np.zeros_like(sub_spikes)
+
+                elif model_set_number == 2:
+                    ##### 
+                    model_data[i_d, mod] = np.zeros_like(np.squeeze(np.array(sub_push_all)))
+
+        if norm_neur:
+            print 'normalizing neurons!'
+            mFR[i_d] = np.mean(sub_spikes, axis=0)
+            sdFR[i_d] = np.std(sub_spikes, axis=0)
+            sdFR[i_d][sdFR[i_d]==0] = 1
+            sub_spikes = ( sub_spikes - mFR[i_d][np.newaxis, :] ) / sdFR[i_d][np.newaxis, :]
+
+        #### Get training / testing sets split up #####
+        test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
+
+        for i_fold in range(n_folds):
+
+            ### TEST DATA ####
+            data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
+            data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
+            data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
+            data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
+            data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
+
+            ### TRAIN DATA ####
+            data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
+            data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
+            data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
+            data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
+            data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
+
+            nneur = sub_spk_temp_all.shape[2]
+
+            variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
+            
+            ### For each variable in the model: 
+            for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
+
+                ### These are teh params; 
+                _, model_nm, _, _, _ = model_var_list_i
+
+                if ridge:
+                    alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+                    model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
+                        only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
+                        fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec)
+                    save_model = True
+                else:
+                    raise Exception('Need to figure out teh stirng business again -- removed for clarity')
+                    model_ = ols(st, data_temp_dict).fit()
+                    save_model = False
+
+                if save_model:
+                    h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
+                        test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
+                        only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth,
+                        fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec)
+
+                    ### Save models, make predictions ####
+                    ### Need to figure out which spikes are where:
+                    if fit_task_specific_model_test_task_spec:
+                        ix0 = np.nonzero(data_temp_dict_test['tsk'] == 0)[0]
+                        ix1 = np.nonzero(data_temp_dict_test['tsk'] == 1)[0]
+                        
+                        model_data[i_d, model_nm][test_ix[i_fold][ix0], :] = np.squeeze(np.array(pred_Y[0]))
+                        model_data[i_d, model_nm][test_ix[i_fold][ix1], :] = np.squeeze(np.array(pred_Y[1]))
+
+                    else:
+                        model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
+                       
+                        ### Save model -- for use later. 
+                        if model_set_number == 8:
+                            model_data[i_d, model_nm, i_fold, 'model'] = model_; 
+                            model_data[i_d, model_nm, i_fold, 'model_testix'] = test_ix[i_fold]; 
+
+
+                    #### Add / null potent? 
+                    if include_null_pot:
+
+                        ### Get predictors together: 
+                        x_test = [];
+                        for vr in variables:
+                            x_test.append(data_temp_dict_test[vr][: , np.newaxis])
+                        X = np.mat(np.hstack((x_test)))
+
+                        ### Get null and potent -- KG_null_proj, KG_potent_orth
+                        X_null = np.dot(KG_null_proj, X.T).T
+                        X_pot =  np.dot(KG_potent_orth, X.T).T
+
+                        assert np.allclose(X, X_null + X_pot)
+
+                        ### Need to divide the intercept into null / potent: 
+                        intc = model_.intercept_
+                        intc_null = np.dot(KG_null_proj, intc)
+                        intc_pot = np.dot(KG_potent_orth, intc)
+
+                        assert np.allclose(np.sum(np.abs(np.dot(KG, intc_null))), 0)
+                        assert np.allclose(np.sum(np.abs(np.dot(KG, X_null.T))), 0)
+
+                        pred_null = np.mat(X_null)*np.mat(model_.coef_).T + intc_null[np.newaxis, :]
+                        pred_pot = np.mat(X_pot)*np.mat(model_.coef_).T + intc_pot[np.newaxis, :]
+
+                        assert np.allclose(pred_Y, pred_null + pred_pot)
+
+                        ### This just propogates the identity; 
+                        # model_data[i_d, giant_model_name][test_ix[i_fold], :] = X.copy()
+                        model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
+                        model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
+                        
+    h5file.close()
+    print 'H5 File Done: ', hdf_filename
+
+    ### ALSO SAVE MODEL_DATA: 
+    if only_potent_predictor:
+        pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
+    else:
+        if fit_task_specific_model_test_task_spec:
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec.pkl' %model_set_number, 'wb'))
+        else:
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'wb'))
 
 #### UTILS #####
 def panda_to_dict(D):
@@ -410,6 +546,62 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
         
         return model_2, pred, pred2
 
+def return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur):
+    variables_list = []
+    for im, (model_vars, model_nm, include_state, include_past_yt, include_fut_yt) in enumerate(model_var_list):
+        
+        ### Include state --> 
+        if include_state == 1:
+            vel_model_nms, vel_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'vel')
+            pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
+            tg_model_nms = tsk_model_nms = []; 
+            
+        #### ONLY POSITION
+        elif include_state == -1:
+            vel_model_nms = []; 
+            pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
+            tg_model_nms = tsk_model_nms = []; 
+
+        elif include_state == 2:
+            vel_model_nms, vel_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'vel')
+            pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
+
+            ### Also include target_info: 
+            tg_model_nms, tg_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'tg')    
+            tsk_model_nms = [];                 
+
+        elif include_state == 3:
+            vel_model_nms, vel_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'vel')
+            pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
+
+            ### Also include target_info: 
+            tg_model_nms, tg_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'tg')
+            tsk_model_nms, tsk_model_str = ['tsk', '']
+
+        elif include_state == 0:
+            vel_model_nms = pos_model_nms = []; tg_model_nms = tsk_model_nms = []; 
+        
+        ### Add push always -- this push uses the model_vars; 
+        push_model_nms, push_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'psh', include_action_lags = include_action_lags) 
+
+        ### Past neural activity
+
+        if include_past_yt > 0:
+            neur_nms1, neur_model_str1 = generate_models_utils.lag_ix_2_var_nm(model_vars, 'neur', nneur, np.arange(-1*include_past_yt, 0))
+        else:
+            neur_nms1 = []; 
+
+        ### Next neural activity; 
+        if include_fut_yt > 0:
+            neur_nms2, neur_model_str2 = generate_models_utils.lag_ix_2_var_nm(model_vars, 'neur', nneur, np.arange(1, 1*include_fut_yt + 1))
+        else:
+            neur_nms2 = []; 
+
+        ### Get all the variables together ###
+        variables = np.hstack(( [vel_model_nms, pos_model_nms, tg_model_nms, tsk_model_nms, push_model_nms, neur_nms1, neur_nms2] ))
+        variables_list.append(variables)
+    return variables_list
+
 def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, r2_ind_or_pop = 'pop'):
 
     if model_set_number == 1:
@@ -503,8 +695,11 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                         alp_i.append(tbl[day_index]['r2'])
                     
                     elif r2_ind_or_pop == 'pop':
-                        import pdb; pdb.set_trace()
-                        alp_i.append(tbl[day_index]['r2_pop'][0])
+                        ### Only take the first value -- all are the same; 
+                        tmp = tbl[day_index]['r2_pop']
+                        mn = np.mean(tmp)
+                        assert(np.allclose(tmp-mn, np.zeros((len(tmp), 1))))
+                        alp_i.append(mn)
 
                 ### plot alpha vs. mean day: 
                 if skip_plots:
@@ -515,7 +710,6 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                         marker='|', color='k')
 
                 ### max_alpha[i_d, model_nm] = []
-                import pdb; pdb.set_trace()
                 alp.append([alpha_float, np.nanmean(np.hstack((alp_i)))])
 
             if skip_plots:
@@ -532,3 +726,131 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
             max_alpha[i_d, model_nm] = alp[ix_max, 0]
 
     return max_alpha
+
+
+
+#### Decoder UTILS ####
+def get_KG_decoder_grom(day_ix):
+    co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
+    input_type = analysis_config.data_params['grom_input_type']
+
+    ### First CO task for that day: 
+    te_num = input_type[day_ix][0][0]
+    dec = co_obs_dict[te_num, 'dec']
+    decix = dec.rfind('/')
+    decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
+    F, KG = decoder.filt.get_sskf()
+    KG_potent = KG[[3, 5], :]; # 2 x N
+    KG_null = scipy.linalg.null_space(KG_potent) # N x (N-2)
+    KG_null_proj = np.dot(KG_null, KG_null.T)
+
+    ## Get KG potent too; 
+    U, S, Vh = scipy.linalg.svd(KG_potent); #[2x2, 2, 44x44]
+    Va = np.zeros_like(Vh)
+    Va[:2, :] = Vh[:2, :]
+    KG_potent_orth = np.dot(Va.T, Va)
+
+    return KG_potent, KG_null_proj, KG_potent_orth
+
+def generate_KG_decoder_jeev():
+    KG_approx = dict() 
+
+    ### Task filelist ###
+    filelist = file_key.task_filelist
+    days = len(filelist)
+    binsize_ms = 5.
+    important_neuron_ix = dict()
+
+    for day in range(days):
+
+        # open the thing: 
+        Ps = pickle.load(open(analysis_config.config['jeev_pref']+'/jeev_KG_approx_feb_2019_day'+str(day)+'.pkl'))
+        
+        # Get bin spikes for this task entry:
+        bin_spk_all = []
+        cursor_KG_all = []
+        P_mats = []
+
+        for task in range(2):
+            te_nums = filelist[day][task]
+            
+            for te_num in te_nums:
+                bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, unbinned, exclude = ppf_pa.get_jeev_trials_from_task_data(te_num, 
+                    binsize=binsize_ms/1000.)
+
+                indices = []
+                for j, (i0, i1) in enumerate(unbinned['ixs']):
+                    indices.append(np.arange(i0, i1) - unbinned['start_index_overall'])
+                
+                for j in np.hstack((indices)):
+                    P_mats.append(np.array(Ps[te_num][j]))
+
+                print unbinned['start_index_overall'], i1, i1 -  unbinned['start_index_overall']
+
+                bin_spk_all.extend([bs for ib, bs in enumerate(bin_spk) if ib not in exclude])
+                cursor_KG_all.extend([kg for ik, kg in enumerate(decoder_all) if ik not in exclude])
+
+        bin_spk_all = np.vstack((bin_spk_all))
+        P_mats = np.dstack((P_mats))
+
+        cursor_KG_all = np.vstack((cursor_KG_all))[:, [3, 5]]
+        
+        # De-meaned cursor: 
+        cursor_KG_all_demean = (cursor_KG_all - np.mean(cursor_KG_all, axis=0)[np.newaxis, :]).T
+        
+        # Fit a matrix that predicts cursor KG all from binned spike counts
+        KG = np.mat(np.linalg.lstsq(bin_spk_all, cursor_KG_all)[0]).T
+        
+        cursor_KG_all_reconst = KG*bin_spk_all.T
+        vx = np.sum(np.array(cursor_KG_all[:, 0] - cursor_KG_all_reconst[0, :])**2)
+        vy = np.sum(np.array(cursor_KG_all[:, 1] - cursor_KG_all_reconst[1, :])**2)
+        R2_best = 1 - ((vx + vy)/np.sum(cursor_KG_all_demean**2))
+        print 'KG est: shape: ', KG.shape, ', R2: ', R2_best
+
+        KG_approx[day] = KG.copy();
+        KG_approx[day, 'R2'] = R2_best;
+
+    ### Save this: 
+    pickle.dump(KG_approx, open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'wb'))
+
+def get_KG_decoder_jeev(day_ix):
+    kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'))
+    KG = kgs[day_ix]
+    KG_potent = KG.copy(); #$[[3, 5], :]; # 2 x N
+    KG_null = scipy.linalg.null_space(KG_potent) # N x (N-2)
+    KG_null_proj = np.dot(KG_null, KG_null.T)
+    
+    U, S, Vh = scipy.linalg.svd(KG_potent); #[2x2, 2, 44x44]
+    Va = np.zeros_like(Vh)
+    Va[:2, :] = Vh[:2, :]
+    KG_potent_orth = np.dot(Va.T, Va)
+
+    return KG_potent, KG_null_proj, KG_potent_orth
+
+def get_decomp_y(KG_null, KG_pot, y_true, only_null = True, only_potent=False):
+    if only_null:
+        y_proj = np.dot(KG_null, y_true.T).T 
+
+    elif only_potent:
+        y_proj = np.dot(KG_pot, y_true.T).T
+
+    ## Make sure kg*y_null is zero
+    #np_null = np.dot(KG, y_null.T).T
+    #f,ax = plt.subplots()
+    #plt.plot(np_null[:, 0])
+    #plt.plot(np_null[:, 1])
+    #plt.title('Null Proj throuhg KG')
+
+    # Do SVD on KG potent and ensure match to KG*y_true? 
+    #N = y_true.shape[1]
+    #U, S, Vh = scipy.linalg.svd(KG.T); #[2x2, 2, 44x44]
+
+    # Take rows to Vh to make a projection basis: 
+    #y_test = np.dot(KG, np.dot(U, np.dot(U.T, y_true.T)))
+    #y_test2 = np.dot(KG, y_true.T)
+
+    # f, ax = plt.subplots(ncols = 2)
+    # ax[0].plot(y_test[0, :], y_test2[0,:], '.')
+    # ax[1].plot(y_test[1, :], y_test2[1,:], '.')
+
+    return y_proj; 

@@ -66,13 +66,13 @@ n_entries_hdf = 800;
 
 fig_dir = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/'
 
-class Model_Table(tables.IsDescription):
-    param = tables.Float64Col(shape=(n_entries_hdf, ))
-    pvalue = tables.Float64Col(shape=(n_entries_hdf, ))
-    r2 = tables.Float64Col(shape=(1,))
-    aic = tables.Float64Col(shape=(1,))
-    bic = tables.Float64Col(shape=(1,))
-    day_ix = tables.Float64Col(shape=(1,))
+# class Model_Table(tables.IsDescription):
+#     param = tables.Float64Col(shape=(n_entries_hdf, ))
+#     pvalue = tables.Float64Col(shape=(n_entries_hdf, ))
+#     r2 = tables.Float64Col(shape=(1,))
+#     aic = tables.Float64Col(shape=(1,))
+#     bic = tables.Float64Col(shape=(1,))
+#     day_ix = tables.Float64Col(shape=(1,))
 
 def bin_spks(spks, update_bmi_ix):
     #Need to use 'update_bmi_ix' from ReDecoder to get bin edges correctly:
@@ -85,181 +85,181 @@ def bin_spks(spks, update_bmi_ix):
 
     return bin_spk_i
 
-def add_params_to_mult(model, test_data=None, predict_key='spks',only_potent_predictor=False, KG_pot = None):
-    if only_potent_predictor:
-        raise Exception('Not yet implemented')
+# def add_params_to_mult(model, test_data=None, predict_key='spks',only_potent_predictor=False, KG_pot = None):
+#     if only_potent_predictor:
+#         raise Exception('Not yet implemented')
 
-    if test_data is not None: 
-        model_params = model.params.index.values; 
-        X = []; N = len(test_data['tsk'])
+#     if test_data is not None: 
+#         model_params = model.params.index.values; 
+#         X = []; N = len(test_data['tsk'])
         
-        for m, mod in enumerate(model_params):
-            if mod == 'Intercept':
-                X.append(np.ones((N, 1)))
-            else:
-                X.append(test_data[mod][:, np.newaxis])
-        X = np.hstack((X))
-        Y = test_data[predict_key]
-    else: 
-        print 'USING TRAINING DATA FOR R2'
-        # Use training data: 
-        X = model.model.exog #Remove intercept
-        Y = np.mat(model.model.endog)
+#         for m, mod in enumerate(model_params):
+#             if mod == 'Intercept':
+#                 X.append(np.ones((N, 1)))
+#             else:
+#                 X.append(test_data[mod][:, np.newaxis])
+#         X = np.hstack((X))
+#         Y = test_data[predict_key]
+#     else: 
+#         print 'USING TRAINING DATA FOR R2'
+#         # Use training data: 
+#         X = model.model.exog #Remove intercept
+#         Y = np.mat(model.model.endog)
 
-    X2 = np.linalg.pinv(np.dot(X.T, X))
-    pred = (np.mat(model.params).T*np.mat(X).T).T
+#     X2 = np.linalg.pinv(np.dot(X.T, X))
+#     pred = (np.mat(model.params).T*np.mat(X).T).T
     
-    SSR = np.sum((np.array(pred - Y))**2, axis=0) 
-    sse = SSR / float(X.shape[0] - X.shape[1]) ## Getting dofs: 
-    SST = np.sum(np.array( Y - np.mean(Y, axis=0))**2, axis=0 )
-    se = np.array([ np.sqrt(np.diagonal(sse[i] * X2)) for i in range(sse.shape[0]) ])
+#     SSR = np.sum((np.array(pred - Y))**2, axis=0) 
+#     sse = SSR / float(X.shape[0] - X.shape[1]) ## Getting dofs: 
+#     SST = np.sum(np.array( Y - np.mean(Y, axis=0))**2, axis=0 )
+#     se = np.array([ np.sqrt(np.diagonal(sse[i] * X2)) for i in range(sse.shape[0]) ])
 
-    model.t_ = model.params / se.T
-    model.pvalues = 2 * (1 - scipy.stats.t.cdf(np.abs(model.t_), Y.shape[0] - X.shape[1]))
+#     model.t_ = model.params / se.T
+#     model.pvalues = 2 * (1 - scipy.stats.t.cdf(np.abs(model.t_), Y.shape[0] - X.shape[1]))
 
-    ### Some SST maybe zero. How to deal with this? 
-    if len(np.nonzero(SST == 0)[0]) > 0:
-        SST[np.nonzero(SST==0)[0]] = SSR[np.nonzero(SST==0)[0]]
-    model.rsquared = 1 - (SSR/SST)
+#     ### Some SST maybe zero. How to deal with this? 
+#     if len(np.nonzero(SST == 0)[0]) > 0:
+#         SST[np.nonzero(SST==0)[0]] = SSR[np.nonzero(SST==0)[0]]
+#     model.rsquared = 1 - (SSR/SST)
     
-    nobs2=model.nobs/2.0 # decimal point is critical here!
-    llf = -np.log(SSR) * nobs2
-    llf -= (1+np.log(np.pi/nobs2))*nobs2
-    model.aic = -2 *llf + 2 * (model.df_model + model.k_constant)
-    model.bic = -2 *llf + np.log(model.nobs) * (model.df_model + model.k_constant)
-    model.coef_names = model.params[0].keys()
+#     nobs2=model.nobs/2.0 # decimal point is critical here!
+#     llf = -np.log(SSR) * nobs2
+#     llf -= (1+np.log(np.pi/nobs2))*nobs2
+#     model.aic = -2 *llf + 2 * (model.df_model + model.k_constant)
+#     model.bic = -2 *llf + np.log(model.nobs) * (model.df_model + model.k_constant)
+#     model.coef_names = model.params[0].keys()
 
-    return model, pred
+#     return model, pred
 
-def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
-    KG_pot = None, fit_task_specific_model_test_task_spec = False):
+# def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
+#     KG_pot = None, fit_task_specific_model_test_task_spec = False):
 
-    x_test = [];
-    for vr in x_var_names:
-        x_test.append(test_data[vr][: , np.newaxis])
-    X = np.mat(np.hstack((x_test)))
-    Y = np.mat(test_data[predict_key])
+#     x_test = [];
+#     for vr in x_var_names:
+#         x_test.append(test_data[vr][: , np.newaxis])
+#     X = np.mat(np.hstack((x_test)))
+#     Y = np.mat(test_data[predict_key])
 
-    assert(X.shape[0] == Y.shape[0])
+#     assert(X.shape[0] == Y.shape[0])
 
-    if fit_task_specific_model_test_task_spec:
-        ix0 = np.nonzero(test_data['tsk'] == 0)[0]
-        ix1 = np.nonzero(test_data['tsk'] == 1)[0]
+#     if fit_task_specific_model_test_task_spec:
+#         ix0 = np.nonzero(test_data['tsk'] == 0)[0]
+#         ix1 = np.nonzero(test_data['tsk'] == 1)[0]
 
-        X0 = X[ix0, :]; Y0 = Y[ix0, :];
-        X1 = X[ix1, :]; Y1 = Y[ix1, :]; 
+#         X0 = X[ix0, :]; Y0 = Y[ix0, :];
+#         X1 = X[ix1, :]; Y1 = Y[ix1, :]; 
 
-        pred0 = np.mat(X0)*np.mat(model[0].coef_).T + model[0].intercept_[np.newaxis, :]
-        pred1 = np.mat(X1)*np.mat(model[1].coef_).T + model[1].intercept_[np.newaxis, :]
+#         pred0 = np.mat(X0)*np.mat(model[0].coef_).T + model[0].intercept_[np.newaxis, :]
+#         pred1 = np.mat(X1)*np.mat(model[1].coef_).T + model[1].intercept_[np.newaxis, :]
 
-        pred = pred0; 
-        model1 = model[1]; 
-        model =  model[0]; 
-        model.X = X0; 
-        model.y = Y0; 
+#         pred = pred0; 
+#         model1 = model[1]; 
+#         model =  model[0]; 
+#         model.X = X0; 
+#         model.y = Y0; 
 
-    model.nneurons = model.y.shape[1]
-    model.nobs = model.X.shape[0]
+#     model.nneurons = model.y.shape[1]
+#     model.nobs = model.X.shape[0]
 
-    if only_potent_predictor:
-        X = np.dot(KG_pot, X.T).T
-        print 'only potent predictor'
+#     if only_potent_predictor:
+#         X = np.dot(KG_pot, X.T).T
+#         print 'only potent predictor'
 
-    pred = np.mat(X)*np.mat(model.coef_).T + model.intercept_[np.newaxis, :]
+#     pred = np.mat(X)*np.mat(model.coef_).T + model.intercept_[np.newaxis, :]
     
-    SSR = np.sum((np.array(pred - Y))**2, axis=0) 
-    sse = SSR / float(X.shape[0] - X.shape[1])
-    SST = np.sum(np.array( Y - np.mean(Y, axis=0))**2, axis=0 )
-    if len(np.nonzero(SST == 0)[0]) > 0:
-        SST[np.nonzero(SST==0)[0]] = SSR[np.nonzero(SST==0)[0]]
-    try:
-        X2 = np.linalg.pinv(np.dot(X.T, X))
-    except:
-        X2 = np.zeros_like(np.dot(X.T, X))
-        print 'wouldnt trust aic / bic'
-    se = np.array([ np.sqrt(np.diagonal(sse[i] * X2)) for i in range(sse.shape[0]) ])
+#     SSR = np.sum((np.array(pred - Y))**2, axis=0) 
+#     sse = SSR / float(X.shape[0] - X.shape[1])
+#     SST = np.sum(np.array( Y - np.mean(Y, axis=0))**2, axis=0 )
+#     if len(np.nonzero(SST == 0)[0]) > 0:
+#         SST[np.nonzero(SST==0)[0]] = SSR[np.nonzero(SST==0)[0]]
+#     try:
+#         X2 = np.linalg.pinv(np.dot(X.T, X))
+#     except:
+#         X2 = np.zeros_like(np.dot(X.T, X))
+#         print 'wouldnt trust aic / bic'
+#     se = np.array([ np.sqrt(np.diagonal(sse[i] * X2)) for i in range(sse.shape[0]) ])
 
-    model.t_ = np.mat(model.coef_) / se
-    model.pvalues = 2 * (1 - scipy.stats.t.cdf(np.abs(model.t_), Y.shape[0] - X.shape[1]))
-    model.rsquared = 1 - (SSR/SST)
+#     model.t_ = np.mat(model.coef_) / se
+#     model.pvalues = 2 * (1 - scipy.stats.t.cdf(np.abs(model.t_), Y.shape[0] - X.shape[1]))
+#     model.rsquared = 1 - (SSR/SST)
     
-    nobs2=model.nobs/2.0 # decimal point is critical here!
-    llf = -np.log(SSR) * nobs2
-    llf -= (1+np.log(np.pi/nobs2))*nobs2
-    model.aic = -2 *llf + 2 * (X.shape[1] + 1)
-    model.bic = -2 *llf + np.log(model.nobs) * (X.shape[1] + 1)
+#     nobs2=model.nobs/2.0 # decimal point is critical here!
+#     llf = -np.log(SSR) * nobs2
+#     llf -= (1+np.log(np.pi/nobs2))*nobs2
+#     model.aic = -2 *llf + 2 * (X.shape[1] + 1)
+#     model.bic = -2 *llf + np.log(model.nobs) * (X.shape[1] + 1)
     
-    if fit_task_specific_model_test_task_spec:
-        return [model, model1], [pred0, pred1]
-    else:
-        return model, pred
+#     if fit_task_specific_model_test_task_spec:
+#         return [model, model1], [pred0, pred1]
+#     else:
+#         return model, pred
 
-def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=None, 
-    fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, 
-    KG_pot = None, fit_task_specific_model_test_task_spec = False):
+# def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=None, 
+#     fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, 
+#     KG_pot = None, fit_task_specific_model_test_task_spec = False):
     
-    try:
-        # OLS models: 
-        nneurons = model_v.predict().shape[1]
-        model_v, predictions = add_params_to_mult(model_v, test_data, predict_key, only_potent_predictor, KG_pot)
-    except:
-        # CLF/RIDGE models: 
-        model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
-            fit_task_specific_model_test_task_spec)
-        try:
-            nneurons = model_v.nneurons
-        except:
-            nneurons = model_v[0].nneurons
-    if first:
-        tab = h5file.createTable("/", model_nm+'_fold_'+str(int(fold)), Model_Table)
-        col = h5file.createGroup(h5file.root, model_nm+'_fold_'+str(int(fold))+'_nms')
-        try:
-            vrs = np.array(model_v.coef_names, dtype=np.str)
-            h5file.createArray(col, 'vars', vrs)
-        except:
-            print 'skippign adding varaible names'
-    else:
-        tab = getattr(h5file.root, model_nm+'_fold_'+str(int(fold)))
+#     try:
+#         # OLS models: 
+#         nneurons = model_v.predict().shape[1]
+#         model_v, predictions = add_params_to_mult(model_v, test_data, predict_key, only_potent_predictor, KG_pot)
+#     except:
+#         # CLF/RIDGE models: 
+#         model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
+#             fit_task_specific_model_test_task_spec)
+#         try:
+#             nneurons = model_v.nneurons
+#         except:
+#             nneurons = model_v[0].nneurons
+#     if first:
+#         tab = h5file.createTable("/", model_nm+'_fold_'+str(int(fold)), Model_Table)
+#         col = h5file.createGroup(h5file.root, model_nm+'_fold_'+str(int(fold))+'_nms')
+#         try:
+#             vrs = np.array(model_v.coef_names, dtype=np.str)
+#             h5file.createArray(col, 'vars', vrs)
+#         except:
+#             print 'skippign adding varaible names'
+#     else:
+#         tab = getattr(h5file.root, model_nm+'_fold_'+str(int(fold)))
     
-    print nneurons, model_nm, 'day: ', day_ix
+#     print nneurons, model_nm, 'day: ', day_ix
 
-    for n in range(nneurons):
-        row = tab.row
+#     for n in range(nneurons):
+#         row = tab.row
     
-        #Add params: 
-        #vrs = getattr(getattr(h5file.root, model_nm+'_fold_'+str(int(fold))+'_nms'), 'vars')[:]
-        param = np.zeros((n_entries_hdf, ))
-        pv = np.zeros((n_entries_hdf, ))
-        for iv, v in enumerate(xvars):
-            try:
-                # OLS: 
-                param[iv] = model_v.params[n][v]
-                pv[iv] = model_v.pvalues[iv, n]
-            except:
-                # RIDGE: 
-                if fit_task_specific_model_test_task_spec:
-                    param[iv] = model_v[0].coef_[n, iv]
-                    pv[iv] = model_v[0].pvalues[n, iv]
-                else:
-                    param[iv] = model_v.coef_[n, iv]
-                    pv[iv] = model_v.pvalues[n, iv]
+#         #Add params: 
+#         #vrs = getattr(getattr(h5file.root, model_nm+'_fold_'+str(int(fold))+'_nms'), 'vars')[:]
+#         param = np.zeros((n_entries_hdf, ))
+#         pv = np.zeros((n_entries_hdf, ))
+#         for iv, v in enumerate(xvars):
+#             try:
+#                 # OLS: 
+#                 param[iv] = model_v.params[n][v]
+#                 pv[iv] = model_v.pvalues[iv, n]
+#             except:
+#                 # RIDGE: 
+#                 if fit_task_specific_model_test_task_spec:
+#                     param[iv] = model_v[0].coef_[n, iv]
+#                     pv[iv] = model_v[0].pvalues[n, iv]
+#                 else:
+#                     param[iv] = model_v.coef_[n, iv]
+#                     pv[iv] = model_v.pvalues[n, iv]
 
-        row['param'] = param
-        row['pvalue'] = pv
-        row['day_ix'] = day_ix
+#         row['param'] = param
+#         row['pvalue'] = pv
+#         row['day_ix'] = day_ix
 
-        if fit_task_specific_model_test_task_spec:
-            row['r2'] = model_v[0].rsquared[n]
-            row['aic'] = model_v[0].aic[n]
-            row['bic'] = model_v[0].bic[n]
-        else:
-            row['r2'] = model_v.rsquared[n]
-            row['aic'] = model_v.aic[n]
-            row['bic'] = model_v.bic[n]
+#         if fit_task_specific_model_test_task_spec:
+#             row['r2'] = model_v[0].rsquared[n]
+#             row['aic'] = model_v[0].aic[n]
+#             row['bic'] = model_v[0].bic[n]
+#         else:
+#             row['r2'] = model_v.rsquared[n]
+#             row['aic'] = model_v.aic[n]
+#             row['bic'] = model_v.bic[n]
         
-        row.append()
+#         row.append()
 
-    return h5file, model_v, predictions
+#     return h5file, model_v, predictions
 
 def task_dict_add_model(task_dict_file, data_temp_dict, model_nms, pos_model_nms, name, i_d):
     tmp_x = []
@@ -298,66 +298,66 @@ def task_dict_add_model(task_dict_file, data_temp_dict, model_nms, pos_model_nms
 
 
 ### test data_temp ###
-def plot_data_temp(data_temp, use_bg = False):
+# def plot_data_temp(data_temp, use_bg = False):
 
-    ### for each target new plto: 
-    fco, axco = plt.subplots()
-    fob, axob = plt.subplots()
-    for ax in [axco, axob]:
-        ax.axis('square')
-    tgs = [4, 5]
+#     ### for each target new plto: 
+#     fco, axco = plt.subplots()
+#     fob, axob = plt.subplots()
+#     for ax in [axco, axob]:
+#         ax.axis('square')
+#     tgs = [4, 5]
 
-    ### open target: 
-    for i in range(2): 
-        tsk_ix = np.nonzero(data_temp['tsk'] == i)[0]
-        targs = np.unique(data_temp['trg'][tsk_ix])
+#     ### open target: 
+#     for i in range(2): 
+#         tsk_ix = np.nonzero(data_temp['tsk'] == i)[0]
+#         targs = np.unique(data_temp['trg'][tsk_ix])
 
-        for itr, tr in enumerate(targs):
-            ## Get the trial numbers: 
-            targ_ix = np.nonzero(data_temp['trg'][tsk_ix] == tr)[0]
-            trls = np.unique(data_temp['trl'][tsk_ix[targ_ix]])
+#         for itr, tr in enumerate(targs):
+#             ## Get the trial numbers: 
+#             targ_ix = np.nonzero(data_temp['trg'][tsk_ix] == tr)[0]
+#             trls = np.unique(data_temp['trl'][tsk_ix[targ_ix]])
 
-            if tgs[i] == itr:
-                alpha = 1.0; LW = 2.0
-            else:
-                alpha = 0.4; LW = 1.0
+#             if tgs[i] == itr:
+#                 alpha = 1.0; LW = 2.0
+#             else:
+#                 alpha = 0.4; LW = 1.0
 
-            if i == 0:
-                axi = axco; 
-            else:
-                axi = axob#[itr/3, itr%3]
+#             if i == 0:
+#                 axi = axco; 
+#             else:
+#                 axi = axob#[itr/3, itr%3]
 
-            for trl in trls:
-                ix = np.nonzero(data_temp['trl'][tsk_ix] == trl)[0]
-                if use_bg:
-                    axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=co_obs_cmap[i],
-                        linewidth = LW, alpha=alpha)
-                else:
-                    axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=cmap_list[itr])
+#             for trl in trls:
+#                 ix = np.nonzero(data_temp['trl'][tsk_ix] == trl)[0]
+#                 if use_bg:
+#                     axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=co_obs_cmap[i],
+#                         linewidth = LW, alpha=alpha)
+#                 else:
+#                     axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=cmap_list[itr])
 
-    ### Add target info for Grom: 
-    for i, a in enumerate(np.linspace(0., 2*np.pi, 9)):
-        if i < 8:
-            tg = [10*np.cos(a), 10*np.sin(a)]
-            circle = plt.Circle(tg, radius=1.7, color = cmap_list[i], alpha=.2)
-            axob.add_artist(circle)
-            circle = plt.Circle(tg, radius=1.7, color = cmap_list[i], alpha=.2)
-            axco.add_artist(circle)
+#     ### Add target info for Grom: 
+#     for i, a in enumerate(np.linspace(0., 2*np.pi, 9)):
+#         if i < 8:
+#             tg = [10*np.cos(a), 10*np.sin(a)]
+#             circle = plt.Circle(tg, radius=1.7, color = cmap_list[i], alpha=.2)
+#             axob.add_artist(circle)
+#             circle = plt.Circle(tg, radius=1.7, color = cmap_list[i], alpha=.2)
+#             axco.add_artist(circle)
 
-        for ax in [axco, axob]:
-           ax.set_xlim([-12, 12])
-           ax.set_ylim([-12, 12])
-           ax.set_xticks([])
-           ax.set_yticks([])
+#         for ax in [axco, axob]:
+#            ax.set_xlim([-12, 12])
+#            ax.set_ylim([-12, 12])
+#            ax.set_xticks([])
+#            ax.set_yticks([])
 
-    # fco.savefig('co_eg.svg')
-    # fob.savefig('ob_eg.svg')
+#     # fco.savefig('co_eg.svg')
+#     # fob.savefig('ob_eg.svg')
 
-def panda_to_dict(D):
-    d = dict()
-    for k in D.keys():
-        d[k] = np.array(D[k][:])
-    return d
+# def panda_to_dict(D):
+#     d = dict()
+#     for k in D.keys():
+#         d[k] = np.array(D[k][:])
+#     return d
 
 def get_KG_decoder_grom(day_ix):
     co_obs_dict = pickle.load(open(co_obs_tuning_matrices.pref+'co_obs_file_dict.pkl'))
@@ -485,46 +485,46 @@ def get_decomp_y(KG_null, KG_pot, y_true, only_null = True, only_potent=False):
     return y_proj; 
 
 ### Where to manipulate neural lags ###
-def lag_ix_2_var_nm(lag_ixs, pos_or_vel='vel', nneur=0, neur_lag = 0, include_action_lags=False):
-    nms = []
-    if pos_or_vel == 'psh':
-        if include_action_lags:
-            for l in lag_ixs:
-                if l<=0:
-                    nms.append(pos_or_vel+'x_tm'+str(np.abs(l)))
-                    nms.append(pos_or_vel+'y_tm'+str(np.abs(l)))
-                else:
-                    nms.append(pos_or_vel+'x_tp'+str(np.abs(l)))
-                    nms.append(pos_or_vel+'y_tp'+str(np.abs(l)))                                  
-        else:
-            nms.append(pos_or_vel+'x_tm0')
-            nms.append(pos_or_vel+'y_tm0')
+# def lag_ix_2_var_nm(lag_ixs, pos_or_vel='vel', nneur=0, neur_lag = 0, include_action_lags=False):
+#     nms = []
+#     if pos_or_vel == 'psh':
+#         if include_action_lags:
+#             for l in lag_ixs:
+#                 if l<=0:
+#                     nms.append(pos_or_vel+'x_tm'+str(np.abs(l)))
+#                     nms.append(pos_or_vel+'y_tm'+str(np.abs(l)))
+#                 else:
+#                     nms.append(pos_or_vel+'x_tp'+str(np.abs(l)))
+#                     nms.append(pos_or_vel+'y_tp'+str(np.abs(l)))                                  
+#         else:
+#             nms.append(pos_or_vel+'x_tm0')
+#             nms.append(pos_or_vel+'y_tm0')
 
-    elif pos_or_vel == 'neur':
-        for nl in neur_lag:
-            if nl <= 0:
-                t = 'm'
-            elif nl > 0:
-                t = 'p'
-            for n in range(nneur):
-                nms.append('spk_t'+t+str(int(np.abs(nl)))+'_n'+str(n))
+#     elif pos_or_vel == 'neur':
+#         for nl in neur_lag:
+#             if nl <= 0:
+#                 t = 'm'
+#             elif nl > 0:
+#                 t = 'p'
+#             for n in range(nneur):
+#                 nms.append('spk_t'+t+str(int(np.abs(nl)))+'_n'+str(n))
 
-    elif pos_or_vel == 'tg':
-        nms.append('trg_posx')
-        nms.append('trg_posy')
-    else:
-        for l in lag_ixs:
-            if l <=0: 
-                nms.append(pos_or_vel+'y_tm'+str(np.abs(l)))
-                nms.append(pos_or_vel+'x_tm'+str(np.abs(l)))
-            else:
-                nms.append(pos_or_vel+'y_tp'+str(np.abs(l)))
-                nms.append(pos_or_vel+'x_tp'+str(np.abs(l)))            
+#     elif pos_or_vel == 'tg':
+#         nms.append('trg_posx')
+#         nms.append('trg_posy')
+#     else:
+#         for l in lag_ixs:
+#             if l <=0: 
+#                 nms.append(pos_or_vel+'y_tm'+str(np.abs(l)))
+#                 nms.append(pos_or_vel+'x_tm'+str(np.abs(l)))
+#             else:
+#                 nms.append(pos_or_vel+'y_tp'+str(np.abs(l)))
+#                 nms.append(pos_or_vel+'x_tp'+str(np.abs(l)))            
     
-    nm_str = ''
-    for s in nms:
-        nm_str = nm_str + s + '+'
-    return nms, nm_str[:-1]
+#     nm_str = ''
+#     for s in nms:
+#         nm_str = nm_str + s + '+'
+#     return nms, nm_str[:-1]
 
 def compute_residuals(model, ridge):
     if ridge:
