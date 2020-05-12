@@ -17,10 +17,10 @@ import tables
 
 import analysis_config
 
-gbins = np.linspace(-3., 3., 20)
-jbins = np.linspace(-9., 9., 40)
-ordered_input_type = [[[0], [1, 2]], [[1], [0]], [[0], [1, 2]], [[2], [0, 1, 3]], [[1],
-    [0, 2]], [[2, 3], [0, 1]], [[2], [0, 1]], [[1], [0]], [[0], [1]]]
+# gbins = np.linspace(-3., 3., 20)
+# jbins = np.linspace(-9., 9., 40)
+# ordered_input_type = [[[0], [1, 2]], [[1], [0]], [[0], [1, 2]], [[2], [0, 1, 3]], [[1],
+#     [0, 2]], [[2, 3], [0, 1]], [[2], [0, 1]], [[1], [0]], [[0], [1]]]
 
 #pref = '/Volumes/TimeMachineBackups/grom2016/'
 #pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'

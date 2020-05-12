@@ -86,36 +86,16 @@ def generate_hist_tuning(animal='jeev'):
                 mag_thresh='/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/radial_boundaries_fit_based_on_perc_feb_2019.pkl',
                 sample_n_trials=16, pre_go = 0.)
     
-def distrib_of_neural_pushs_by_day(animal = 'jeev', sim_ax = None):
+def distrib_of_neural_pushs_by_day(animal = 'jeev', sim_ax = None, vmax = .25):
+    input_type = analysis_config.data_params[animal+'_input_type']
+    names = analysis_config.data_params[animal+'_names']
+    fname_pref = analysis_config.config[animal+'_pref']+'hist_tuning_w_fit_mag_boundaries_'+animal+'_16_trials_dist_day'
+    days = analysis_config.data_params[animal+'_ndays']
 
     if animal == 'jeev':
-        input_type = fk.task_input_type
-        names = fk.task_input_names
-        #fname_pref='/Volumes/TimeMachineBackups/jeev2013/hist_tuning_w_fit_mag_boundaries_jeev_16_trials_dist_day'
-        fname_pref='/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/hist_tuning_w_fit_mag_boundaries_jeev_16_trials_dist_day'
-        bins = co_obs_tuning_matrices.jbins
-        days = 4
-        close_compare = fk.jeev_close
-        far_compare = fk.jeev_far
-        b1 = len(bins)+1
-        include_distribution= True
         x_bar = 2
     
     elif animal == 'grom':
-        input_type = co_obs_tuning_matrices.input_type
-        names = co_obs_tuning_matrices.grom_names
-        #fname_pref = '/Volumes/TimeMachineBackups/grom2016/radial_grom_tuning_day'
-        #fname_pref = '/Volumes/TimeMachineBackups/grom2016/hist_tuning_w_fit_mag_boundaries_grom_16_trials_dist_day'
-        fname_pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/hist_tuning_w_fit_mag_boundaries_grom_16_trials_dist_day'
-        days = 9
-        close_compare = fk.grom_close
-        far_compare = fk.grom_far
-        close_compare_win = fk.grom_win_close
-        far_compare_win = fk.grom_win_far
-        include_distribution= True
-        min_samples_incl_KL = 10
-        bins_ang = 8
-        bins_mag = 4
         x_bar = 1
     ############################################################################
     ############# PLOT histogram of how many commands per division #############
@@ -149,11 +129,8 @@ def distrib_of_neural_pushs_by_day(animal = 'jeev', sim_ax = None):
         pob = np.sum(hist_obs[:, :, ix, :], axis=2).T/np.sum(hist_obs[:, :, ix, :])
         pob = np.hstack((np.vstack((pob, np.zeros((1, 8)))), np.zeros((5, 1))))
         
-    #     polar_plot(R, A, pco, ax=ax[0, select_day], vmin=0, vmax=.075, cmap='Greys')
-    #     polar_plot(R, A, pob, ax=ax[1, select_day], vmin=0., vmax=.075, cmap='Greys')  
-
-        c0 = polar_plot(R, A, pco, ax=ax[0], vmin=0, vmax=.25, cmap='Greys')
-        c = polar_plot(R, A, pob, ax=ax[1], vmin=0., vmax=.25, cmap='Greys')  
+        c0 = polar_plot(R, A, pco, ax=ax[0], vmin=0, vmax=vmax, cmap='Greys')
+        c = polar_plot(R, A, pob, ax=ax[1], vmin=0., vmax=vmax, cmap='Greys')  
 
         plt.tight_layout()
         plt.colorbar(c, ax = ax[1],fraction=0.046, pad=0.04, ticks=np.arange(0., .6, .025))
@@ -161,7 +138,6 @@ def distrib_of_neural_pushs_by_day(animal = 'jeev', sim_ax = None):
     ##############################
     ###### SIMILARITY PLOT #######
     ##############################
-
     neuron_ix = 1 # doesnt matter at all
 
     if sim_ax is None:
@@ -200,20 +176,7 @@ def distrib_of_neural_pushs_by_day(animal = 'jeev', sim_ax = None):
                 pobs = pobs + np.sum(hist_obs[:, :, neuron_ix, :], axis=2).T
                 pobsum = pobsum + np.sum(hist_obs[:, :, neuron_ix, :])
         pob = pobs.reshape(-1)/np.linalg.norm(pobs.reshape(-1)) 
-
-        # Old Method: 
-        # dp = np.abs(pco.reshape(-1) - pob.reshape(-1))
-        # lp = 0.5*(pco.reshape(-1)+pob.reshape(-1))
-        # x = dp/lp
-        # dx = []
-        # for i in x:
-        #     if i > .5:
-        #         dx.append(1)
-        #     else:
-        #         dx.append(0)
-        # bar_y.append(1-(np.sum(dx)/float(len(dx))))
         bar_y.append(np.dot(pco, pob))
-        #import pdb; pdb.set_trace()
 
     x_temp = np.random.randn(days)*.1
     sim_ax.plot(x_temp+x_bar, bar_y, '.', color='grey')
@@ -590,7 +553,6 @@ def plot_diff_cov(cov, X = None, WIN = None, actually_mean = False, ylim = None,
 ###########################
 ### Mean FR Plots: ########
 ###########################
-
 def plot_x_task_vs_win_task(all_days, all_days_dist, animal, all_bars=None, normalize=True,
     avg_across_neur = True):
 
@@ -721,14 +683,13 @@ def win_near_vs_far(animal, norm_params, min_samples=15, all_bars=None, avg_acro
 
     if animal == 'grom':
         days = 9
-        fname_pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/hist_tuning_w_fit_mag_boundaries_grom_16_trials_dist_day'
+        fname_pref = analysis_config.config['grom_pref'] + 'hist_tuning_w_fit_mag_boundaries_grom_16_trials_dist_day'
         close_compare_win = fk.grom_win_close
         far_compare_win = fk.grom_win_far
 
     if animal == 'jeev':
         days = 4
-        fname_pref='/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/hist_tuning_w_fit_mag_boundaries_jeev_16_trials_dist_day'
-        
+        fname_pref=analysis_config.config['grom_pref'] + 'hist_tuning_w_fit_mag_boundaries_jeev_16_trials_dist_day'
         close_compare_win = []
         far_compare_win = []
 
@@ -743,7 +704,7 @@ def win_near_vs_far(animal, norm_params, min_samples=15, all_bars=None, avg_acro
 
         # Load data: 
         fname = fname_pref + str(select_day)
-        dat_dist = sio.loadmat(fname+'dist'+'.mat')
+        dat_dist = pickle.load(open(fname+'dist'+'.pkl', 'rb'))
         
         # Init variables: 
         other = dict(co=[], obs=[])
@@ -756,14 +717,11 @@ def win_near_vs_far(animal, norm_params, min_samples=15, all_bars=None, avg_acro
             # For near index and far index for the task: 
             for n, (ni, fi) in enumerate(zip(close_compare_win[select_day][tsk], far_compare_win[select_day][tsk])):
                 
-                if animal == 'grom':
-                    key = str(('day'+str(select_day), 'tsk'+str(tsk), 'n'+str(n)))
-                
-                elif animal == 'jeev':
-                    key = str(('day'+str(select_day), 'tsk'+str(tsk), 'n'+str(n)))
+                key = tuple(('day'+str(select_day), 'tsk'+str(tsk), 'n'+str(n)))
                 
                 # Get the "near index"
                 # One of these gusy is bins x bins x neurons x task x distribution
+                import pdb; pdb.set_trace()
                 if ni == 1:
                     first_third = dat_dist[key][:, :, :, :, 0]
                 
@@ -818,7 +776,7 @@ def win_near_vs_far(animal, norm_params, min_samples=15, all_bars=None, avg_acro
                 neuron_ix = get_important_units(animal, select_day)
                 nneurons = len(neuron_ix)
             else:
-                neurons_ix = np.arange(nneurons)
+                neuron_ix = np.arange(nneurons)
 
             if avg_across_neur:
                 # AVERAGE across neuron: bins x bins

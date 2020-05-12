@@ -4663,14 +4663,16 @@ def plot_real_mean_diffs(model_set_number = 3, min_obs = 15, plot_ex = False, pl
     ### Plot only sig. different ones
 
     ### Plot cov. diffs (mat1 - mat2)
-    mag_boundaries = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref']+'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
 
     for ia, animal in enumerate(['grom','jeev']):
-        model_dict = pickle.load(open('/Users/preeyakhanna/fa_analysis/tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
-
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+        ndays = analysis_config.data_params[animal+'_ndays']
+        
         if animal == 'grom':
             ndays = 9; 
             width = 3.
+
         elif animal == 'jeev':
             ndays = 4; 
             width = 2.
