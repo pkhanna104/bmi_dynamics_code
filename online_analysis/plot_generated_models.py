@@ -593,3 +593,318 @@ def disc_plot(n_disc):
     # cax = divider.append_axes('right', size='5%', pad=0.05)
     # fig.colorbar(im2, cax=cax, orientation='vertical');
     # import pdb; pdb.set_trace()
+
+#### Fig 4 ----- bar plots of diff models ####
+def plot_r2_bar_model_1(min_obs = 15, 
+    ndays = None, pt_2 = False, r2_pop = True, 
+    perc_increase = True, model_set_number = 1):
+    
+    '''
+    inputs: min_obs -- number of obs need to count as worthy of comparison; 
+    perc_increase: get baseline from y_t | a_t and use this to compute the "1" value; 
+    ndays ? 
+    pt_2 ? 
+    r2_pop -- assume its population vs. indivdual 
+    model_set_number -- which models to plot from which set; 
+    '''
+
+    ### For stats each neuron is an observation ##
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref']+ 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    key = 'spks' 
+
+    ### Now generate plots -- testing w/ 1 day
+    if ndays is None:
+        ndays = dict(grom=9, jeev=4)
+    else:
+        ndays = dict(grom=ndays, jeev=ndays)
+
+    for ia, (animal, yr) in enumerate(zip(['grom', 'jeev'], ['2016', '2013'])):
+        
+        if model_set_number == 1:
+            models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
+                                'hist_1pos_-1psh_1spksm_0_spksp_0', 
+                                'hist_1pos_1psh_1spksm_0_spksp_0',
+                                'hist_1pos_2psh_1spksm_0_spksp_0', 
+                                'hist_1pos_3psh_1spksm_0_spksp_0', 
+                                'hist_1pos_3psh_1spksm_1_spksp_0']
+            models_to_compare = np.array([0, 4, 5])
+            models_colors = [[255., 0., 0.], 
+                             [101, 44, 144],
+                             [101, 44, 144],
+                             [101, 44, 144],
+                             [101, 44, 144],
+                             [39, 169, 225]]
+            xlab = [
+            '$a_{t}$',
+            '$a_{t}, p_{t-1}$',
+            '$a_{t}, p_{t-1}, v_{t-1}$',
+            '$a_{t}, p_{t-1}, v_{t-1}, tg$',
+            '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk$',
+            '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk, y_{t-1}$']
+
+        elif model_set_number == 3: 
+            models_to_include = [#'prespos_0psh_0spksm_1_spksp_0',
+                                 #'prespos_0psh_0spksm_1_spksp_0potent',
+                                 #'prespos_0psh_0spksm_1_spksp_0null',
+                                 'hist_1pos_0psh_0spksm_1_spksp_0',]
+                                 #'hist_1pos_0psh_1spksm_0_spksp_0']
+                                 #'hist_1pos_0psh_0spksm_1_spksp_0potent',
+                                 #'hist_1pos_0psh_0spksm_1_spksp_0null']
+            models_colors = [[39, 169, 225]]
+            xlab = ['$y_{t-1}$']
+            models_to_compare = []
+
+        #### Number of models ######
+        M = len(models_to_include)
+
+        #### Make sure match #######
+        assert(len(models_colors) == M)
+
+        #### normalize the colors #######
+        models_colors = [np.array(m)/256. for m in models_colors]
+
+        ##### fold ? ######
+        fold = ['maroon', 'orangered', 'goldenrod', 'teal', 'blue']
+        
+        if r2_pop:
+            pop_str = 'Population'
+        else:
+            pop_str = 'Indiv'        
+
+        ### Go through each neuron and plot mean true vs. predicted (i.e R2) for a given command  / target combo: 
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d.pkl'%model_set_number, 'rb'))
+            
+        #### Setup the plot ####
+        f, ax = plt.subplots(figsize=(4, 4))
+        
+        ##### Data holder for either mean of individual neurons or population R2 ####
+        ### Will be normalized by baseline if that setting is selected ######
+        R2S = dict()
+
+        ####### Holders for LME if not doing population R2 ########
+        D = []; # Days; 
+        Mod = []; # Model Number 
+
+        ######### R2 for each neuron if not doing population R2  #######
+        R2_stats = []; 
+
+        ####### Iterate through each day #########
+        for i_d in range(ndays[animal]):
+
+            ###### Get the decoders ###########
+            if animal == 'grom': 
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_grom(i_d)
+            
+            elif animal == 'jeev':
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_jeev(i_d)
+
+            ###### True data #####
+            tdata = model_dict[i_d, 'spks']
+            R2s = dict()
+
+            ###### Get the baseline ####
+            if perc_increase: 
+                #### Predicted data ? 
+                pdata = model_dict[i_d, models_to_include[0]]
+                R2_baseline = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
+
+            for i_mod, mod in enumerate(models_to_include):
+                
+                ###### Predicted data, cross validated ####
+                pdata = model_dict[i_d, mod]
+
+                ### Get population R2 ### 
+                R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
+
+                ### Only for indiv
+                if i_mod in models_to_compare: 
+                    if perc_increase:
+                        if r2_pop:
+                            pass
+                        else:
+                            assert(len(R2) == len(R2_baseline))
+                        R2_stats.append((R2 - R2_baseline)/R2_baseline)
+                    else:
+                        R2_stats.append(R2)
+                    # Remove NaNs 
+                    D.append(np.zeros_like(R2) + i_d)
+                    Mod.append(np.zeros_like(R2) + i_mod)
+
+                ### Put the R2 in a dictionary: 
+                if perc_increase:
+                    R2S[i_mod, i_d] = (R2 - R2_baseline)/R2_baseline
+                else:
+                    R2S[i_mod, i_d] = R2; 
+
+            ##### Plot this single day #####
+            tmp = []; 
+            for i_mod in range(len(models_to_include)):
+                if perc_increase:
+                    tmp.append(R2S[i_mod, i_d])
+                else:
+                    tmp.append(np.nanmean(np.hstack((R2S[i_mod, i_d]))))
+
+            #### Line plot of R2 w increasing models #####
+            ax.plot(np.arange(M), tmp, '-', color='gray', linewidth = 1.)
+
+        #### Plots total mean ###
+        tmp = []; tmp_e = []; 
+        for i_mod in range(M):
+            tmp2 = []; 
+            for i_d in range(ndays[animal]):
+                tmp2.append(R2S[i_mod, i_d])
+            tmp2 = np.hstack((tmp2))
+            tmp2 = tmp2[~np.isnan(tmp2)]
+
+            ## mean 
+            tmp.append(np.mean(tmp2))
+
+            ## s.e.m
+            tmp_e.append(np.std(tmp2)/np.sqrt(len(tmp2)))
+
+        ### Overal mean 
+        for i_mod in range(M):
+            ax.bar(i_mod, tmp[i_mod], color = models_colors[i_mod], edgecolor='k', linewidth = 1., )
+            ax.errorbar(i_mod, tmp[i_mod], yerr=tmp_e[i_mod], marker='|', color='k')        
+        ax.set_ylabel('%s R2, neur, perc_increase R2 %s'%(pop_str, perc_increase), fontsize=8)
+
+        ax.set_xticks(np.arange(M))
+        ax.set_xticklabels(xlab, rotation=45, fontsize=6)
+
+        f.tight_layout()
+        f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
+        
+        ##### Print stats ####
+        if model_set_number == 1:
+            R2_stats = np.hstack((R2_stats))
+            ix = ~np.isnan(R2_stats)
+
+            if len(ix) < len(R2_stats):
+                import pdb; pdb.set_trace()
+
+            ### Get non-nans: 
+            R2_stats = R2_stats[ix]
+            D = np.hstack((D))[ix]
+            Mod = np.hstack((Mod))[ix]
+
+            ### Run 2 LMEs: [0, 4] and [4, 5]; 
+            for j, (m1, m2) in enumerate([[0, 4], [4, 5]]):
+                ix = np.nonzero(np.logical_or(Mod == m1, Mod== m2))[0]
+
+                pv, slp = util_fcns.run_LME(D[ix], Mod[ix], R2_stats[ix])
+                print '---------------------------'
+                print '---------------------------'
+                print 'Pop R2 %s, Percent Increase %s'%(r2_pop, perc_increase)
+                print 'LME: Animal %s, Model 1: %d, Model 2: %d, Pv: %.4f, Slp: %.4f' %(animal, m1, m2, pv, slp)
+                print '---------------------------'
+                print '---------------------------'
+        
+        if pt_2: 
+            f, ax = plt.subplots(ncols = 2)
+            f1, ax1 = plt.subplots(ncols = len(models_to_include), figsize=(12.5, 2.5))
+            f2, ax2 = plt.subplots()
+            ### now comput R2 ###
+            Pred = dict(); Tru = dict(); 
+            
+            for i_d in range(ndays[animal]):
+
+                ### Basics -- get the binning for the neural push commands: 
+                neural_push = model_dict[i_d, 'np']
+
+                ### Commands
+                commands = util_fcns.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                
+                ### Get task / target
+                tsk = model_dict[i_d, 'task']
+                targ = model_dict[i_d, 'trg']
+                bin_num = model_dict[i_d, 'bin_num']
+
+                ### Now go through each task targ and assess when there are enough observations: 
+                y_true = model_dict[i_d, key]
+                T, N = y_true.shape
+
+                ### Neural activity
+                R2 = dict(); 
+                for i_m, mod in enumerate(models_to_include):
+                    R2['co', mod] = []; 
+                    R2['obs', mod] = []; 
+                    R2['both', mod] = []; 
+
+                for i_mag in range(4):
+                    for i_ang in range(8):
+                        for i_t in range(2): # Task 
+                            for targ in range(8): # target: 
+                                ix0 = (commands[:,0] == i_mag) & (commands[:,1] == i_ang) & (tsk == i_t) & (targ == targ)
+                                ix0 = np.nonzero(ix0 == True)[0]
+                                if len(ix0) > min_obs:
+
+                                    for i_m, model in enumerate(models_to_include):
+
+                                        y_pred = model_dict[i_d, model]
+
+                                        ### Get R2 of this observation: 
+                                        spk_true = np.mean(y_true[ix0, :], axis=0)
+                                        spk_pred = np.mean(y_pred[ix0, :], axis=0)
+
+                                        if i_t == 0:
+                                            R2['co', model].append([spk_true, spk_pred])
+                                        elif i_t == 1:
+                                            R2['obs', model].append([spk_true, spk_pred])
+
+                                        ### Both 
+                                        R2['both', model].append([spk_true, spk_pred])
+
+                tsk_cols = ['b']#,'r','k']
+                for i_t, tsk in enumerate(['both']):#, 'obs', 'both']):
+                    for i_m, model in enumerate(models_to_include):
+
+                        tru_co = np.vstack(( [R[0] for R in R2[tsk, model]] ))
+                        pre_co = np.vstack(( [R[1] for R in R2[tsk, model]] ))
+
+                        SSR = np.sum((tru_co - pre_co)**2)# Not over neruons, axis = 0)
+                        SST = np.sum((tru_co - np.mean(tru_co, axis=0)[np.newaxis, :])**2)#, axis=0)
+                        R2_co_pop = 1 - (SSR/SST)
+                        
+                        SSR = np.sum((tru_co - pre_co)**2, axis = 0)
+                        SST = np.sum((tru_co - np.mean(tru_co, axis=0)[np.newaxis, :])**2, axis=0)
+                        R2_co_neur = 1 - (SSR/SST)
+
+                        ax[0].plot(i_m, R2_co_pop, 'k*')
+                        ax[0].set_ylabel('R2 -- of mean task/targ/command/neuron (population neuron R2)')
+                        ax[0].set_ylim([-1, 1.])
+
+                        ax[1].plot(i_m, np.nanmean(R2_co_neur), 'k*')
+                        ax[1].set_ylabel('R2 -- of mean task/targ/command/neuron (individual neuron R2)')
+                        ax[1].set_ylim([-1, 1.])
+
+                        ax1[i_m].plot(tru_co.reshape(-1), pre_co.reshape(-1), 'k.', alpha=.2)
+                        try:
+                            Tru[model].append(tru_co.reshape(-1))
+                            Pred[model].append(pre_co.reshape(-1))
+                        except:
+                            Tru[model] = [tru_co.reshape(-1)]
+                            Pred[model] = [pre_co.reshape(-1)]
+                            
+            for i_m, model in enumerate(models_to_include):
+                slp,intc,rv,pv,err =scipy.stats.linregress(np.hstack((Tru[model])), np.hstack((Pred[model])))
+                x_ = np.linspace(np.min(np.hstack((Tru[model]))), np.max(np.hstack((Tru[model]))))
+                y_ = slp*x_ + intc; 
+                ax1[i_m].plot(x_, y_, '-', linewidth=.5)
+                ax1[i_m].set_title('%s, \n pv=%.2f\nrv=%.2f\nslp=%.2f' %(model, pv, rv, slp),fontsize=8)
+
+
+                if model == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                    y_pred = model_dict[i_d, model]
+                    y_true = model_dict[i_d, key]; 
+
+                    SSR = np.sum((y_pred - y_true)**2, axis=0)
+                    SST = np.sum((y_true - np.mean(y_true, axis=0)[np.newaxis, :])**2, axis=0)
+                    SST[np.isinf(SST)] = np.nan
+
+                    r22 = 1 - SSR/SST; 
+                    ax2.plot(r22)
+
+                    print 'R2 mean day %d, %.2f', (i_d, np.mean(r22))
+
+            #f.tight_layout()
+            #f1.tight_layout()

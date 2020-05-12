@@ -70,7 +70,29 @@ def run_LME(Days, Grp, Metric):
     slp = mdf.params['Grp']
     return pv, slp
 
+def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
+    if np.logical_and(len(y_true.shape) == 1, len(y_pred.shape) == 1):
+        y_true = y_true[:, np.newaxis]
+        y_pred = y_pred[:, np.newaxis]
+    if ignore_nans:
+        ### Assume Y-true, y_pred are T x N matrices: 
+        SSR_i = np.nansum((y_true - y_pred)**2, axis=0)
+        SST_i = np.nansum((y_true - np.nanmean(y_true, axis=0)[np.newaxis, :])**2, axis=0)
 
+        if pop:
+            return 1 - np.nansum(SSR_i)/np.nansum(SST_i)
+        else:
+            return 1 - (SSR_i / SST_i)
+    else: 
+
+        ### Assume Y-true, y_pred are T x N matrices: 
+        SSR_i = np.sum((y_true - y_pred)**2, axis=0)
+        SST_i = np.sum((y_true - np.mean(y_true, axis=0)[np.newaxis, :])**2, axis=0)
+
+        if pop:
+            return 1 - np.sum(SSR_i)/np.sum(SST_i)
+        else:
+            return 1 - (SSR_i / SST_i)
 ### Plotting ###
 def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):
     bp = ax.boxplot(data, patch_artist=True, positions = [xax], widths=[width])

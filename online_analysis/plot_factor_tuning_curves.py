@@ -6139,8 +6139,6 @@ def plot_single_te(ax, day, task, pk, nfact=6):
                 #ax[i].plot(x, d, color=cmap_list[it], linewidth=.5)
 
 #### NEW PLOT FCNS ######
-
-
 def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True):
 
     if model_set_number == 1:
