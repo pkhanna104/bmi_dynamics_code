@@ -13,7 +13,7 @@ import scipy
 
 fig_dir = analysis_config.config['fig_dir']
 
-##### Fig 1 ####### Null vs. Potent; #####
+##### Fig 1  ####### Null vs. Potent; #####
 def plot_real_mean_diffs_x_null_vs_potent(model_set_number = 3, min_obs = 15, cov = False):
     ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
     ### Plot within a bar 
@@ -411,8 +411,8 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
     fsumm, axsumm = plt.subplots(figsize=(4, 4))
 
     for ia, animal in enumerate(['grom','jeev']):
-        model_dict = pickle.load(open('/Users/preeyakhanna/fa_analysis/tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
-
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+        
         if animal == 'grom':
             ndays = 9; 
         elif animal == 'jeev':
@@ -474,11 +474,11 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
                                     
                                     if cov:
                                         ### make the plot: 
-                                        diffs_wi = get_cov_diffs(ix_co1, ix_co2, spks, diffs_wi)
-                                        diffs_wi = get_cov_diffs(ix_ob1, ix_ob2, spks, diffs_wi)
+                                        diffs_wi = util_fcns.get_cov_diffs(ix_co1, ix_co2, spks, diffs_wi)
+                                        diffs_wi = util_fcns.get_cov_diffs(ix_ob1, ix_ob2, spks, diffs_wi)
 
-                                        diffs_x = get_cov_diffs(ix_co1, ix_ob1, spks, diffs_x)
-                                        diffs_x = get_cov_diffs(ix_co2, ix_ob2, spks, diffs_x)
+                                        diffs_x = util_fcns.get_cov_diffs(ix_co1, ix_ob1, spks, diffs_x)
+                                        diffs_x = util_fcns.get_cov_diffs(ix_co2, ix_ob2, spks, diffs_x)
 
                                     else:
                                         ### make the plot: 
@@ -515,7 +515,7 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
         mets = np.hstack((mets))
 
         ### look at: run_LME(Days, Grp, Metric):
-        pv, slp = run_LME(days, grp, mets)
+        pv, slp = util_fcns.run_LME(days, grp, mets)
 
         print 'LME model, fixed effect is day, rand effect is X vs. Wi., N = %d, ndays = %d, pv = %.4f, slp = %.4f' %(len(days), len(np.unique(days)), pv, slp)
 
@@ -545,10 +545,10 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
     axsumm.set_xticks([0.2, 1.2])
     axsumm.set_xticklabels(['G', 'J']) 
     if cov:
-        # axsumm.set_ylim([0, 30])
-        # axsumm.set_ylabel(' Cov Diffs ($Hz^2$) ') 
-        axsumm.set_ylim([0, .6])
-        axsumm.set_ylabel(' Main Cov. Overlap ') 
+        axsumm.set_ylim([0, 30])
+        axsumm.set_ylabel(' Cov Diffs ($Hz^2$) ') 
+        #axsumm.set_ylim([0, .6])
+        #axsumm.set_ylabel(' Main Cov. Overlap ') 
     else:
         axsumm.set_ylim([0, 5])
         axsumm.set_ylabel(' Mean Diffs (Hz) ') 
