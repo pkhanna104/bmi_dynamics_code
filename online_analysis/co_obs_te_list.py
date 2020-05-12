@@ -278,7 +278,7 @@ def make_dataframe(input_type, total_or_share='share', norm='sub'):
                 elif cond_gen[:3] == 'obs':
                     c = 'obs_all'
                 av = np.mean(avg_rpm[c, date])
-                print av
+                #print av
                 if norm == 'sub':
                     rpm_corr = rpm - av
                 elif norm == 'div':
