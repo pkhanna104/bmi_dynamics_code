@@ -1,6 +1,7 @@
 #########################################
 ############ Repo CONFIG ################
 #########################################
+import numpy as np 
 
 ###### Has configuration of codebase, pointers to datafiles and temporary datafiles #####
 config = dict(); 
@@ -8,7 +9,7 @@ config['sub_df_path'] = '/Users/preeyakhanna/fa_analysis/grom_data/'
 config['grom_pref'] = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
 config['jeev_pref'] = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/'
 config['BMI_DYN'] = '/Users/preeyakhanna/bmi_dynamics_code/'
-
+config['fig_dir'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/'
 #########################################
 ############ Data paths  ################
 #########################################
@@ -25,7 +26,7 @@ data_params['grom_ordered_input_type'] = [[[0], [1, 2]], [[1], [0]], [[0], [1, 2
 #### Dates used: ###
 data_params['grom_names'] = ['3-2', '3-4', '3-7', '3-15', '3-16', '3-17', '3-18', '3-19', '3-19_2']
 data_params['grom_ndays'] = 9
-
+data_params['gbins'] = np.linspace(-3., 3., 20)
 
 #### Monkey J, datafiles (task entries from mat files from Amy/Maryam) #####
 data_params['jeev_input_type'] = [
@@ -47,6 +48,8 @@ data_params['jeev_ordered_input_type'] = [[[0], [1]],
 						 [[0], [1]],
 						 ]
 data_params['jeev_ndays'] = 4
+data_params['jeev_names'] = ['8-24a', '8-24b', '8-29', '8-31']
+data_params['jbins'] = np.linspace(-9., 9., 40)
 
 ##################################
 ####### Useful formating #########
