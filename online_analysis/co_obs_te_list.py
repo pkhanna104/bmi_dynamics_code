@@ -4,9 +4,14 @@ import tables
 import pickle
 import scipy.stats
 import math
-import test_reconst_bmi_traj as trbt
 import glob
 import os, basic_hdf_analysis
+import pandas
+
+import seaborn
+seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
+
+
 #########################################
 #### Start 3/2 #############
 #########################################
@@ -102,7 +107,6 @@ def make_dataframe(input_type, total_or_share='share', norm='sub'):
     ###########################
     ### Make a Dataframe ######
     ###########################
-    import pandas
     # try:
     #     hdf = tables.openFile('/Volumes/TimeMachineBackups/grom2016/grom2017_performance_w_shar_co_obs_on_tasks_co_obs_include_control_w_rpm_table.hdf')
     # except:
@@ -417,7 +421,7 @@ def plot_t2t(datfrm, combine_tasks=False, save=False, t2t_norm='sub'):
         f.savefig('/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/grom_co_obs_online_w_co_obs_shar_space_t2t_corr_norm'+str(t2t_norm)+'_combinextask'+str(combine_tasks)+'_wo_poor_data.svg', 
             transparent=True)
 
-def plot_rpm(datfrm_rpm, met = 'rpm'):
+def plot_rpm_shar(datfrm_rpm, met = 'rpm'):
     f, ax = plt.subplots()
     f.set_figheight(5)
     f.set_figwidth(6)
@@ -557,15 +561,16 @@ def plot_co_vs_obs_dec(datfrm_rpm, cnt_lte=2):
     same = np.hstack((x['co_all', 'co'], x['obs_all','obs']))
     diff = np.hstack((x['co_all', 'obs'], x['obs_all', 'co']))
     ax.bar(0, np.mean(same), width=1.,edgecolor='k', linewidth=4., color='w')
-    ax.errorbar(.5, np.mean(same), np.std(same)/np.sqrt(len(same)), marker='.', color='k')
+    ax.errorbar(0, np.mean(same), np.std(same)/np.sqrt(len(same)), marker='.', color='k')
     ax.bar(1, np.mean(diff), width=1.,edgecolor='k', linewidth=4., color='w')
-    ax.errorbar(1.5, np.mean(diff), np.std(diff)/np.sqrt(len(diff)), marker='.', color='k')
+    ax.errorbar(1, np.mean(diff), np.std(diff)/np.sqrt(len(diff)), marker='.', color='k')
 
-    ax.set_xlim([-.4, 2.4]) #(ii*2)+jj+.6+ii])
+    ax.set_xlim([-1, 2]) #(ii*2)+jj+.6+ii])
     ax.set_ylabel('Rewards Per Min')
-
-    ax.plot([0.5, 1.5], [22, 22], 'k-')
-    ax.text(1.0, 22.5, '*')
+    ax.set_xticks([0., 1.])
+    ax.set_xticklabels(['Same Decoder\n as Task', 'Opposite Decoder\n as Task'])
+    ax.plot([0., 1.], [23, 23], 'k-')
+    ax.text(.5, 23.5, '*')
 
     # ax.plot([3, 4], [19., 19.], 'k-')
     # ax.text(3.5, 19.1, '*')
@@ -673,7 +678,7 @@ def plot_decoder_mismatch(input_type):
             x.append(ang_mismatch[s])
         x = np.hstack((x))
         ax.bar(i, np.mean(x), width=1.,edgecolor='k', linewidth=4., color='w')
-        ax.errorbar(i+.5, np.mean(x), np.std(x)/np.sqrt(len(x)), marker='.', color='k')
+        ax.errorbar(i, np.mean(x), np.std(x)/np.sqrt(len(x)), marker='.', color='k')
             #key = c[:2]+'_'+j+'_dec'
             #ax.bar((3*ic)+ij-.5, np.mean(ang_mismatch[key]), width=1.,edgecolor='k', linewidth=4., color='w')
             #ax.errorbar((3*ic)+ij, np.mean(ang_mismatch[key]), np.std(ang_mismatch[key])/np.sqrt(len(ang_mismatch[key])), marker='.', color='k')
@@ -681,13 +686,13 @@ def plot_decoder_mismatch(input_type):
         #if ic == 0:
         #    nms.append('')
 
-    ax.set_xticks(np.arange(.5, 2., 1.))
+    ax.set_xticks([0, 1])
     ax.set_xticklabels(['Same Decoder\n as Task', 'Opposite Decoder\n as Task'])
-    ax.set_xlim([-.4, 2.4])
+    ax.set_xlim([-1, 2])
     ax.set_ylabel('Mean Angular Mismatch')
 
-    ax.plot([0.5, 1.5], [2.7, 2.7], 'k-')
-    ax.text(1, 2.75, 'p=0.061')
+    ax.plot([0., 1.], [2.7, 2.7], 'k-')
+    ax.text(.5, 2.75, 'p=0.061')
 
     #ax.plot([3, 4], [2.9, 2.9], 'k-')
     #ax.text(3.5, 3.0, '**')
