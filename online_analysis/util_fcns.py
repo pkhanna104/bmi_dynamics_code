@@ -4,10 +4,11 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import pandas as pd
 
+import matplotlib.pyplot as plt
 
-def get_cov_diffs(ix_co, ix_ob, spks, diffs, method = 1, mult=1.):
-    cov1 = np.cov(mult*10*spks[ix_co, :].T); 
-    cov2 = np.cov(mult*10*spks[ix_ob, :].T); 
+def get_cov_diffs(ix_co, ix_ob, spks, diffs, method = 1):
+    cov1 = np.cov(10*spks[ix_co, :].T); 
+    cov2 = np.cov(10*spks[ix_ob, :].T); 
 
     ### Look at actual values of cov matrix
     if method == 1: 
@@ -68,3 +69,14 @@ def run_LME(Days, Grp, Metric):
     pv = mdf.pvalues['Grp']
     slp = mdf.params['Grp']
     return pv, slp
+
+
+### Plotting ###
+def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):
+    bp = ax.boxplot(data, patch_artist=True, positions = [xax], widths=[width])
+
+    for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
+        plt.setp(bp[element], color=edge_color)
+
+    for patch in bp['boxes']:
+        patch.set(facecolor=fill_color) 

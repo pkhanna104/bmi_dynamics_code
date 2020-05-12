@@ -3,10 +3,15 @@ seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 import pickle 
 
 import analysis_config, util_fcns
-import generate_models, subspace_overlap
+import generate_models
+
+import scipy
+
+fig_dir = analysis_config.config['fig_dir']
 
 ##### Fig 1 ####### Null vs. Potent; #####
 def plot_real_mean_diffs_x_null_vs_potent(model_set_number = 3, min_obs = 15, cov = False):
@@ -244,3 +249,347 @@ def plot_real_mean_diffs_x_null_vs_potent(model_set_number = 3, min_obs = 15, co
     axnul.set_ylim([0., 175.])
     fnul.tight_layout()
     #fnul.savefig(fig_dir+'null_pot_neural_var.svg')
+
+
+#### Fig 2 ###############
+def plot_real_mean_diffs(model_set_number = 3, min_obs = 15, plot_ex = False, plot_disc = False, cov = False):
+    ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
+    ### Plot within a bar 
+    ### Plot only sig. different ones
+
+    ### Plot cov. diffs (mat1 - mat2)
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref']+'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+
+    for ia, animal in enumerate(['grom','jeev']):
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+        ndays = analysis_config.data_params[animal+'_ndays']
+        
+        if animal == 'grom':
+            ndays = 9; 
+            width = 3.
+
+        elif animal == 'jeev':
+            ndays = 4; 
+            width = 2.
+
+        ### Now bar plot that: 
+        f, ax = plt.subplots(figsize=(width, 4))
+        
+        for i_d in range(ndays):
+            if plot_ex: 
+                fex, axex = plt.subplots(ncols = 10, nrows = 5, figsize = (12, 6))
+                axex_cnt = 0; 
+
+            diffs = []; diffs_cov = []; 
+            sig_diffs = []; 
+            cnt = 0; 
+
+            spks = model_dict[i_d, 'spks']
+            N = spks.shape[1]; 
+            tsk  = model_dict[i_d, 'task']
+            targ = model_dict[i_d, 'trg']
+            push = model_dict[i_d, 'np']
+            commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+
+            ##################################
+            ######### SNR / DISC THING #######
+            #################################
+            #min_max = np.zeros((N, 2, 2))
+            #snr = np.zeros_like(min_max)
+
+            if plot_disc:
+                n_disc = np.zeros((4, 8, 2))
+                ### For each neuron, get the min/max mean command for a command/task/target: 
+
+                if animal == 'grom' and i_d == 0: 
+                    for tsk_i in range(2): 
+                        if tsk_i == 0:
+                            targeti = 4; 
+                        elif tsk_i == 1:
+                            targeti = 5; 
+
+                        for mag_i in range(4):
+                            for ang_i in range(8): 
+                                ix = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == tsk_i) & (targ == targeti)
+                                #if len(np.nonzero(ix==True)[0]) > min_obs:
+                                ix = np.nonzero(ix == True)[0]
+                                
+                                ### Which neuron are we analyzing? 
+                                n = 38; 
+                                if len(ix) > 0:
+                                    n_disc[mag_i, ang_i, tsk_i] = np.nanmean(spks[ix, n])
+
+                    ### Make a disc plot: 
+                    print('Day 0, Grom, Target 4 CO / Target 5 OBS / neuron 38')
+                    disc_plot(n_disc)
+
+            ### Now go through combos and plot 
+            for mag_i in range(4):
+                for ang_i in range(8):
+                    for targi in range(8):
+                        ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
+                        
+                        if len(np.nonzero(ix_co == True)[0]) > min_obs:
+                            
+                            for targi2 in range(8):
+                                ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
+
+                                if len(np.nonzero(ix_ob == True)[0]) > min_obs:
+                                    
+                                    ### make the plot: 
+                                    if cov:
+                                        diffs = util_fcns.get_cov_diffs(ix_co, ix_ob, spks, diffs)
+                                    else:
+                                        diffs.append(np.mean(spks[ix_co, :], axis=0) - np.mean(spks[ix_ob, :], axis=0))
+                                    #### Get the covariance and plot that: #####
+
+                                    for n in range(N): 
+                                        ks, pv = scipy.stats.ks_2samp(spks[ix_co, n], spks[ix_ob, n])
+                                        if pv < 0.05:
+                                            sig_diffs.append(np.mean(spks[ix_co, n]) - np.mean(spks[ix_ob, n]))
+
+                                        if plot_ex:
+                                            #if np.logical_and(len(ix_co) > 30, len(ix_ob) > 30):
+                                            if axex_cnt < 40:
+                                                if np.logical_and(mag_i > 1, n == 38): 
+                                                    axi = axex[axex_cnt / 9, axex_cnt %9]
+
+                                                    util_fcns.draw_plot(0, 10*spks[ix_co, n], co_obs_cmap[0], 'white', axi)
+                                                    util_fcns.draw_plot(1, 10*spks[ix_ob, n], co_obs_cmap[1], 'white', axi)
+
+                                                    axi.set_title('A:%d, M:%d, NN%d, \nCOT: %d, OBST: %d, Monk:%s'%(ang_i, mag_i, n, targi, targi2, animal),fontsize=6)
+                                                    axi.set_ylabel('Firing Rate (Hz)')
+                                                    axi.set_xlim([-.5, 1.5])
+                                                    #axi.set_ylim([-1., 10*(1+np.max(np.hstack(( spks[ix_co, n], spks[ix_ob, n]))))])
+                                                    axex_cnt += 1
+                                                    if axex_cnt == 40:
+                                                        fex.tight_layout()
+                                                        fex.savefig(fig_dir + 'monk_%s_ex_mean_diffs.svg'%animal)
+
+            if len(sig_diffs) > 0:
+                SD = np.abs(np.hstack((sig_diffs)))*10 # to Hz
+            else:
+                SD = []; 
+
+            #### Absolute difference in means; 
+            AD = np.abs(np.hstack((diffs)))*10 # to Hz
+            if cov:
+                assert(len(AD) <= 4*8*8*8*N*(N-1))
+            else:
+                assert(len(AD) <= 4*8*8*8*N)
+
+            for i, (D, col) in enumerate(zip([AD], ['k'])): #, SD, CD], ['k', 'r', 'b'])):
+                
+                ### Plot this thing; 
+                util_fcns.draw_plot(i_d, D, 'k', [1, 1, 1, .2], ax, .8)
+                #ax.bar(i_d + i*.3, np.mean(D), color='w', edgecolor='k', width=.8, linewidth=1.)
+                #ax.errorbar(i_d + i*.3, np.mean(D), np.std(D)/np.sqrt(len(D)), marker='|', color=col)
+                
+                ### add all the dots 
+                ax.plot(np.random.randn(len(D))*.1 + i*.3 + i_d, D, '.', color='gray', markersize=1.5, alpha = .5)
+        
+        ax.set_ylabel('Abs Hz Diff Across Conditions')
+        ax.set_xlabel('Days')
+        ax.set_xlim([-1, ndays + 1])
+        if cov:
+            pass
+        else:
+            ax.set_ylim([0., 20.])
+        ax.set_title('Monk '+animal[0].capitalize())
+        f.tight_layout()
+        f.savefig(fig_dir + 'monk_%s_mean_diffs_box_plots_cov_%s.png' %(animal, str(cov)), transparent = True)
+
+def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False):
+    ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
+    ### Plot within a bar 
+    ### Plot only sig. different ones
+
+    ### Plot cov. diffs (mat1 - mat2)
+    mag_boundaries = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+
+    ### Now bar plot that: 
+    fsumm, axsumm = plt.subplots(figsize=(4, 4))
+
+    for ia, animal in enumerate(['grom','jeev']):
+        model_dict = pickle.load(open('/Users/preeyakhanna/fa_analysis/tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+
+        if animal == 'grom':
+            ndays = 9; 
+        elif animal == 'jeev':
+            ndays = 4; 
+
+        DWI = []; 
+        DX = []; 
+        days = []; mets = []; grp = []; 
+        mnz = np.zeros((ndays, 2)) # days x [x / wi]
+
+        f, ax = plt.subplots(figsize=(ndays/2., 4))
+
+        for i_d in range(ndays):
+
+            diffs_wi = []; 
+            diffs_x = []; 
+
+            spks = model_dict[i_d, 'spks']
+            N = spks.shape[1]; 
+            tsk  = model_dict[i_d, 'task']
+            targ = model_dict[i_d, 'trg']
+            push = model_dict[i_d, 'np']
+
+            commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+
+            ### Now go through combos and plot 
+            for mag_i in range(4):
+                for ang_i in range(8):
+                    for targi in range(8):
+                        ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
+                        if len(np.nonzero(ix_co == True)[0]) > min_obs:
+
+                            for targi2 in range(8):
+                                ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
+
+                                if len(np.nonzero(ix_ob == True)[0]) > min_obs:
+                                    
+                                    ix_co0 = np.nonzero(ix_co == True)[0]
+                                    ix_ob0 = np.nonzero(ix_ob == True)[0]
+
+                                    ii = np.random.permutation(len(ix_co0))
+                                    i1 = ii[:int(len(ix_co0)/2.)]
+                                    i2 = ii[int(len(ix_co0)/2.):]
+
+                                    jj = np.random.permutation(len(ix_ob0))
+                                    j1 = jj[:int(len(ix_ob0)/2.)]
+                                    j2 = jj[int(len(ix_ob0)/2.):]
+
+                                    ix_co1 = ix_co0[i1]
+                                    ix_co2 = ix_co0[i2]
+                                    ix_ob1 = ix_ob0[j1]
+                                    ix_ob2 = ix_ob0[j2]
+
+                                    assert np.sum(np.isnan(ix_co1)) == np.sum(np.isnan(ix_co2)) == np.sum(np.isnan(ix_ob1)) == np.sum(np.isnan(ix_ob2)) == 0
+                                    assert np.sum(np.isnan(np.mean(spks[ix_co1, :], axis=0))) == 0
+                                    assert np.sum(np.isnan(np.mean(spks[ix_co2, :], axis=0))) == 0
+                                    assert np.sum(np.isnan(np.mean(spks[ix_ob1, :], axis=0))) == 0
+                                    assert np.sum(np.isnan(np.mean(spks[ix_ob2, :], axis=0))) == 0
+                                    
+                                    if cov:
+                                        ### make the plot: 
+                                        diffs_wi = get_cov_diffs(ix_co1, ix_co2, spks, diffs_wi)
+                                        diffs_wi = get_cov_diffs(ix_ob1, ix_ob2, spks, diffs_wi)
+
+                                        diffs_x = get_cov_diffs(ix_co1, ix_ob1, spks, diffs_x)
+                                        diffs_x = get_cov_diffs(ix_co2, ix_ob2, spks, diffs_x)
+
+                                    else:
+                                        ### make the plot: 
+                                        diffs_wi.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_co2, :], axis=0))
+                                        diffs_wi.append(np.mean(spks[ix_ob1, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
+
+                                        diffs_x.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_ob1, :], axis=0))
+                                        diffs_x.append(np.mean(spks[ix_co2, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
+
+            if cov:
+                mult = 1; 
+            else: 
+                mult = 10; 
+            AD_wi = np.abs(np.hstack((diffs_wi)))*mult # to Hz
+            AD_x = np.abs(np.hstack((diffs_x)))*mult # To hz
+
+            DWI.append(AD_wi)
+            DX.append(AD_x)
+
+            days.append(np.hstack(( np.zeros_like(AD_wi) + i_d, np.zeros_like(AD_x) + i_d)))
+            grp.append( np.hstack(( np.zeros_like(AD_wi) + 1,   np.zeros_like(AD_x)))) # looking for + slp
+            mets.append(AD_wi)
+            mets.append(AD_x)
+
+            for i, (D, col) in enumerate(zip([AD_x, AD_wi], ['k', 'gray'])):
+                ax.bar(i_d + i*.45, np.nanmean(D), color=col, edgecolor='none', width=.4, linewidth=1.0)
+                ax.errorbar(i_d + i*.45, np.nanmean(D), np.nanstd(D)/np.sqrt(len(D)), marker='|', color=col)
+                mnz[i_d, i] = np.nanmean(D)
+         
+        DWI = np.hstack((DWI))
+        DX = np.hstack((DX))
+        days = np.hstack((days))
+        grp = np.hstack((grp))
+        mets = np.hstack((mets))
+
+        ### look at: run_LME(Days, Grp, Metric):
+        pv, slp = run_LME(days, grp, mets)
+
+        print 'LME model, fixed effect is day, rand effect is X vs. Wi., N = %d, ndays = %d, pv = %.4f, slp = %.4f' %(len(days), len(np.unique(days)), pv, slp)
+
+        ###
+        axsumm.bar(0 + ia, np.mean(DX), color='k', edgecolor='none', width=.4, linewidth=2.0, alpha = .8)
+        axsumm.bar(0.4 + ia, np.mean(DWI), color='gray', edgecolor='none', width=.4, linewidth=2.0, alpha =.8)
+
+        for i_d in range(ndays):
+            axsumm.plot(np.array([0, .4]) + ia, mnz[i_d, :], '-', color='k', linewidth=1.0)
+
+        if pv < 0.001: 
+            axsumm.text(0.2+ia, np.max(mnz), '***')
+        elif pv < 0.01: 
+            axsumm.text(0.2+ia, np.max(mnz), '**')
+        elif pv < 0.05: 
+            axsumm.text(0.2+ia, np.max(mnz), '*')
+        else:
+            axsumm.text(0.2+ia, np.max(mnz), 'n.s.')
+
+        # ax.set_ylabel('Difference in Hz')
+        # ax.set_xlabel('Days')
+        # ax.set_xticks(np.arange(ndays))
+        # ax.set_title('Monk '+animal[0].capitalize())
+        # f.tight_layout()
+
+        ### Need to stats test the differences across populations:    
+    axsumm.set_xticks([0.2, 1.2])
+    axsumm.set_xticklabels(['G', 'J']) 
+    if cov:
+        # axsumm.set_ylim([0, 30])
+        # axsumm.set_ylabel(' Cov Diffs ($Hz^2$) ') 
+        axsumm.set_ylim([0, .6])
+        axsumm.set_ylabel(' Main Cov. Overlap ') 
+    else:
+        axsumm.set_ylim([0, 5])
+        axsumm.set_ylabel(' Mean Diffs (Hz) ') 
+    fsumm.tight_layout()
+    fsumm.savefig(fig_dir+'both_monks_w_vs_x_task_mean_diffs_cov%s.svg'%(str(cov)))
+
+def disc_plot(n_disc):
+
+    #co_obs_cmap = [np.array([0, 103, 56])/255., np.array([46, 48, 146])/255., ]
+    bw = np.array([0., 0., 0.])
+    co_obs_cmap = [bw, bw]
+    co_obs_cmap_cm = []; 
+
+    for _, (c, cnm) in enumerate(zip(co_obs_cmap, ['co', 'obs'])):
+        colors = [[1, 1, 1], c]  # white --> color
+        cmap_name = 'my_list'
+        cm = LinearSegmentedColormap.from_list(
+            cnm, colors, N=1000)
+        co_obs_cmap_cm.append(cm)
+
+
+    fig, (ax1, ax2) = plt.subplots(ncols=2, subplot_kw=dict(projection='polar'))
+
+    # Generate some data...
+    # Note that all of these are _2D_ arrays, so that we can use meshgrid
+    # You'll need to "grid" your data to use pcolormesh if it's un-ordered points
+    theta, r = np.mgrid[0:2*np.pi:9j, 0:4:5j]
+    
+    im1 = ax1.pcolormesh(theta, r, n_disc[:, :, 0].T, cmap = co_obs_cmap_cm[0], vmin=np.min(n_disc), vmax=np.max(n_disc))
+    im2 = ax2.pcolormesh(theta, r, n_disc[:, :, 1].T, cmap = co_obs_cmap_cm[1], vmin=np.min(n_disc), vmax=np.max(n_disc))
+
+    for ax in [ax1, ax2]:
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+    fig.savefig(fig_dir+'grom_day0_neur_38_targ4_targ5_dist.svg')
+
+    # divider = make_axes_locatable(ax1)
+    # cax = divider.append_axes('right', size='5%', pad=0.05)
+    # fig.colorbar(im1, cax=cax, orientation='vertical')
+
+    # divider = make_axes_locatable(ax2)
+    # cax = divider.append_axes('right', size='5%', pad=0.05)
+    # fig.colorbar(im2, cax=cax, orientation='vertical');
+    # import pdb; pdb.set_trace()
