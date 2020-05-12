@@ -80,3 +80,22 @@ def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):
 
     for patch in bp['boxes']:
         patch.set(facecolor=fill_color) 
+
+def plot_mean_and_sem(x , array, ax, color='b', array_axis=1,label='0',
+    log_y=False, make_min_zero=[False,False]):
+    
+    mean = array.mean(axis=array_axis)
+    sem_plus = mean + scipy.stats.sem(array, axis=array_axis)
+    sem_minus = mean - scipy.stats.sem(array, axis=array_axis)
+    
+    if make_min_zero[0] is not False:
+        bi, bv = get_in_range(x,make_min_zero[1])
+        add = np.min(mean[bi])
+    else:
+        add = 0
+
+    ax.fill_between(x, sem_plus-add, sem_minus-add, color=color, alpha=0.5)
+    x = ax.plot(x,mean-add, '-',color=color,label=label)
+    if log_y:
+        ax.set_yscale('log')
+    return x, ax

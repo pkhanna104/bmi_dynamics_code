@@ -7,8 +7,6 @@ cmap_list = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab', 'teal', 'steel
 cmap_list = [['darkgreen', '', '', '', 'seagreen', 'seagreen', 'darkgreen', 'darkgreen'],
              ['slateblue', '', '', '', 'slateblue', 'darkblue', 'blue', 'darkslateblue', 'darkblue']]
 
-fig_dir = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/'
-
 
 co_obs_cmap = [np.array([0, 103, 56])/255., np.array([46, 48, 146])/255., ]
 co_obs_cmap_cm = []; 
@@ -20,12 +18,18 @@ for _, (c, cnm) in enumerate(zip(co_obs_cmap, ['co', 'obs'])):
         cnm, colors, N=1000)
     co_obs_cmap_cm.append(cm)
 
-import subspace_overlap
+import util_fcns
+import analysis_config
+
+fig_dir = analysis_config.config['fig_dir']
 ### #Make a plot for all velocity commands showing the avg. place its used in the workspace
 
 def make_plots(animal = 'grom', i_d = 0, min_obs = [30, 65]):
-    mag_boundaries = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
-    model_dict = pickle.load(open('/Users/preeyakhanna/fa_analysis/tuning_models_'+animal+'_model_set%d.pkl' %3, 'rb'))
+    
+    grom_pref = analysis_config.config['grom_pref']
+    mag_boundaries = pickle.load(open(grom_pref +'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    key = str(animal) + '_pref'
+    model_dict = pickle.load(open(str(analysis_config.config[key]) + 'tuning_models_%s_model_set%d.pkl' %(str(animal), 3), 'rb'))
 
     tsk  = model_dict[i_d, 'task']
     targ = model_dict[i_d, 'trg']
@@ -33,7 +37,7 @@ def make_plots(animal = 'grom', i_d = 0, min_obs = [30, 65]):
     pos = model_dict[i_d, 'pos']
     bin_num = model_dict[i_d, 'bin_num']
 
-    commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+    commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
     col_tsk = ['g', 'b']
 
     n = 5
@@ -42,7 +46,9 @@ def make_plots(animal = 'grom', i_d = 0, min_obs = [30, 65]):
     f, ax = plt.subplots(ncols = 3, nrows = 1, figsize=(6, 2))
 
     for i_mag in range(3, 4):
+        
         for i_ang in range(2, 5): 
+        
             axi = ax[i_ang - 2]
             
             for i_tsk in range(2):
@@ -77,6 +83,4 @@ def make_plots(animal = 'grom', i_d = 0, min_obs = [30, 65]):
     f.savefig(fig_dir+'grom_day0_eg_traj.svg')
 
 def quantify_neural_var(): 
-
-    ### variance of neural activity  
-    ### 
+    pass
