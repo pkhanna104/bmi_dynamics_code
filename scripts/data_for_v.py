@@ -1,5 +1,6 @@
 import numpy as np
-from online_analysis import fit_LDS, co_obs_tuning_matrices
+from online_analysis import fit_LDS
+import analysis_config
 import prelim_analysis as pa
 import pickle
 import tables
@@ -11,21 +12,21 @@ def get_cursor_state_and_neural_push(co=co, obs=obs, animal='grom',
     binsize_ms=100., savename='for_v_v4.pkl', pre_go=1.):
 
     data = {}
-    for te_nums in [co, obs]:
+    for i_tsk, te_nums in enumerate([co, obs]):
         for te_num in te_nums:
 
             ### Get cursor state and neural push
-            co_obs_dict = pickle.load(open(co_obs_tuning_matrices.pref+'co_obs_file_dict.pkl'))
+            co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
 
             ### Open task data file
             hdf = co_obs_dict[te_num, 'hdf']
             hdfix = hdf.rfind('/')
-            hdf = tables.openFile(co_obs_tuning_matrices.pref+hdf[hdfix:])
+            hdf = tables.openFile(analysis_config.config['grom_pref']+hdf[hdfix:])
 
             ### Open decoder file
             dec = co_obs_dict[te_num, 'dec']
             decix = dec.rfind('/')
-            decoder = pickle.load(open(co_obs_tuning_matrices.pref+dec[decix:]))
+            decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
 
             ### Get steady state kalman filter matrices
             F, KG = decoder.filt.get_sskf()
@@ -90,6 +91,26 @@ def get_cursor_state_and_neural_push(co=co, obs=obs, animal='grom',
 
             # Trial number of each time bin, same format as target_index. 
             data[te_num, 'trial_ix'] = trial_ix_all
+
+            # Get obstacle size
+            if i_tsk == 1:
+
+                ### Get trial start indices; 
+                rew_ix = np.nonzero(hdf.root.task_msgs[:]['msg'] == 'reward')[0]
+                assert(len(rew_ix) == len(bin_spk))
+
+                ### Get table ix; 
+                tbl_rew_ix = hdf.root.task_msgs[rew_ix]['time']; 
+
+                ### get obstacle size / loc 
+                data[te_num, 'obstacle_size'] = hdf.root.task[tbl_rew_ix]['obstacle_size']
+                data[te_num, 'obstacle_location'] = hdf.root.task[tbl_rew_ix]['obstacle_location'][:, [0, 2]]
+
+                # tg_sz = []
+                # for i in range(len(rew_ix)):
+                #     ix = np.nonzero(trial_ix_all == i)[0]
+                #     tg_sz.append(targ_i_all[ix[0], :])
+
 
     # list of task entries 
     data['task_entries'] = [co, obs]
