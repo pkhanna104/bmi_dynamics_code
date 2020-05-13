@@ -360,15 +360,21 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
         all_data['trial_ix_all'].append(np.zeros((nT, )) + ig)
 
         if reach_tm_is_hdf_cursor_pos:
-            sub_cursor_i = hdf.root.task[hdf_ix_i]['cursor'][:, [0, 2]]
-            #reach_tm_all.append(sub_cursor_i)
-            all_data['cursor_pos'].append(sub_cursor_i)
+            if len(hdf_ix_i) > 0:
+                sub_cursor_i = hdf.root.task[hdf_ix_i]['cursor'][:, [0, 2]]
+                #reach_tm_all.append(sub_cursor_i)
+                all_data['cursor_pos'].append(sub_cursor_i)
+            else:
+                all_data['cursor_pos'].append(np.zeros((1, 2)))
 
         
         elif reach_tm_is_hdf_cursor_state:
-            sub_cursor_i = hdf.root.task[hdf_ix_i]['decoder_state'][:, [0, 2, 3, 5]]
-            #reach_tm_all.append(sub_cursor_i)
-            all_data['decoder_state'].append(sub_cursor_i)
+            if len(hdf_ix_i) > 0:
+                sub_cursor_i = hdf.root.task[hdf_ix_i]['decoder_state'][:, [0, 2, 3, 5]]
+                #reach_tm_all.append(sub_cursor_i)
+                all_data['decoder_state'].append(sub_cursor_i)
+            else:
+                all_data['decoder_state'].append(np.zeros((1, 4, 1)))
             
         elif reach_tm_is_kg_vel:
             kg = kwargs['kalman_gain']
