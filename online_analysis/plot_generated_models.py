@@ -1,5 +1,5 @@
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1., style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -7,11 +7,17 @@ from matplotlib.colors import LinearSegmentedColormap
 import pickle 
 
 import analysis_config, util_fcns
-import generate_models
+import generate_models, generate_models_list
 
 import scipy
 
 fig_dir = analysis_config.config['fig_dir']
+
+#### so far which models are useful 
+'''
+model 1 (fig 4)
+model 3 -- general extraction of stuff
+'''
 
 ##### Fig 1  ####### Null vs. Potent; #####
 def plot_real_mean_diffs_x_null_vs_potent(model_set_number = 3, min_obs = 15, cov = False):
@@ -602,8 +608,8 @@ def plot_r2_bar_model_1(min_obs = 15,
     '''
     inputs: min_obs -- number of obs need to count as worthy of comparison; 
     perc_increase: get baseline from y_t | a_t and use this to compute the "1" value; 
-    ndays ? 
-    pt_2 ? 
+    ndays -- ? 
+    pt_2 more plots -- not totally sure what they are;  
     r2_pop -- assume its population vs. indivdual 
     model_set_number -- which models to plot from which set; 
     '''
@@ -908,3 +914,1168 @@ def plot_r2_bar_model_1(min_obs = 15,
 
             #f.tight_layout()
             #f1.tight_layout()
+
+### Bar R2 and correlation plots -- figure 4;
+def plot_real_vs_pred(model_set_number = 1, min_obs = 15, cov = True):
+    
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+
+    models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
+                         'hist_1pos_3psh_1spksm_0_spksp_0', 
+                         'hist_1pos_3psh_1spksm_1_spksp_0']
+
+    models_to_include_labs = ['y_t | a_t', 
+                              'y_t | a_t, s_{t-1}, s_tFinal, tsk', 
+                              'y_t | a_t, s_{t-1}, y_{t-1}']
+
+
+    for ia, animal in enumerate(['grom','jeev']):
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+        ndays = analysis_config.data_params[animal + '_ndays']
+
+        diffs = dict(); 
+        sig_diffs = dict(); 
+
+        MOD = []; DAY = []; VAL = []; 
+
+        pred_diffs = dict(); 
+        pred_sig_diffs = dict(); 
+
+        R2 = dict(); NN = dict(); 
+
+        fbar, axbar = plt.subplots(figsize=(3, 4))
+        #fall, axall = plt.subplots(ncols = len(models_to_include), nrows = ndays, figsize=(10, 10))
+
+        for i_m, model in enumerate(models_to_include):
+
+            ### For each model, setup in teh diffs 
+            diffs[model] = []
+            sig_diffs[model] = []
+            pred_diffs[model] = []
+            pred_sig_diffs[model] = []
+
+            for i_d in range(ndays):
+                
+                R2[model, i_d] = []; 
+                ### Get the spiking data
+                spks = model_dict[i_d, 'spks']
+                pred = model_dict[i_d, model]
+
+                ### Get the task parameters
+                tsk  = model_dict[i_d, 'task']
+                targ = model_dict[i_d, 'trg']
+                push = model_dict[i_d, 'np']
+                
+                ### Setup the dicitonaries to be 
+                diffs[model, i_d] = []
+                sig_diffs[model, i_d] = []
+                pred_diffs[model, i_d] = []
+                pred_sig_diffs[model, i_d] = []
+
+                ### Get the discretized commands
+                commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+
+                ### Now go through combos and plot 
+                for mag_i in range(4):
+                    for ang_i in range(8):
+                        for targi in range(8):
+                            ### Get co / task 
+                            ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
+                            ix_co = np.nonzero(ix_co == True)[0]
+
+                            if len(ix_co) >= min_obs:
+                                
+                                ### Get info second task: 
+                                for targi2 in range(8):
+                                    ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi2)
+                                    ix_ob = np.nonzero(ix_ob == True)[0]
+
+                                    if len(ix_ob) >= min_obs:
+
+                                        assert(len(ix_co) >= min_obs)
+                                        assert(len(ix_ob) >= min_obs)
+                                        #print 'adding: mag_i: %d, ang_i: %d, targi: %d, targi2: %d' %(mag_i, ang_i, targi, targi2)
+                                        ### make the plot: 
+                                        if cov: 
+                                            diffs[model, i_d] = util_fcns.get_cov_diffs(ix_co, ix_ob, spks, diffs[model, i_d])
+                                            pred_diffs[model, i_d] = util_fcns.get_cov_diffs(ix_co, ix_ob, pred, pred_diffs[model, i_d])
+                                        else: 
+                                            diffs[model, i_d].append(np.mean(spks[ix_co, :], axis=0) - np.mean(spks[ix_ob, :], axis=0))    
+                                            pred_diffs[model, i_d].append(np.mean(pred[ix_co, :], axis=0) - np.mean(pred[ix_ob, :], axis=0))
+
+
+            ### Now scatter plot all data over all days: 
+            #f, ax = plt.subplots(nrows = 1, ncols = 2, figsize=(8, 4))
+
+            ### Make R2 plots to show how much each plot accounts for variace: 
+            for i_d in range(ndays):
+
+                ### T x N
+                x = np.vstack((diffs[model, i_d]))
+                y = np.vstack((pred_diffs[model, i_d]))
+                
+                #axall[i_d, i_m].plot(x, y, '.', markersize=2.)
+                ### get variance explained -- here, each point is a neuron / command / day / targ1 / targ 2 difference
+                ### the mean for SST is the neuron specific avg. true difference. 
+                VAF = util_fcns.get_R2(x, y, pop = True)
+
+                ### Old VAF: 
+                #VAF = 1 - np.sum((x-y)**2)/np.sum((x-np.mean(x))**2)
+
+                R2[model, i_d].append(VAF);
+                #axall[i_d, i_m].set_title(VAF, fontsize=6)
+
+                MOD.append(i_m)
+                DAY.append(i_d)
+                VAL.append(VAF)
+
+        fall.tight_layout()
+        MOD = np.hstack((MOD))
+        DAY = np.hstack((DAY))
+        VAL = np.hstack((VAL))
+
+        ### Plot indices ###
+        ix0 = np.nonzero(MOD < 2)[0]
+        ix1 = np.nonzero(MOD > 0)[0]
+
+        pv0, slp0 = util_fcns.run_LME(DAY[ix0], MOD[ix0], VAL[ix0])
+        pv1, slp1 = util_fcns.run_LME(DAY[ix1], MOD[ix1], VAL[ix1])
+
+        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix0])), pv0, slp0, len(ix0)))
+        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix1])), pv1, slp1, len(ix1)))
+
+        ### Plot as bar plot ###
+        all_data = {}
+        for i_m, model in enumerate(models_to_include):
+            all_data[model] = []; 
+
+        for i_d in range(ndays):
+            tmp = []; 
+
+            for i_m, model in enumerate(models_to_include):
+                r2 = np.hstack((R2[model, i_d]))
+                r2[np.isinf(r2)] = np.nan
+                tmp.append(np.nanmean(r2))
+                all_data[model].append(r2)
+            axbar.plot(np.arange(len(models_to_include)), tmp, '-', color='gray')
+
+
+        #### Model colors ###
+        model_cols = [[255, 0, 0], [101, 44, 144], [39, 169, 225],]
+        model_cols = [np.array(m)/255. for m in model_cols]
+
+        for i_m, model in enumerate(models_to_include):
+            tmp2 = np.hstack((all_data[model]))
+            tmp2 = tmp2[~np.isnan(tmp2)]
+            axbar.bar(i_m, np.mean(tmp2), color = model_cols[i_m], edgecolor='k', linewidth=2.)
+            axbar.errorbar(i_m, np.mean(tmp2), yerr=np.std(tmp2)/np.sqrt(len(tmp2)), color = 'k', marker='|')
+
+        axbar.set_xticks(np.arange(len(models_to_include)))
+        models_to_include_labs_tex = ['$' + m + '$' for m in models_to_include_labs]
+        axbar.set_xticklabels(models_to_include_labs_tex, rotation = 45, fontsize=10)
+        fbar.tight_layout()
+        #fbar.savefig('/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/monk_%s_r2_comparison_mean_diffs_cov%s.svg' %(animal, str(cov)))
+        
+### Fig 5 #### 
+### Mean diffs of action at next time step ###
+def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
+    ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
+    ### Plot within a bar 
+    ### Plot only sig. different ones
+
+    ### Plot cov. diffs (mat1 - mat2)
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    fsumm, axsumm = plt.subplots(figsize=(4, 4))
+
+    for ia, animal in enumerate(['grom','jeev']):
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+
+        if animal == 'grom':
+            ndays = 9; 
+            width = 3.
+        
+        elif animal == 'jeev':
+            ndays = 4; 
+            width = 2.
+
+        ### Now bar plot that: 
+        f, ax = plt.subplots(figsize=(width, 4))
+        
+        days = []; DX = []; DWI = []; 
+        cat = []; 
+        met = []; 
+        mnz = np.zeros((ndays, 2))
+
+        for i_d in range(ndays):
+
+            diffs_x = []; diffs_wi = [];
+            tsk  = model_dict[i_d, 'task']
+            targ = model_dict[i_d, 'trg']
+            push = model_dict[i_d, 'np']
+            bin_num = model_dict[i_d, 'bin_num']
+
+            ### This depends on how many "history bins" are included in this model. 
+            ### If only 1 unit of history, then this will be = 1. If many units of history, then will be greater; 
+            min_bin = np.min(bin_num)
+            print('min bin: %d'%min_bin)
+            commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+
+            ### Now go through combos and plot 
+            for mag_i in range(4):
+                for ang_i in range(8):
+                    for targi in range(8):
+                        ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
+                        
+                        if len(np.nonzero(ix_co == True)[0]) > min_obs:
+                            
+                            for targi2 in range(8):
+                                ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
+
+                                if len(np.nonzero(ix_ob == True)[0]) > min_obs:
+                                    
+                                    ix_co0 = np.nonzero(ix_co == True)[0]
+                                    ix_ob0 = np.nonzero(ix_ob == True)[0]
+
+                                    ### Get the NEXT COMMAND ###
+                                    ix_co0 = ix_co0 + 1; 
+                                    ix_ob0 = ix_ob0 + 1; 
+
+                                    ### Get rid of bins that aren't from prev time step
+
+                                    ### Remove bins that are past hte length of the data; 
+                                    ix_co0 = ix_co0[ix_co0 < len(push)]
+                                    ix_ob0 = ix_ob0[ix_ob0 < len(push)]
+
+                                    ### Only keep bins that have incremented -- 
+                                    ### if a bin is equal to the lowest value "1" then it must have cycled over from previous trial 
+                                    ix_co_keep = np.nonzero(bin_num[ix_co0] > min_bin)[0]
+                                    ix_co0 = ix_co0[ix_co_keep]
+
+                                    ix_ob_keep = np.nonzero(bin_num[ix_ob0] > min_bin)[0]
+                                    ix_ob0 = ix_ob0[ix_ob_keep]
+
+                                    ##### Subselect indices #####
+                                    ii = np.random.permutation(len(ix_co0))
+                                    i1 = ii[:int(len(ix_co0)/2.)]
+                                    i2 = ii[int(len(ix_co0)/2.):]
+
+                                    jj = np.random.permutation(len(ix_ob0))
+                                    j1 = jj[:int(len(ix_ob0)/2.)]
+                                    j2 = jj[int(len(ix_ob0)/2.):]
+
+                                    ix_co1 = ix_co0[i1]
+                                    ix_co2 = ix_co0[i2]
+                                    ix_ob1 = ix_ob0[j1]
+                                    ix_ob2 = ix_ob0[j2]
+
+                                    assert np.sum(np.isnan(ix_co1)) == np.sum(np.isnan(ix_co2)) == np.sum(np.isnan(ix_ob1)) == np.sum(np.isnan(ix_ob2)) == 0
+                                    assert(np.all(tsk[ix_co1] == 0))
+                                    assert(np.all(tsk[ix_co2] == 0))
+                                    assert(np.all(tsk[ix_ob1] == 1))
+                                    assert(np.all(tsk[ix_ob2] == 1))
+                                    
+                                    ### make the plot: 
+                                    diffs_wi.append(np.mean(push[ix_co1, :], axis=0) - np.mean(push[ix_co2, :], axis=0))
+                                    diffs_wi.append(np.mean(push[ix_ob1, :], axis=0) - np.mean(push[ix_ob2, :], axis=0))
+
+                                    diffs_x.append(np.mean(push[ix_co1, :], axis=0) - np.mean(push[ix_ob1, :], axis=0))
+                                    diffs_x.append(np.mean(push[ix_co2, :], axis=0) - np.mean(push[ix_ob2, :], axis=0))
+
+            W = np.abs(np.hstack((diffs_wi))) # to Hz
+            X = np.abs(np.hstack((diffs_x))) 
+            DX.append(X); 
+            DWI.append(W); 
+            tmp = np.hstack((W, X))
+            days.append(np.zeros_like(tmp) + i_d)
+            cat.append(np.zeros_like(W))
+            cat.append(np.zeros_like(X) + 1)
+            met.append(tmp)
+
+            for i, (D, col) in enumerate(zip([X, W], ['k', 'gray'])):
+                ax.bar(i_d + i*.45, np.nanmean(D), color=col, edgecolor='none', width=.4, linewidth=1.0)
+                ax.errorbar(i_d + i*.45, np.nanmean(D), np.nanstd(D)/np.sqrt(len(D)), marker='|', color=col)
+                mnz[i_d, i] = np.nanmean(D)
+         
+        days = np.hstack((days))
+        cat = np.hstack((cat))
+        met = np.hstack((met))
+
+        ### look at: run_LME(Days, Grp, Metric):
+        pv, slp = util_fcns.run_LME(days, cat, met)
+
+        print 'LME model, fixed effect is day, rand effect is X vs. Wi., N = %d, ndays = %d, pv = %.4f, slp = %.4f' %(len(days), len(np.unique(days)), pv, slp)
+
+        ###
+        DX = np.hstack((DX))
+        DWI = np.hstack((DWI))
+
+        axsumm.bar(0 + ia, np.mean(DX), color='k', edgecolor='none', width=.4, linewidth=2.0, alpha = .8)
+        axsumm.bar(0.4 + ia, np.mean(DWI), color='gray', edgecolor='none', width=.4, linewidth=2.0, alpha =.8)
+
+        for i_d in range(ndays):
+            axsumm.plot(np.array([0, .4]) + ia, mnz[i_d, :], '-', color='k', linewidth=1.0)
+
+        if pv < 0.001: 
+            axsumm.text(0.2+ia, np.max(mnz), '***')
+        elif pv < 0.01: 
+            axsumm.text(0.2+ia, np.max(mnz), '**')
+        elif pv < 0.05: 
+            axsumm.text(0.2+ia, np.max(mnz), '*')
+        else:
+            axsumm.text(0.2+ia, np.max(mnz), 'n.s.')
+
+        # ax.set_ylabel('Difference in Hz')
+        # ax.set_xlabel('Days')
+        # ax.set_xticks(np.arange(ndays))
+        # ax.set_title('Monk '+animal[0].capitalize())
+        # f.tight_layout()
+
+        ### Need to stats test the differences across populations:    
+    axsumm.set_xticks([0.2, 1.2])
+    axsumm.set_xticklabels(['G', 'J']) 
+    #axsumm.set_ylim([0, 5])
+    axsumm.set_ylabel(' Mean Diffs (cm/sec) ') 
+    fsumm.tight_layout()
+    #fsumm.savefig(fig_dir+'both_monks_w_vs_x_task_push_mean_diffs.svg')
+
+### Fig 5 -- identity vs. neural dynamcis
+def fig_5_neural_dyn(min_obs = 15, r2_pop = True, 
+    model_set_number = 3, ndays = None,):
+    
+    ### For stats each neuron is an observation ##
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+
+    ### Now generate plots -- testing w/ 1 day
+    if ndays is None:
+        ndays = dict(grom=9, jeev=4)
+    else:
+        ndays = dict(grom=ndays, jeev=ndays)
+
+    fsumm, axsumm = plt.subplots(ncols = 2, nrows = 1, figsize = (4, 4))
+
+    for ia, (animal, yr) in enumerate(zip(['grom', 'jeev'], ['2016', '2013'])):
+        
+        if model_set_number == 3: 
+            models_to_include = [#'prespos_0psh_0spksm_1_spksp_0',
+                                 #'prespos_0psh_0spksm_1_spksp_0potent',
+                                 #'prespos_0psh_0spksm_1_spksp_0null',
+                                 'hist_1pos_0psh_0spksm_1_spksp_0',
+                                 'identity']
+                                 #'hist_1pos_0psh_1spksm_0_spksp_0']
+                                 #'hist_1pos_0psh_0spksm_1_spksp_0potent',
+                                 #'hist_1pos_0psh_0spksm_1_spksp_0null']
+            models_colors = [[39, 169, 225], [0, 0, 0]]
+            xlab = [['$y_{t+1} | y_{t}$'], ['$a_{t+1} | y_{t}$']]
+        else: 
+            raise Exception
+
+        M = len(models_to_include)
+        models_colors = [np.array(m)/256. for m in models_colors]
+        
+        if r2_pop:
+            pop_str = 'Population'
+        else:
+            pop_str = 'Indiv'        
+
+        ### Go through each neuron and plot mean true vs. predicted (i.e R2) for a given command  / target combo: 
+        model_dict = pickle.load(open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl'%model_set_number, 'rb'))
+            
+        R2S = dict(); R2_push = dict()
+        ### Super basic R2 plot of neural activity and neural push ###
+
+        for i_d in range(ndays[animal]):
+
+            if animal == 'grom': 
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_grom(i_d)
+            
+            elif animal == 'jeev':
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_jeev(i_d)
+
+            ###### True data #####
+            tdata = model_dict[i_d, 'spks']
+            np_data = model_dict[i_d, 'np']
+            bin_num = model_dict[i_d, 'bin_num']
+            min_bin = np.min(bin_num)
+
+            R2s = dict()
+
+            ###### Get the baseline ####
+            for i_mod, mod in enumerate(models_to_include):
+                
+                if mod == 'identity':
+                    ### Get all data points greater than minimum bin; 
+                    ix = np.nonzero(bin_num>min_bin)[0]
+
+                    ### set E(y_t) = y_{t-1}
+                    pdata = np.zeros_like(tdata) + np.nan 
+                    pdata[ix, :] = tdata[ix - 1]
+
+                    ### The only data point we're missing is the one in the beginning; 
+                    ixnan = np.nonzero(np.isnan(pdata[:, 0]))
+                    assert(np.all(bin_num[ixnan] == 1))
+
+                    np_pred = np.zeros_like(np_data) + np.nan
+                    np_pred[ix, :] = np_data[ix - 1, :]
+
+                    ### Get population R2 ### 
+                    R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop, ignore_nans = True)
+
+                    ### Get push ####
+                    R2_np = util_fcns.get_R2(np_data, np_pred, pop = r2_pop, ignore_nans = True)
+                    import pdb; pdb.set_trace()
+                else:
+
+                    #### Predicted spikes; #######
+                    pdata = model_dict[i_d, mod]
+
+                    #### Predicted action | KG*predicted spikes ####
+                    np_pred = np.squeeze(np.array(np.dot(KG, pdata.T).T))
+
+                    ### Get population R2 ### 
+                    R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
+
+                    ### Get push ####
+                    R2_np = util_fcns.get_R2(np_data, np_pred, pop = r2_pop)
+
+                    import pdb; pdb.set_trace()
+                ### Put the R2 in a dictionary: 
+                R2S[i_mod, i_d, 0] = R2; 
+                R2S[i_mod, i_d, 1] = R2_np; 
+
+            ##### Plot this single day #####
+            for q in range(2): 
+                tmp = []; 
+                for i_mod in range(M):
+                    try:
+                        tmp.append(np.nanmean(np.hstack((R2S[i_mod, i_d, q]))))
+                    except:
+                        tmp.append(R2S[i_mod, i_d, q])
+                axsumm[q].plot(ia*3 + np.arange(M), tmp, '-', color='gray', linewidth = 1.)
+
+        #### Plots total mean ###
+        for q in range(2):
+            tmp = []; tmp_e = []; 
+            
+            for i_mod in range(M):
+                tmp2 = []; 
+                for i_d in range(ndays[animal]):
+                    tmp2.append(R2S[i_mod, i_d, q])
+                tmp2 = np.hstack((tmp2))
+                tmp2 = tmp2[~np.isnan(tmp2)]
+
+                ## mean 
+                tmp.append(np.mean(tmp2))
+
+                ## s.e.m
+                tmp_e.append(np.std(tmp2)/np.sqrt(len(tmp2)))
+
+            ### Overal mean 
+            for i_mod in range(M):
+                axsumm[q].bar(ia*3 + i_mod, tmp[i_mod], color = models_colors[i_mod], edgecolor='k', linewidth = 1., )
+                axsumm[q].errorbar(ia*3 + i_mod, tmp[i_mod], yerr=tmp_e[i_mod], marker='|', color='k')        
+            axsumm[q].set_ylabel('%s R2, neur '%(pop_str), fontsize=8)
+
+            axsumm[q].set_xticks(np.arange(M))
+            axsumm[q].set_xticklabels(xlab[q], rotation=45, fontsize=6)
+
+    fsumm.tight_layout()
+    #fsumm.savefig(fig_dir + 'both_%sr2_dyn_model_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
+
+### Fig 5 -- ID vs. neural dynamics on next action diffs. 
+def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True,
+    model_set_number = 3, ndays = None, 
+    ndiv = 16, center_limit = True, center_rad_limit = 100000, 
+    jeev_days = [0, 1, 2, 3]):
+    
+    ### For stats each neuron is an observation ##
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+
+    ### Now generate plots -- testing w/ 1 day
+    if ndays is None:
+        ndays = dict(grom=np.arange(9), jeev=jeev_days)
+    else:
+        ndays = dict(grom=ndays, jeev=ndays)
+
+    ## Plot the 3 different things; (y_t+1 | y_t), (y_)
+    fsumm, axsumm = plt.subplots(ncols = 3, nrows = 1, figsize = (8, 4))
+
+    for ia, (animal, yr) in enumerate(zip(['grom', 'jeev'], ['2016', '2013'])):
+        
+        if model_set_number == 3: 
+            models_to_include = ['identity',
+                                 'hist_1pos_0psh_0spksm_1_spksp_0']
+
+            models_colors = [[0, 0, 0], [39, 169, 225]]
+            xlab = [['$y_{t+1} | y_{t}$'], ['$a_{t+1} | y_{t}$'], ['$\Delta a_{t+1} | y_{t}$']]
+
+        elif model_set_number == 8:
+            models_to_include = ['identity',
+                                 'hist_1pos_1psh_0spksm_0_spksp_0',
+                                 'hist_1pos_3psh_0spksm_0_spksp_0',
+                                 'hist_1pos_0psh_0spksm_1_spksp_0']
+
+            models_colors = [[0, 0, 0], [101, 44, 144], [101, 44, 144], [39, 169, 225]]
+            xlab = [['$y_{t+1} | y_{t}$'], ['$a_{t+1} | y_{t}$'], ['$\Delta a_{t+1} | y_{t}$']]
+
+        M = len(models_to_include)
+        models_colors = [np.array(m)/256. for m in models_colors]
+        
+        if r2_pop:
+            pop_str = 'Population'
+        else:
+            pop_str = 'Indiv'        
+
+        ### Go through each neuron and plot mean true vs. predicted (i.e R2) for a given command  / target combo: 
+        model_dict = pickle.load(open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl'%model_set_number, 'rb'))
+            
+        R2S = dict(); R2_push = dict()
+        ### Super basic R2 plot of neural activity and neural push ###
+
+        for i_d in ndays[animal]:
+
+            if animal == 'grom': 
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_grom(i_d)
+            elif animal == 'jeev':
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_jeev(i_d)
+
+            ###### True data #####
+            tdata = model_dict[i_d, 'spks']
+            np_data = model_dict[i_d, 'np']
+            target = model_dict[i_d, 'trg']
+            task = model_dict[i_d, 'task']
+
+            ### Get commands: 
+            commands_disc = util_fcns.commands2bins([np_data], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+
+            bin_num = model_dict[i_d, 'bin_num']
+            min_bin = np.min(bin_num)
+
+            R2s = dict()
+
+            ###### Get the baseline ####
+            for i_mod, mod in enumerate(models_to_include):
+                
+                if mod == 'identity':
+                    ix = np.nonzero(bin_num>min_bin)[0]
+                    pdata = np.zeros_like(tdata) + np.nan 
+                    pdata[ix, :] = tdata[ix - 1, :]
+
+                    ixnan = np.nonzero(np.isnan(pdata[:, 0]))
+                    assert(np.all(bin_num[ixnan] == 1))
+
+                    np_pred = np.zeros_like(np_data) + np.nan
+                    np_pred[ix, :] = np_data[ix - 1, :]
+
+                    ### Get population R2 ### 
+                    R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop, ignore_nans = True)
+
+                    ### Get push ####
+                    R2_np = util_fcns.get_R2(np_data, np_pred, pop = r2_pop, ignore_nans = True)
+
+                elif mod in ['hist_1pos_1psh_0spksm_0_spksp_0', 'hist_1pos_3psh_0spksm_0_spksp_0']:
+                    ix = np.nonzero(bin_num>min_bin)[0]
+                    pdata = np.zeros_like(tdata) + np.nan 
+
+                    ### Get states
+                    state_preds = model_dict[i_d, mod][ix - 1, :]
+
+                    ### Propagate by the dynamics model: choose first fold: 
+                    model_dyn = model_dict[i_d, 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 'model']
+                    pdata[ix, :] = model_dyn.predict(state_preds)
+
+                    ixnan = np.nonzero(np.isnan(pdata[:, 0]))
+                    assert(np.all(bin_num[ixnan] == 1))
+
+                    np_pred = np.zeros_like(np_data) + np.nan
+                    np_pred[ix, :] = np.dot(KG, pdata[ix, :].T).T
+
+                    ### Get population R2 ### 
+                    R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop, ignore_nans = True)
+
+                    ### Get push ####
+                    R2_np = util_fcns.get_R2(np_data, np_pred, pop = r2_pop, ignore_nans = True)
+
+                else:
+                    pdata = model_dict[i_d, mod]
+                    np_pred = np.squeeze(np.array(np.dot(KG, pdata.T).T))
+
+                    ### Get population R2 ### 
+                    R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
+
+                    ### Get push ####
+                    R2_np = util_fcns.get_R2(np_data, np_pred, pop = r2_pop)
+                
+                ### Put the R2 in a dictionary: 
+                R2S[i_mod, i_d, 0] = R2; 
+                R2S[i_mod, i_d, 1] = R2_np; 
+                
+                ### Find the mean DIFFS 
+                ### Go through the targets (1)
+                ### Got through targets (2)
+                true_diffs_kg = []; 
+                pred_diffs_kg = []; 
+
+                KEEP_IXs = {}
+
+                ####### Only look at the center points < center_rad_limit #######
+                if center_limit:
+                    rad = np.sqrt(np.sum(model_dict[i_d, 'pos']**2, axis=1))
+                    keep_ix = np.nonzero(rad <= center_rad_limit)[0]
+                    KEEP_IXs[i_d, 'keep_ix_pos', 0] = keep_ix
+                    ncats = 1; 
+                
+                else:
+                    #### Get velocities at t=-1 ###
+                    vel_tm1 = model_dict[i_d, 'vel_tm1']; 
+
+                    ### Get angles out from this velocity: 
+                    vel_disc = util_fcns.commands2bins([vel_tm1], mag_boundaries, animal, i_d, vel_ix = [0, 1], ndiv = ndiv)[0]
+
+                    ### Here, the second column (vel_disc[:, 1]) has info on the angle: 
+                    for ang_i in range(int(ndiv)): 
+                        ix = np.nonzero(vel_disc[:, 1] == ang_i)[0]
+                        KEEP_IXs[i_d, 'keep_ix_pos', ang_i] = ix; 
+                    ncats = int(ndiv);
+
+                #### For each cateogry get the neural push command that falls with in this area #####
+                for cat in range(ncats):
+                    ix_keep = KEEP_IXs[i_d, 'keep_ix_pos', cat]
+                    
+                    ##### Get the commands from this category #####
+                    sub_commands_disc = commands_disc[ix_keep, :]
+                    sub_target = target[ix_keep]
+                    sub_task = task[ix_keep]
+
+                    for i_ang in range(8):
+                        for i_mag in range(4):
+                            for itg in range(10):
+
+                                ix_co = (sub_commands_disc[:, 0] == i_mag) & (sub_commands_disc[:, 1] == i_ang) & (sub_target == itg) & (sub_task == 0)
+                                ix_co = np.nonzero(ix_co == True)[0]
+
+                                ix_co_big = ix_keep[ix_co]
+
+                                #### Get the next time step #####
+                                ix_co_big = ix_co_big + 1;
+
+                                ### Remove anythign bigger than length of data #####
+                                ix_co_big = ix_co_big[ix_co_big < len(bin_num)]
+
+                                #### Remove anything smaller than 2 -- would have to have come over from previous trial #####
+                                ix_co_big = ix_co_big[bin_num[ix_co_big] > 1]
+                                
+                                #### If enougth observations ######
+                                if len(ix_co_big) >= min_obs: 
+        
+                                    ##### Go through the targets #####
+                                    for itg2 in np.unique(sub_target):
+
+                                        ##### get the index associated with this target ######
+                                        ix_ob = (sub_commands_disc[:, 0] == i_mag) & (sub_commands_disc[:, 1] == i_ang) & (sub_target == itg2) & (sub_task == 1)
+                                        ix_ob = np.nonzero(ix_ob == True)[0]
+                                        ix_ob_big = ix_keep[ix_ob]
+
+                                        ix_ob_big = ix_ob_big + 1; 
+                                        ix_ob_big = ix_ob_big[ix_ob_big < len(bin_num)]
+                                        ix_ob_big = ix_ob_big[bin_num[ix_ob_big] > 1]  
+
+                                        if len(ix_ob_big) >= min_obs: 
+
+                                            ###### get the true and predicted differences here ######
+                                            true_diffs_kg.append( np.nanmean(np_data[ix_co_big, :], axis=0) - np.nanmean(np_data[ix_ob_big, :], axis=0))
+                                            pred_diffs_kg.append( np.nanmean(np_pred[ix_co_big, :], axis=0) - np.nanmean(np_pred[ix_ob_big, :], axis=0))
+
+                ### Get R2: 
+                #import pdb; pdb.set_trace()
+                R2S[i_mod, i_d, 2] = util_fcns.get_R2(np.vstack((true_diffs_kg)), np.vstack((pred_diffs_kg)), pop=r2_pop)
+
+
+            ##### Plot this single day #####
+            for q in range(3): 
+                tmp = []; 
+                for i_mod in range(M):
+                    try:
+                        tmp.append(np.nanmean(np.hstack((R2S[i_mod, i_d, q]))))
+                    except:
+                        tmp.append(R2S[i_mod, i_d, q])
+                axsumm[q].plot(ia*5 + np.arange(M), tmp, '-', color='gray', linewidth = 1.)
+
+        #### Plots total mean ###
+        for q in range(3):
+            tmp = []; tmp_e = []; 
+            
+            dayz = []; 
+            modz = []; 
+            metz = []; 
+
+            for i_mod in range(M):
+                tmp2 = []; 
+                for i_d in ndays[animal]:
+                    tmp2.append(R2S[i_mod, i_d, q])
+
+                    dayz.append(i_d)
+                    modz.append(R2S[i_mod, i_d, q])
+                    metz.append(i_mod)
+
+                tmp2 = np.hstack((tmp2))
+                tmp2 = tmp2[~np.isnan(tmp2)]
+
+                ## mean 
+                tmp.append(np.mean(tmp2))
+
+                ## s.e.m
+                tmp_e.append(np.std(tmp2)/np.sqrt(len(tmp2)))
+
+            dayz = np.hstack((dayz))
+            modz = np.hstack((modz))
+            metz = np.hstack((metz))
+
+            pv, slp = util_fcns.run_LME(dayz, modz, metz)
+            print('Animal: %s, Plot %d, PV: %.2f, SLP: %.2f' %(animal, q, pv, slp))
+
+            ### Overal mean 
+            for i_mod in range(M):
+                axsumm[q].bar(ia*5 + i_mod, tmp[i_mod], color = models_colors[i_mod], edgecolor='k', linewidth = 1., )
+                axsumm[q].errorbar(ia*5 + i_mod, tmp[i_mod], yerr=tmp_e[i_mod], marker='|', color='k')        
+            axsumm[q].set_ylabel('%s R2, neur'%(pop_str))
+
+            axsumm[q].set_xticks(np.arange(M))
+            axsumm[q].set_xticklabels(xlab[q], rotation=45)
+
+    fsumm.tight_layout()
+    #fsumm.savefig(fig_dir + 'both_%sfig_5_neural_dyn_mean_pred_model%d.svg'%(pop_str, model_set_number))
+ 
+
+###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
+### Use model predictions to generate means -- potent and null options included. 
+def mean_diffs_plot(animal = 'grom', min_obs = 15, load_file = 'default', dt = 1, 
+    important_neurons = True, skip_ind_plots = True, only_null = False, only_potent = False, 
+    model_set_number = 3, ndays = None, next_pt_pred = True, plot_pred_vals = False,):
+
+    '''
+    load_file -- default -- is a way to autoload previously fit model 
+            -- dt -- a plotting thing
+            -- important_neurons -- use previously fit file to designate important neurons; show distribution of 
+            -- skip_ind_plots -- dont plot the important neurons mean diff distributions; 
+            -- only_null / only_potent -- 
+            -- next_pt_pred -- instead of quantifying how models predict CURRENT time point (aligned to action bin),
+        quantify instead how well modesl predict NEXT time point 
+
+    plot_pred_vals -- for model plot 
+        a) true neur vs. pred neur, 
+        b) tru KG vs. pred KG, 
+        c) task neur diff vs. pred task neur diff,
+        d) task diff KG, vs. pred task diff KG, d) 
+    '''
+    
+    savedir = analysis_config.config['fig_dir']
+
+    ### Magnitude boundaries: 
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    marks = ['-', '--']
+
+    if important_neurons:
+        imp_file = pickle.load(open(analysis_config.config[animal+'_pref'] + animal + '_important_neurons_svd_feb2019_thresh_0.8.pkl', 'rb'))
+
+    ### List the models to analyze
+    mvl, key, _, _ = generate_models_list.get_model_var_list(model_set_number)
+    models_to_include = [m[1] for m in mvl]
+    
+    if load_file is None:
+        ### get the model predictions: 
+        model_individual_cell_tuning_curves(animal=animal, history_bins_max=4, 
+            ridge=True, include_action_lags = True, return_models = True, 
+            models_to_include = models_to_include)
+    
+    elif load_file == 'default':
+        ### load the models: 
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+        
+    ### Now generate plots -- testing w/ 1 day
+    if ndays is None:
+        ndays = dict(grom=9, jeev=4)
+    else:
+        ndays = dict(grom=ndays, jeev=ndays)
+
+    hist_bins = np.arange(15)
+
+    ### Pooled over all days: 
+    f_all, ax_all = plt.subplots(ncols = len(models_to_include), nrows = 2, figsize = (len(models_to_include)*3, 6))
+    
+    TD_all = dict();
+    PD_all = dict(); 
+
+    for mod in models_to_include:
+        for sig in ['all', 'sig']:
+            TD_all[mod, sig] = []; 
+            PD_all[mod, sig] = []; 
+        
+    for i_d in range(ndays[animal]):
+
+        ### Basics -- get the binning for the neural push commands: 
+        neural_push = model_dict[i_d, 'np']
+
+        ### Commands
+        commands = util_fcns.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+        
+        ### Get task / target
+        tsk = model_dict[i_d, 'task']
+        targ = model_dict[i_d, 'trg']
+        bin_num = model_dict[i_d, 'bin_num']
+
+        ### Now go through each task targ and assess when there are enough observations: 
+        y_true = model_dict[i_d, key]
+
+        T, N = y_true.shape
+
+        if important_neurons:
+            important_neur = imp_file[(i_d, animal, 'svd')]
+        else:
+            important_neur = np.arange(N); 
+
+        if skip_ind_plots:
+            important_neur = []; 
+
+        f_dict = dict(); 
+
+        ### Get the decoder 
+        ### Get the decoder ###
+        if animal == 'grom':
+            KG, KG_null, KG_pot = generate_models.get_KG_decoder_grom(i_d)
+
+        if animal == 'jeev':
+            KG, KG_null, KG_pot = generate_models.get_KG_decoder_jeev(i_d)
+
+        if np.logical_or(only_null, only_potent):
+            if np.logical_and(only_null, only_potent):
+                raise Exception('Cant have null and potent')
+            else:
+                y_true = get_decomp_y(KG_null, KG_pot, y_true, only_null = only_null, only_potent=only_potent)
+
+        ### Only plot distribution diffs for important neurons: 
+        for n in important_neur:
+            f, ax = plt.subplots(ncols=8, nrows = 4, figsize = (12, 6))
+            f_dict[n] = [f, ax]; 
+        print('Important neruons %d' %len(important_neur))
+        
+        ### Make the spiking histograms: 
+        sig_diff = np.zeros((N, 4, 8))
+        index_dictionary = {}
+
+        for i_mag in range(4):
+            for i_ang in range(8):
+
+                sig_i_t = 0; 
+
+                for i_t in range(2):
+                    ### Select by task / target / mag / ang; 
+                    #ix = (neural_push[:,0] == i_mag) & (neural_push[:,1] == i_ang) & (targ == i_trg) & (tsk == i_t)
+                    ix = (commands[:,0] == i_mag) & (commands[:,1] == i_ang) & (tsk == i_t)
+
+                    if np.sum(ix) >= min_obs:
+                        #print 'Plotting Day %d, Task %d, Mag %d Ang %d' %(i_d, i_t, i_mag, i_ang)
+                        sig_i_t += 1
+                        
+                        ### Plotting: 
+                        y_obs = y_true[ix, :]
+
+                        ## Which indices: 
+                        I = i_mag*8 + i_ang
+
+                        ### Indexing: 
+                        for n in range(N):
+
+                            ### Plot important neurons; 
+                            if n in important_neur:
+
+                                ## get the axis
+                                axi = f_dict[n][1][i_mag, i_ang]
+
+                                ### histogram
+                                h, biz = np.histogram(y_obs[:, n], hist_bins)
+
+                                ### Plot line
+                                axi.plot(biz[:-1] + .5*dt, h / float(np.sum(h)), '-',
+                                    color = cmap_list[i_t])
+
+                                ## Plot the mean; 
+                                axi.vlines(np.mean(y_obs[:, n]), 0, .5, cmap_list[i_t])
+
+                # for each neuron figure if enough observations of the i_mag / i_ang to plot; 
+                if sig_i_t == 2:
+
+                    if next_pt_pred:
+                        print 'Aligning to mag %d, ang %d, next step ahead'
+                        ix0 = (commands[:,0] == i_mag) & (commands[:,1] == i_ang) & (tsk == 0)
+                        ix1 = (commands[:,0] == i_mag) & (commands[:,1] == i_ang) & (tsk == 1)
+
+                        ix0 = np.nonzero(ix0 == True)[0]
+                        ix0 = ix0 + 1; 
+                        ix0 = ix0[ix0 < len(tsk)]
+                        ix0 = ix0[bin_num[ix0] > 0]
+
+                        ix1 = np.nonzero(ix1 == True)[0]
+                        ix1 = ix1 + 1; 
+                        ix1 = ix1[ix1 < len(tsk)]
+                        ix1 = ix1[bin_num[ix1] > 0]
+
+                    else:
+                        ## Find relevant commands: 
+                        ix0 = (commands[:,0] == i_mag) & (commands[:,1] == i_ang) & (tsk == 0)
+                        ix1 = (commands[:,0] == i_mag) & (commands[:,1] == i_ang) & (tsk == 1)
+                    
+                        ix0 = np.nonzero(ix0 == True)[0]
+                        ix1 = np.nonzero(ix1 == True)[0]
+
+                    index_dictionary[i_mag, i_ang] = [ix0, ix1]
+
+                    for n in range(N):
+                        ### Two-sided test for distribution difference. If pv > 0.05 can't reject hypothesis that 
+                        ### two samples come from the same distribution. 
+                        _, pv = scipy.stats.ks_2samp(y_true[ix0, n], y_true[ix1, n])
+
+                        sig_diff[n, i_mag, i_ang] = pv < 0.05; 
+
+                        if n in important_neur:
+
+                            axi = f_dict[n][1][i_mag, i_ang]
+                            if pv < 0.05:
+                                axi.set_title('Mag %d, Ang %d ***, \nCO N %d, OBS N %d' %(i_mag, i_ang, np.sum(ix0), np.sum(ix1)),
+                                    fontsize=8)
+                            else:
+                                axi.set_title('Mag %d, Ang %d n.s., \nCO N %d, OBS N %d' %(i_mag, i_ang, np.sum(ix0), np.sum(ix1)),
+                                    fontsize=8)
+                    else:
+                        if n in important_neur:
+                            axi.set_title('Mag %d, Ang %d n.s., \nCO N %d, OBS N %d' %(i_mag, i_ang, np.sum(ix0), np.sum(ix1)),
+                                fontsize=8)
+
+        for n in important_neur:
+            f_dict[n][0].tight_layout()
+            f_dict[n][0].savefig(savedir + animal + '_day_' + str(i_d) + '_n_'+str(n) + '.png')
+            plt.close(f_dict[n][0])
+
+        ###################################
+        ### Now get the diff models: ######
+        print 'Done with day -- -1 --'
+        sig = ['k', 'r']
+        f, ax = plt.subplots(ncols = len(models_to_include), nrows = 2, figsize = (3*len(models_to_include), 6))
+
+        ### Rows are CO / OBS; 
+        f_, ax_ = plt.subplots(ncols = len(models_to_include), nrows = 4, figsize = (3*len(models_to_include), 8))
+
+        for i_m, mod in enumerate(models_to_include):
+
+            #### These are using the null/potent 
+            if 'potent' in mod:
+                modi = mod[:-6]
+                y_pred = model_dict[i_d, modi, 'pot']
+                #y_pred = get_decomp_y(KG_null, KG_pot, y_pred, only_null = False, only_potent=True)
+            
+            elif 'null' in mod:
+                modi = mod[:-4]
+                y_pred = model_dict[i_d, modi, 'null']
+                #y_pred = get_decomp_y(KG_null, KG_pot, y_pred, only_null = False, only_potent=True)                
+            else:
+                y_pred = model_dict[i_d, mod]
+
+            # ### Get null activity ###
+            # if np.logical_or(only_null, only_potent):
+            #     y_pred = get_decomp_y(KG_null, KG_pot, y_pred, only_null = only_null, only_potent=only_potent)
+
+            ax[0, i_m].set_title(mod, fontsize=8)
+            TD = []; PD = []; TD_s = []; PD_s = [];
+
+            pred = []; obs = []; 
+            predkg = []; obskg = [];
+            diff_tru = []; diff_trukg = []; 
+            diff_pred = []; diff_predkg = []; 
+
+            ### Make a plot
+            for i_mag in range(4):
+                for i_ang in range(8):
+
+                    if tuple([i_mag, i_ang]) in index_dictionary.keys():
+                        ix0, ix1 = index_dictionary[i_mag, i_ang]
+
+                        assert np.logical_and(len(ix0) >= min_obs, len(ix1) >= min_obs)
+
+                        if key == 'spks':
+                            #### True difference over all neurons -- CO vs. OBS:
+                            tru_co = 10*np.mean(y_true[ix0, :], axis=0)
+                            tru_ob = 10*np.mean(y_true[ix1, :], axis=0)
+
+                            pred_co = 10*np.mean(y_pred[ix0, :], axis=0)
+                            pred_ob = 10*np.mean(y_pred[ix1, :], axis=0)
+
+                            tru_diff = tru_co - tru_ob
+                            pred_diff = pred_co - pred_ob
+
+                        elif key == 'np':
+                            ### Mean angle: 
+                            # mean_co = math.atan2(np.mean(y_true[ix0, 1]), np.mean(y_true[ix0, 0]))
+                            # mean_ob = math.atan2(np.mean(y_true[ix1, 1]), np.mean(y_true[ix1, 0]))
+                            
+                            # pred_mean_co = math.atan2(sw.mean(y_pred[ix0, 1]), np.mean(y_pred[ix0, 0]))
+                            # pred_mean_ob = math.atan2(np.mean(y_pred[ix1, 1]), np.mean(y_pred[ix1, 0]))
+                            
+                            # ### do an angular difference: 
+                            # tru_diff = ang_difference(np.array([mean_co]), np.array([mean_ob]))
+                            # pred_diff = ang_difference(np.array([pred_mean_co]), np.array([pred_mean_ob]))
+
+                            tru_co = np.mean(y_true[ix0, :], axis=0)
+                            tru_ob = np.mean(y_true[ix1, :], axis=0)
+
+                            pred_co = np.mean(y_pred[ix0, :], axis=0)
+                            pred_ob = np.mean(y_pred[ix1, :], axis=0)
+
+                            tru_diff = tru_co - tru_ob
+                            pred_diff = pred_co - pred_ob
+
+                        for n, (td, pd) in enumerate(zip(tru_diff, pred_diff)):
+                            if sig_diff[n, i_mag, i_ang] == 1:
+                                ax[1, i_m].plot(td, pd, '.', color = sig[int(sig_diff[n, i_mag, i_ang])], alpha=1.)
+                                ax[0, i_m].plot(td, pd, '.', color = sig[int(sig_diff[n, i_mag, i_ang])], alpha=1.)
+
+                                ax_all[1, i_m].plot(td, pd, '.', color = sig[int(sig_diff[n, i_mag, i_ang])], alpha=1.)
+                                ax_all[0, i_m].plot(td, pd, '.', color = sig[int(sig_diff[n, i_mag, i_ang])], alpha=1.)
+
+
+                                TD_s.append(td);
+                                PD_s.append(pd);
+
+                                TD_all[mod, 'sig'].append(td);
+                                PD_all[mod, 'sig'].append(pd);
+
+                            ax[0, i_m].plot(td, pd, '.', color = sig[int(sig_diff[n, i_mag, i_ang])], alpha=0.2)
+                            ax_all[0, i_m].plot(td, pd, '.', color = sig[int(sig_diff[n, i_mag, i_ang])], alpha=0.2)
+
+                            TD.append(td);
+                            PD.append(pd);
+                            TD_all[mod, 'all'].append(td);
+                            PD_all[mod, 'all'].append(pd);
+
+                        if plot_pred_vals:
+                            ax_[0, i_m].plot(tru_co, pred_co, 'b.')
+                            ax_[0, i_m].plot(tru_ob, pred_ob, 'r.')
+                            ax_[2, i_m].plot(tru_co - tru_ob, pred_co - pred_ob, 'k.')
+
+                            #### Split by X / Y 
+                            if key != 'np':
+                                ax_[1, i_m].plot(np.dot(KG, tru_co.T)[0], np.dot(KG, pred_co.T)[0], 'b.')
+                                ax_[1, i_m].plot(np.dot(KG, tru_co.T)[1], np.dot(KG, pred_co.T)[1], 'b.', alpha = .3)
+
+                                ax_[1, i_m].plot(np.dot(KG, tru_ob.T)[0], np.dot(KG, pred_ob.T)[0], 'r.')
+                                ax_[1, i_m].plot(np.dot(KG, tru_ob.T)[1], np.dot(KG, pred_ob.T)[1], 'r.', alpha = .3)
+                            
+                                ###### PLOT DIFFERENCE ########
+                                ax_[3, i_m].plot(np.dot(KG, tru_co.T) - np.dot(KG, tru_ob.T), np.dot(KG, pred_co.T)-np.dot(KG, pred_ob.T),'k.')  
+                            
+                            diff_tru.append(tru_co - tru_ob)
+                            diff_pred.append(pred_co - pred_ob)
+
+                            if key != 'np':
+                                diff_trukg.append(np.dot(KG, tru_co.T) - np.dot(KG, tru_ob.T))
+                                diff_predkg.append(np.dot(KG, pred_co.T)-np.dot(KG, pred_ob.T))
+
+                            pred.append(pred_co)
+                            pred.append(pred_ob)
+                            obs.append(tru_co)
+                            obs.append(tru_ob)
+
+                            if key != 'np':
+                                predkg.append(np.dot(KG, pred_co.T))
+                                predkg.append(np.dot(KG, pred_ob.T))
+
+                                obskg.append(np.dot(KG, tru_co.T))
+                                obskg.append(np.dot(KG, tru_ob.T))
+
+                            cokg = np.mean(neural_push[ix0, :], axis=0)
+                            obkg = np.mean(neural_push[ix1, :], axis=0)
+
+                            if key != 'np':
+                                assert np.sum(np.abs(cokg - np.dot(KG, tru_co.T))) < 5e5
+                                assert np.sum(np.abs(obkg - np.dot(KG, tru_ob.T))) < 5e5
+
+                            ax_[0, i_m].set_title('True Y_t vs. Pred Y_t\nModel %s' %mod)
+                            ax_[1, i_m].set_title('True K*Y_t vs. Pred K*Y_t\nModel %s' %mod)
+
+            if plot_pred_vals:
+                pred = np.hstack((pred)).reshape(-1)
+                obs = np.hstack((obs)).reshape(-1)
+
+                if key != 'np':
+                    predkg = np.hstack((predkg)).reshape(-1)
+                    obskg = np.hstack((obskg)).reshape(-1)
+                
+                diff_tru = np.hstack((diff_tru)).reshape(-1)
+                diff_pred = np.hstack((diff_pred)).reshape(-1)
+
+                if key != 'np':
+                    diff_trukg = np.hstack((diff_trukg)).reshape(-1)
+                    diff_predkg = np.hstack((diff_predkg)).reshape(-1)
+
+                slp,intc,rv,pv,err = scipy.stats.linregress(obs, pred)
+                x_ = np.linspace(np.min(obs), np.max(obs), 100)
+                y_ = slp*x_ + intc; 
+                ax_[0, i_m].plot(x_, y_, '-', color='gray', linewidth = .5)
+                ax_[0, i_m].text(np.percentile(x_, 70), np.percentile(y_, 20), 'r = %.4f \npv = %.4f' %(rv, pv))
+                #ax_[0, i_m].set_ylim([0, 9])
+                
+                slp,intc,rv,pv,err = scipy.stats.linregress(diff_tru, diff_pred)
+                x_ = np.linspace(np.min(diff_tru), np.max(diff_tru), 100)
+                y_ = slp*x_ + intc; 
+                ax_[2, i_m].plot(x_, y_, '-', color='gray', linewidth = .5)
+                ax_[2, i_m].text(np.percentile(x_, 70), np.percentile(y_, 20), 'r = %.4f \npv = %.4f' %(rv, pv))
+                #ax_[2, i_m].set_ylim([-2, 2])
+
+                if key != 'np':
+                    slp,intc,rv,pv,err = scipy.stats.linregress(obskg, predkg)
+                    x_ = np.linspace(np.min(obskg), np.max(obskg), 100)
+                    y_ = slp*x_ + intc; 
+                    ax_[1, i_m].plot(x_, y_, '-', color='gray', linewidth = .5)
+                    ax_[1, i_m].text(np.percentile(x_, 70), np.percentile(y_, 20), 'r = %.4f \npv = %.4f' %(rv, pv))
+                    ax_[1, i_m].set_ylim([-2, 2])
+                
+                    slp,intc,rv,pv,err = scipy.stats.linregress(diff_trukg, diff_predkg)
+                    x_ = np.linspace(np.min(diff_trukg), np.max(diff_trukg), 100)
+                    y_ = slp*x_ + intc; 
+                    ax_[3, i_m].plot(x_, y_, '-', color='gray', linewidth = .5)
+                    ax_[3, i_m].text(np.percentile(x_, 70), np.percentile(y_, 20), 'r = %.4f \npv = %.4f' %(rv, pv))
+                    ax_[3, i_m].set_ylim([-.5, .5])
+
+            ### Lets do a linear correlation: 
+            slp,intc,rv,pv,err = scipy.stats.linregress(np.hstack((TD)), np.hstack((PD)))
+            x_ = np.linspace(np.min(np.hstack((TD))), np.max(np.hstack((TD))), 100)
+            y_ = slp*x_ + intc; 
+            ax[0, i_m].plot(x_, y_, '-', color='gray', linewidth = .5)
+            vaf = util_fcns.get_R2(np.hstack((TD)), np.hstack((PD)))
+            ax[0, i_m].text(np.percentile(x_, 70), np.percentile(y_, 20), 'r = %.4f \npv = %.4f\nslp = %.2f\n VAF = %.2f' %(rv, pv, slp, vaf))
+
+            slp,intc,rv,pv,err = scipy.stats.linregress(np.hstack((TD_s)), np.hstack((PD_s)))
+            x_ = np.linspace(np.min(np.hstack((TD_s))), np.max(np.hstack((TD_s))), 100)
+            y_ = slp*x_ + intc; 
+            ax[1, i_m].plot(x_, y_, '-', color='gray', linewidth = .5)
+            vaf = util_fcns.get_R2(np.hstack((TD_s)), np.hstack((PD_s)))
+            ax[1, i_m].text(np.percentile(x_, 70), np.percentile(y_, 20), 'r = %.4f \npv = %.4f\nslp = %.2f\n VAF = %.2f' %(rv, pv, slp, vaf))
+            print('Done with day -- %d --'%i_m)
+        
+        f.tight_layout()
+        #f.savefig(savedir+animal+'_day_'+str(i_d) + '_trudiff_vs_preddiff_xtask_mean_corrs_onlyNull_'+str(only_null)+'onlyPotent'+str(only_potent)+'_model_set'+str(model_set_number)+'.png')
+
+        print 'Done with day -- end --'
+
+    ## Get all the stuff for the ax_all; 
+    for i_m, mod in enumerate(models_to_include):
+        for sig, sig_nm in enumerate(['all', 'sig']):
+            x = np.hstack((TD_all[mod, sig_nm]))
+            y = np.hstack((PD_all[mod, sig_nm]))
+
+            slp,intc,rv,pv,err = scipy.stats.linregress(x, y)
+            x_ = np.linspace(np.min(x), np.max(x), 100)
+            y_ = slp*x_ + intc; 
+            ax_all[sig, i_m].plot(x_, y_, '-', color='gray', linewidth = .5)
+            ax_all[sig, i_m].text(np.percentile(x_, 70), np.percentile(y_, 20), 'r = %.4f \npv = %.4f' %(rv, pv))
+    f_all.tight_layout()
+    #f_all.savefig(savedir+animal+'_all_days_trudiff_vs_preddiff_xtask_mean_corrs_onlyNull_'+str(only_null)+'onlyPotent'+str(only_potent)+'_model_set'+str(model_set_number)+'.png')
+
