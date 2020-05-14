@@ -129,6 +129,8 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
             nneur = sub_spk_temp_all.shape[2]
 
             variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
+            
+            import pdb; pdb.set_trace()
             ### For each variable in the model: 
             for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
 
@@ -225,7 +227,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     model_data = dict(); 
 
     ### Get the ridge dict: 
-    ridge_dict = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+    ridge_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
 
     for obj in gc.get_objects():   # Browse through ALL objects
         if isinstance(obj, tables.File):   # Just HDF5 files
@@ -352,6 +354,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
                 ### These are teh params; 
                 _, model_nm, _, _, _ = model_var_list_i
+
+                import pdb; pdb.set_trace()
 
                 if ridge:
                     alpha_spec = ridge_dict[animal][0][i_d, model_nm]
@@ -581,8 +585,10 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
         elif include_state == 0:
             vel_model_nms = pos_model_nms = []; tg_model_nms = tsk_model_nms = []; 
         
-        ### Add push always -- this push uses the model_vars; 
-        push_model_nms, push_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'psh', include_action_lags = include_action_lags) 
+        ### Add push -- if include_action_lags, push is added at lag in model_vars (lag ix), else if 'psh_1' in model name, push at time 0 is added
+        ### else, no push is added
+        push_model_nms, push_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'psh', include_action_lags = include_action_lags,
+            model_nm = model_nm) 
 
         ### Past neural activity
 
