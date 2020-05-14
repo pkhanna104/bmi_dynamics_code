@@ -508,7 +508,8 @@ def get_training_testings(n_folds, data_temp):
 
 
 #### GET Variable names from params #######
-def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, neur_lag = 0, include_action_lags=False):
+def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, neur_lag = 0, include_action_lags=False,
+    model_nm = None):
     ### Get variable name
 
     nms = []
@@ -523,8 +524,14 @@ def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, neur_lag = 0, include_acti
                     nms.append(var_name+'x_tp'+str(np.abs(l)))
                     nms.append(var_name+'y_tp'+str(np.abs(l)))                                  
         else:
-            nms.append(var_name+'x_tm0')
-            nms.append(var_name+'y_tm0')
+            if model_nm is None:
+                raise Exception('Cannot figure out whether to add push if no model nm')
+            
+            if 'psh_1' in model_nm:
+                nms.append(var_name+'x_tm0')
+                nms.append(var_name+'y_tm0')
+            else:
+                print('No push')
 
     elif var_name == 'neur':
         for nl in neur_lag:
