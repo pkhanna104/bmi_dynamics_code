@@ -90,7 +90,7 @@ def get_model_var_list(model_set_number):
         predict_key = 'spks'
         history_bins_max = 1; 
         # Not sure about htis ###
-        #include_action_lags = True;
+        include_action_lags = False; #### Want CURRENT action
 
     elif model_set_number == 8:
         ### Dissecting previous state encoding vs. neural encoding. 

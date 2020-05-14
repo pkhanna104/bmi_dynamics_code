@@ -171,7 +171,9 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     ndays = None,
     include_null_pot = False,
     only_potent_predictor = False,
-    fit_task_specific_model_test_task_spec = False):
+
+    fit_task_specific_model_test_task_spec = False,
+    fit_task_spec_and_general = False):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -306,7 +308,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
                 ### Models to save ##########
                 ### Keep spikes ####
-                model_data[i_d, mod] = np.zeros_like(sub_spikes) 
+                if fit_task_spec_and_general:
+                    nT, nn = sub_spikes.shape
+                    model_data[i_d, mod] = np.zeros((nT, nn, 3)) 
+                else:
+                    model_data[i_d, mod] = np.zeros_like(sub_spikes) 
 
                 if include_null_pot:
                     ### if just use null / potent parts of predictions and propogate those guys
@@ -324,10 +330,17 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             sdFR[i_d][sdFR[i_d]==0] = 1
             sub_spikes = ( sub_spikes - mFR[i_d][np.newaxis, :] ) / sdFR[i_d][np.newaxis, :]
 
-        #### Get training / testing sets split up #####
-        test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
+        #### Get training / testing sets split up --- test on 80% one task, test on 20% same tasks 20% other task
+        if fit_task_spec_and_general:
+            test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp)
+            #import pdb; pdb.set_trace()
+        
+        ####### Get the test / train indices balanced over both tasks; 
+        else:
+            test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
+            type_of_model = np.zeros((n_folds, )) - 1
 
-        for i_fold in range(n_folds):
+        for i_fold, type_of_model_index in enumerate(type_of_model):
 
             ### TEST DATA ####
             data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
@@ -382,7 +395,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         
                         model_data[i_d, model_nm][test_ix[i_fold][ix0], :] = np.squeeze(np.array(pred_Y[0]))
                         model_data[i_d, model_nm][test_ix[i_fold][ix1], :] = np.squeeze(np.array(pred_Y[1]))
-
+                    
+                    elif fit_task_spec_and_general:
+                        model_data[i_d, model_nm][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
+                        
                     else:
                         model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
                        
@@ -492,7 +508,7 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
         ix1 = np.nonzero(tsk == 1)[0]
 
         X0 = X[ix0, :]; X1 = X[ix1, :]; 
-        Y0 = y[ix0, :]; Y1 = y[ix1, :];
+        Y0 = y_train[ix0, :]; Y1 = y_train[ix1, :];
         
         #### Model 1 ####
         model_2.fit(X0, Y0); 

@@ -506,6 +506,81 @@ def get_training_testings(n_folds, data_temp):
         assert len(tmp) == len(data_temp)
     return test_ix, train_ix 
 
+def get_training_testings_generalization(n_folds, data_temp):
+    ''' same as above, but now doing this for train CO, train OBS, train both '''
+
+    train_ix = dict();
+    test_ix = dict(); 
+    type_of_model = np.zeros((3*n_folds))
+
+    ### Get training and testing datasets: 
+    N_pts = []; N = []; 
+
+    ### List which points are from which task: 
+    for tsk in range(2):
+
+        ### Get task specific indices; 
+        ix = np.nonzero(data_temp['tsk'] == tsk)[0]
+
+        ### Shuffle the task indices
+        N_pts.append(ix[np.random.permutation(len(ix))])
+        N.append(len(ix))
+
+    Ncomb = np.min(np.hstack((N)))
+    Ntot = len(data_temp['tsk'])
+
+    ##### For each fold ###
+    for i_f, fold_perc in enumerate(np.arange(0., 1., 1./n_folds)):
+
+        ### [1, 2, 3, 4, 5] ###
+        train_ix[i_f] = []; 
+        test_ix[i_f] = []; 
+
+        #### For train CO:
+        for tsk in range(2):    
+
+            ### Get all these points to test; 
+            tst = N_pts[tsk][int(fold_perc*N[tsk]):int((fold_perc+(1./n_folds))*N[tsk])]
+            
+            #### Also add 20% of OTHER taks to testing; 
+            other_task = np.mod(tsk + 1, 2); 
+            tst2 = N_pts[other_task][int(fold_perc*N[other_task]):int((fold_perc+(1./n_folds))*N[other_task])]
+
+            ### Add all non-testing points from this task to training; 
+            trn = np.array([j for i, j in enumerate(N_pts[tsk]) if j not in tst])
+
+            train_ix[i_f + tsk*n_folds] = trn; 
+            test_ix[i_f + tsk*n_folds] = np.hstack((tst, tst2))
+            type_of_model[i_f + tsk*n_folds] = tsk
+
+        ### Now do the last part -- combined models with equal data from both tasks;  
+        ### [6, 7, 8, 9, 10] ###
+        test_ix[i_f + 2*n_folds] = []
+        train_ix[i_f + 2*n_folds] = []; 
+
+        ### Amount of training data from each task; 
+        Ncomb_train = int(0.8*Ncomb)
+        
+        ### Task -- pull test/train points 
+        for tsk in range(2):
+
+            #### Total amount of testing data 
+            Ncomb_test_tsk = N[tsk] - Ncomb_train
+
+            #### How big are the offsets for this to work? 
+            if int(fold_perc*N[tsk]) + Ncomb_test_tsk < N[tsk]:
+                test_ix[i_f + 2*n_folds].append(N_pts[tsk][int(fold_perc*N[tsk]):int(fold_perc*N[tsk]) + Ncomb_test_tsk])
+            else:
+                ### Just add the right amount of data from the end; 
+                test_ix[i_f + 2*n_folds].append(N_pts[tsk][-Ncomb_test_tsk:])
+        
+        test_ix[i_f + 2*n_folds] = np.hstack((test_ix[i_f + 2*n_folds]))
+        train_ix[i_f + 2*n_folds] = np.array([i for i in range(Ntot) if i not in test_ix[i_f + 2*n_folds]])
+        type_of_model[i_f + 2*n_folds] = 2
+
+    return test_ix, train_ix, type_of_model.astype(int)
+
+
 
 #### GET Variable names from params #######
 def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, include_action_lags=False,
@@ -573,7 +648,7 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
     KG_pot = None, fit_task_specific_model_test_task_spec = False):
 
     ##### Ridge Models ########
-    if type(model_v) is sklearn.linear_model.ridge.Ridge:
+    if type(model_v) is sklearn.linear_model.ridge.Ridge or type(model_v[0]) is sklearn.linear_model.ridge.Ridge:
         # CLF/RIDGE models: 
         model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
             fit_task_specific_model_test_task_spec)
