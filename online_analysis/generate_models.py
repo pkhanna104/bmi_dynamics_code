@@ -29,7 +29,6 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3):
     for animal in ['jeev','grom']:
         if run_alphas:
             h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, ndays = ndays[animal])
-        
         else:
             if animal == 'grom':
                 h5_name = config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number
@@ -130,13 +129,14 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
 
             variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
             
-            #import pdb; pdb.set_trace()
+            
             ### For each variable in the model: 
             for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
 
                 ### Unpack model_var_list; 
                 _, model_nm, _, _, _ = model_var_list_i; 
 
+                #import pdb; pdb.set_trace()
                 ####### HERE ######
                 #############################
                 ### Model with parameters ###
@@ -227,7 +227,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     model_data = dict(); 
 
     ### Get the ridge dict: 
-    ridge_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
 
     for obj in gc.get_objects():   # Browse through ALL objects
         if isinstance(obj, tables.File):   # Just HDF5 files
@@ -305,15 +305,13 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             for mod in models_to_include:
 
                 ### Models to save ##########
-                if model_set_number in [1, 3, 4, 8]:
+                ### Keep spikes ####
+                model_data[i_d, mod] = np.zeros_like(sub_spikes) 
 
-                    ### Keep spikes ####
-                    model_data[i_d, mod] = np.zeros_like(sub_spikes) 
-
-                    if include_null_pot:
-                        ### if just use null / potent parts of predictions and propogate those guys
-                        model_data[i_d, mod, 'null'] = np.zeros_like(sub_spikes)
-                        model_data[i_d, mod, 'pot'] = np.zeros_like(sub_spikes)
+                if include_null_pot:
+                    ### if just use null / potent parts of predictions and propogate those guys
+                    model_data[i_d, mod, 'null'] = np.zeros_like(sub_spikes)
+                    model_data[i_d, mod, 'pot'] = np.zeros_like(sub_spikes)
 
                 elif model_set_number == 2:
                     ##### 
@@ -355,7 +353,9 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                 ### These are teh params; 
                 _, model_nm, _, _, _ = model_var_list_i
 
-                import pdb; pdb.set_trace()
+                ## Store the params; 
+                model_data[model_nm, 'variables'] = variables
+                #import pdb; pdb.set_trace()
 
                 if ridge:
                     alpha_spec = ridge_dict[animal][0][i_d, model_nm]
@@ -587,8 +587,7 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
         
         ### Add push -- if include_action_lags, push is added at lag in model_vars (lag ix), else if 'psh_1' in model name, push at time 0 is added
         ### else, no push is added
-        push_model_nms, push_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'psh', include_action_lags = include_action_lags,
-            model_nm = model_nm) 
+        push_model_nms, push_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'psh', include_action_lags = include_action_lags, model_nm = model_nm) 
 
         ### Past neural activity
 
