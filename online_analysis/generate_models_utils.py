@@ -508,9 +508,10 @@ def get_training_testings(n_folds, data_temp):
 
 
 #### GET Variable names from params #######
-def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, neur_lag = 0, include_action_lags=False,
+def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, include_action_lags=False,
     model_nm = None):
     ### Get variable name
+    ### Update 5/13/20 -- remove neur_lag = 0, entry; neural lags will use lag_ixs
 
     nms = []
 
@@ -534,7 +535,7 @@ def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, neur_lag = 0, include_acti
                 print('No push')
 
     elif var_name == 'neur':
-        for nl in neur_lag:
+        for nl in lag_ixs:
             if nl <= 0:
                 t = 'm'
             elif nl > 0:

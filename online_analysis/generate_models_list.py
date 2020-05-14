@@ -1,7 +1,7 @@
 import numpy as np
 
 def get_model_var_list(model_set_number):
-    ####### STATE VARIABLE: 
+    ####### INCLUDE STATE VARIABLE -- at lags indicated in "lags" variable
     #######    1 -- velocity & position 
     #######    -1 --  position 
     #######    2 -- velocity & position & target
@@ -10,6 +10,8 @@ def get_model_var_list(model_set_number):
     
     ####### Include action_lags --> whether to include push_{t-1} etc. 
     ###### Include past_y{t-1} if zero -- nothing. If > 1, include that many past lags
+
+    ######## include y_{t-1} / y_{t+1} is just an INDICATOR. The lags that are inlcuded are the lags in "lags" entry; 
 
     model_var_list = []
     include_action_lags = True;
@@ -25,7 +27,7 @@ def get_model_var_list(model_set_number):
         # model_var_list.append([np.arange(-history_bins_max, history_bins_max+1), 'hist_fut_4pos_1psh_1spksm_1_spksp_0', 1, 1, 0]) ### t=-4,4, action and state, y_{t-1}
         # model_var_list.append([np.arange(-history_bins_max, history_bins_max+1), 'hist_fut_4pos_1psh_1spksm_1_spksp_1', 1, 1, 1]) ### t=-4,4, action and state, y_{t-1}, y_{t+1}
         predict_key = 'spks'
-        include_action_lags = False; ### Only action at t = 0; 
+        include_action_lags = False; ### Only ever want action at t = 0; 
         history_bins_max = 1; 
 
     elif model_set_number == 2:
@@ -50,7 +52,7 @@ def get_model_var_list(model_set_number):
         model_var_list.append([np.array([-1]),                'hist_1pos_0psh_0spksm_1_spksp_0',       0, 1, 0])     #### Model 1: y_{t+1} | y_{t}
         model_var_list.append([np.array([-1]),                'hist_1pos_0psh_1spksm_0_spksp_0',       0, 0, 0])     #### Model 1: y_{t+1} | a_t
         predict_key = 'spks'
-        include_action_lags = False; ### Only action at t = 0; 
+        include_action_lags = True; ### For line item (3) we want action at lag 1; 
         history_bins_max = 1;
 
     elif model_set_number == 4:

@@ -130,7 +130,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
 
             variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
             
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
             ### For each variable in the model: 
             for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
 
@@ -593,13 +593,13 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
         ### Past neural activity
 
         if include_past_yt > 0:
-            neur_nms1, neur_model_str1 = generate_models_utils.lag_ix_2_var_nm(model_vars, 'neur', nneur, np.arange(-1*include_past_yt, 0))
+            neur_nms1, neur_model_str1 = generate_models_utils.lag_ix_2_var_nm(model_vars, 'neur', nneur)#, np.arange(-1*include_past_yt, 0))
         else:
             neur_nms1 = []; 
 
         ### Next neural activity; 
         if include_fut_yt > 0:
-            neur_nms2, neur_model_str2 = generate_models_utils.lag_ix_2_var_nm(model_vars, 'neur', nneur, np.arange(1, 1*include_fut_yt + 1))
+            neur_nms2, neur_model_str2 = generate_models_utils.lag_ix_2_var_nm(model_vars, 'neur', nneur)#, np.arange(1, 1*include_fut_yt + 1))
         else:
             neur_nms2 = []; 
 
