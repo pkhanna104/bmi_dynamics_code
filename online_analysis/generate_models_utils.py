@@ -516,23 +516,24 @@ def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, include_action_lags=False,
     nms = []
 
     if var_name == 'psh':
-        if include_action_lags:
-            for l in lag_ixs:
-                if l<=0:
-                    nms.append(var_name+'x_tm'+str(np.abs(l)))
-                    nms.append(var_name+'y_tm'+str(np.abs(l)))
-                else:
-                    nms.append(var_name+'x_tp'+str(np.abs(l)))
-                    nms.append(var_name+'y_tp'+str(np.abs(l)))                                  
-        else:
-            if model_nm is None:
-                raise Exception('Cannot figure out whether to add push if no model nm')
-            
-            if 'psh_1' in model_nm:
-                nms.append(var_name+'x_tm0')
-                nms.append(var_name+'y_tm0')
+        if model_nm is None:
+            raise Exception('Cannot figure out whether to add push if no model nm')
+        
+        if 'psh_1' in model_nm:
+     
+            if include_action_lags:
+                for l in lag_ixs:
+                    if l<=0:
+                        nms.append(var_name+'x_tm'+str(np.abs(l)))
+                        nms.append(var_name+'y_tm'+str(np.abs(l)))
+                    else:
+                        nms.append(var_name+'x_tp'+str(np.abs(l)))
+                        nms.append(var_name+'y_tp'+str(np.abs(l)))                                  
             else:
-                print('No push')
+                nms.append(var_name+'x_tm0')
+                nms.append(var_name+'y_tm0')   
+        else:
+            print('No push')
 
     elif var_name == 'neur':
         for nl in lag_ixs:

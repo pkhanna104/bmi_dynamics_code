@@ -1322,7 +1322,8 @@ def fig_5_neural_dyn(min_obs = 15, r2_pop = True,
 
                     ### Get push ####
                     R2_np = util_fcns.get_R2(np_data, np_pred, pop = r2_pop, ignore_nans = True)
-                    import pdb; pdb.set_trace()
+                    #import pdb; pdb.set_trace()
+
                 else:
 
                     #### Predicted spikes; #######
@@ -1337,7 +1338,7 @@ def fig_5_neural_dyn(min_obs = 15, r2_pop = True,
                     ### Get push ####
                     R2_np = util_fcns.get_R2(np_data, np_pred, pop = r2_pop)
 
-                    import pdb; pdb.set_trace()
+                    #import pdb; pdb.set_trace()
                 ### Put the R2 in a dictionary: 
                 R2S[i_mod, i_d, 0] = R2; 
                 R2S[i_mod, i_d, 1] = R2_np; 
@@ -1386,6 +1387,8 @@ def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True,
     model_set_number = 3, ndays = None, 
     ndiv = 16, center_limit = True, center_rad_limit = 100000, 
     jeev_days = [0, 1, 2, 3]):
+    
+    ### note that previously jeev-days was [0, 2, 3] -- something about how day 1 only had 16 CO trials 
     
     ### For stats each neuron is an observation ##
     mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
@@ -1645,6 +1648,254 @@ def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True,
     fsumm.tight_layout()
     #fsumm.savefig(fig_dir + 'both_%sfig_5_neural_dyn_mean_pred_model%d.svg'%(pop_str, model_set_number))
  
+### Generalization of Neural dynamics across tasks #####
+### Generalization of neural dynamics -- population R2 ### -- figure 6(?)
+def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = False):
+    
+    ''' 
+    not presently sure if including action means "current action" or previous action 
+    '''
+
+    ###### Magnitude boundaries ####
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    
+    ########### FIGS ##########
+    fco, axco = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
+    fob, axob = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
+    fbth, axbth = plt.subplots(ncols = 2, nrows = 2, figsize = (8, 8))
+
+    if use_action:
+        models_to_include = ['hist_1pos_0psh_1spksm_1_spksp_0']
+    else:
+        models_to_include = ['hist_1pos_0psh_0spksm_1_spksp_0']
+
+    if ndays is None:
+        ndays_none = True
+    else:
+        ndays_none = False
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        DAYs = []; 
+
+        RX = []; 
+        RW = []; 
+        RGEN = []; 
+
+        RX_A = []; 
+        RW_A = []; 
+        RGEN_A = [];
+
+        f, ax = plt.subplots(nrows = 2, ncols =2 )
+        colors = ['b','r','k']
+        alphas = [1.,1.,1.]
+
+        ###### Weird model name ......######
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_action%s.pkl' %(model_set_number, use_action), 'rb'))
+
+        if ndays_none:
+            if animal == 'grom':
+                ndays_all = np.arange(9);
+                ndays = 9; 
+            elif animal == 'jeev':
+                ndays_all = [0, 2, 3];
+                ndays = 3; 
+
+        #####################
+        ### Real bar plot ###
+        #####################
+        ### 3 plots -- one for CO, one for OB, one combined
+        ### CO / OBS data  x Fit CO/OBS/GEN x ndays
+        R2s_plot_spks = np.zeros((2, 3, ndays))
+        R2s_plot_acts = np.zeros((2, 3, ndays)) 
+
+        for i_d, nd in enumerate(ndays_all):
+
+            ### Split by task -- assess R2 separately:  
+            for i_t in range(2):
+
+                ### task specific indices: 
+                task_ix = np.nonzero(dat[(nd, 'task')] == i_t)[0]
+
+                predict_key = 'spks'
+
+                task = dat[(nd, 'task')][task_ix]
+                push = dat[(nd, 'np')][task_ix, :]
+                spks = dat[(nd, 'spikes')][task_ix, :]
+
+                mn_spks = np.mean(dat[(nd, 'spikes')], axis=0)
+                mn_push = np.mean(dat[(nd, 'np')], axis=0)
+
+                if predict_key == 'spks':
+                    truth = spks; 
+                    truth_mn = mn_spks
+                
+                elif predict_key == 'psh':
+                    truth = push; 
+                    truth_mn = mn_push; 
+
+                ### Get the KG: 
+                if animal == 'grom':
+                    KG, _, _ = get_KG_decoder_grom(nd)
+                elif animal == 'jeev':
+                    KG, _, _ = get_KG_decoder_jeev(nd)
+                    KG = np.squeeze(np.array(KG))
+
+                ### convert this to discrete commands
+                commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, nd, vel_ix = [0, 1])[0]
+
+                for i_m, mod in enumerate(models_to_include):
+
+                    ### for different task 
+                    data_mod = dat[(nd, mod)][task_ix, :, :] ### T x N x 3 [train on task 0, train on task 1, train on both]
+
+                    for trg_ix, (tsk_col, tsk_alph) in enumerate(zip(colors, alphas)):
+
+                        R2 = get_R2(truth, data_mod[:, :, trg_ix], pop = True, ignore_nans = True)
+                        R2s_plot_spks[i_t, trg_ix, i_d] = R2; 
+
+                        ax[i_t, 0].bar(i_d + (9*trg_ix), R2, color=tsk_col)
+                        ax[i_t, 0].set_title('R2 Neural Activity, \n %s' %mod)
+                        
+                        if predict_key == 'spks':
+                            ###### Estimated Push ######
+                            R2 = get_R2(push, np.dot(KG, data_mod[:, :, trg_ix].T).T, pop = True, ignore_nans = True)
+                            R2s_plot_acts[i_t, trg_ix, i_d] = R2;
+
+                            ax[i_t, 1].bar(i_d + (9*trg_ix), R2, color=tsk_col)
+                            ax[i_t, 1].set_title('R2 Push Activity, \n %s' %mod)
+            
+
+        ### Here we want to do within task vs. across task: 
+        pwi = np.zeros((ndays, 2, 2)) # days  x co/obs x spks/act
+        px = np.zeros((ndays, 2, 2))
+        pall = np.zeros((ndays, 2, 2))
+
+        for i_d, nd in enumerate(ndays_all):
+            pred_wi = []; 
+            pred_x = []; 
+
+            ### Get the KG: 
+            if animal == 'grom':
+                KG, _, _ = get_KG_decoder_grom(nd)
+            elif animal == 'jeev':
+                KG, _, _ = get_KG_decoder_jeev(nd)
+                KG = np.squeeze(np.array(KG))
+
+            ### Data ###
+            for i_t in range(2):
+                task_ix = np.nonzero(dat[(nd, 'task')] == i_t)[0]
+                spks_true = dat[(nd, 'spikes')][task_ix, :]
+                psh_true = dat[(nd, 'np')][task_ix, :]
+
+                ### Model used ###
+                for i_train in range(3):
+
+                    pred = dat[(nd, mod)][task_ix, :, i_train]
+                    psh = np.dot(KG, pred.T).T
+
+                    r2i = get_R2(spks_true, pred, pop = True, ignore_nans = True)
+                    r2i_psh = get_R2(psh_true, psh, pop = True, ignore_nans = True)
+
+                    if i_t == i_train:
+                        pwi[i_d, i_t, 0] = r2i
+                        pwi[i_d, i_t, 1] = r2i_psh
+
+                    elif i_train == 2:
+                        pall[i_d, i_t, 0] = r2i
+                        pall[i_d, i_t, 1] = r2i_psh
+
+                    else:
+                        assert np.abs(i_train - i_t) == 1
+                        px[i_d, i_t, 0] = r2i
+                        px[i_d, i_t, 1] = r2i_psh
+
+        PWI = [pwi[:, :, 0].reshape(-1), pwi[:, :, 1].reshape(-1), ]
+        PX = [px[:, :, 0].reshape(-1), px[:, :, 1].reshape(-1) ]
+        PALL = [pall[:, :, 0].reshape(-1), pall[:, :, 1].reshape(-1)]
+
+        #### Plot figure ####
+        tis = ['Neural', 'Push']
+        for z in range(2):
+            pwii = PWI[z]
+            pxi = PX[z]
+            palli = PALL[z]
+
+            ### CO data figure ###
+            # axco[z, i_a].bar(0, np.mean(R2s_plot_spks[0, 0, :]), color = 'w', edgecolor = 'k', width = .4, linewidth = 2.)
+            # axco[z, i_a].errorbar(0, np.mean(R2s_plot_spks[0, 0, :]), yerr=np.std(R2s_plot_spks[0, 0, :])/np.sqrt(ndays), color = 'k', marker='|')
+            # axco[z, i_a].bar(0.4, np.mean(R2s_plot_spks[0, 1, :]), color = 'grey', edgecolor = 'k', width = .4, linewidth = 2.)
+            # axco[z, i_a].errorbar(0.4, np.mean(R2s_plot_spks[0, 1, :]), yerr=np.std(R2s_plot_spks[0, 1, :])/np.sqrt(ndays), color = 'k', marker='|')
+
+            # axob[z, i_a].bar(0., np.mean(R2s_plot_spks[1, 1, :]), color = 'grey', edgecolor = 'k', width = .4, linewidth = 2.)
+            # axob[z, i_a].errorbar(0, np.mean(R2s_plot_spks[1, 1, :]), yerr=np.std(R2s_plot_spks[1, 1, :])/np.sqrt(ndays), color = 'k', marker='|')
+            # axob[z, i_a].bar(0.4, np.mean(R2s_plot_spks[1, 0, :]), color = 'w', edgecolor = 'k', width = .4, linewidth = 2.)
+            # axob[z, i_a].errorbar(0.4, np.mean(R2s_plot_spks[1, 0, :]), yerr=np.std(R2s_plot_spks[1, 0, :])/np.sqrt(ndays), color = 'k', marker='|')
+
+            #### Figure w/ combo ####
+            axbth[z, i_a].bar(0, np.mean(pwii), color='w', edgecolor='k', width=.4, linewidth=.2)
+            axbth[z, i_a].bar(0.4, np.mean(pxi), color='grey', edgecolor='k', width=.4, linewidth=.2)
+            #axbth[z, i_a].bar(0.8, np.mean(palli), color='k', edgecolor='k', width=.4, linewidth=.2)
+            
+        
+            for i_d in range(ndays):
+                # axco[z, i_a].plot([0, .4], [R2s_plot_spks[0, 0, i_d], R2s_plot_spks[0, 1, i_d]], 'k-', linewidth = 1.)
+                # axob[z, i_a].plot([0, .4], [R2s_plot_spks[1, 1, i_d], R2s_plot_spks[1, 0, i_d]], 'k-', linewidth = 1.)
+
+                for x in range(2):
+                    #axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'k-', linewidth = 1.)
+                    axbth[z, i_a].plot([0, .4,], [pwii[2*i_d + x], pxi[2*i_d + x]], 'k-', linewidth = 1.)
+
+                    DAYs.append(i_d)
+
+                    if z == 0:
+                        RX.append(px[i_d, x, 0])
+                        RW.append(pwi[i_d, x, 0])
+                        RGEN.append(pall[i_d, x, 0])
+
+                    elif z == 1:
+                        RX_A.append(px[i_d, x, 1])
+                        RW_A.append(pwi[i_d, x, 1])
+                        RGEN_A.append(pall[i_d, x, 1])
+
+
+            axbth[z, i_a].set_title('%s, Monk %s'%(tis[z], animal),fontsize = 8)
+            axbth[z, i_a].set_ylabel('R2')
+            axbth[z, i_a].set_xticks([0., .4])
+            axbth[z, i_a].set_xticklabels(['Within', 'Across'])
+        ### stats: 
+
+        print 'Neural, subj %s, w vs x' %(animal)
+        w_vs_x = np.hstack(( np.hstack((RW)), np.hstack((RX)) ))
+        grps = np.hstack(( np.zeros_like(RW), np.zeros_like(RX)+1))
+        pv, slp = run_LME(DAYs, grps, w_vs_x)
+        print('pv: %.2f, slp %.2f'%(pv, slp))
+
+        if pv < 0.001: 
+            axbth[0, i_a].text(0.2, np.max(w_vs_x), '***')
+        elif pv < 0.01: 
+            axbth[0, i_a].text(0.2, np.max(w_vs_x), '**')
+        elif pv < 0.05:
+            axbth[0, i_a].text(0.2, np.max(w_vs_x), '*')
+
+        print 'ACTION, subj %s, w vs x' %(animal)
+        w_vs_x = np.hstack(( np.hstack((RW_A)), np.hstack((RX_A)) ))
+        grps = np.hstack(( np.zeros_like(RW_A), np.zeros_like(RX_A)+1))
+        pv, slp = run_LME(DAYs, grps, w_vs_x)
+        print('pv: %.2f, slp %.2f'%(pv, slp))
+
+        if pv < 0.001: 
+            axbth[1, i_a].text(0.2, np.max(w_vs_x), '***')
+        elif pv < 0.01: 
+            axbth[1, i_a].text(0.2, np.max(w_vs_x), '**')
+        elif pv < 0.05:
+            axbth[1, i_a].text(0.2, np.max(w_vs_x), '*')
+        else:
+            axbth[1, i_a].text(0.2, np.max(w_vs_x), 'n.s.')
+
+    fco.tight_layout()
+    fob.tight_layout()
+    fbth.tight_layout()
+    fbth.savefig('gen_w_vs_x.svg')
 
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
 ### Use model predictions to generate means -- potent and null options included. 
