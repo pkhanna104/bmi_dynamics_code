@@ -1,4 +1,5 @@
 #### Methods to generate models used to predict neural activity ####
+
 from analysis_config import config 
 import analysis_config
 import generate_models_utils, generate_models_list

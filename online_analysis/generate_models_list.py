@@ -1,3 +1,5 @@
+###### Models used to predict neural activity or neural push #####
+
 import numpy as np
 
 def get_model_var_list(model_set_number):

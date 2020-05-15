@@ -1,3 +1,7 @@
+################################################
+###### Methods for processing Jeev's Data ######
+################################################
+
 # Facts: EC_trialEndErrs = [4, 8, 12, 9]; %errors for not holding at center/target and reach time-outs, and code for reward that marks successful trial. Trial is over after an error
 
 ########################

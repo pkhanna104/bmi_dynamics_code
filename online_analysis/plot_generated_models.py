@@ -1,3 +1,5 @@
+############## Methods to plot models generated in 'generate models' ###########
+
 import seaborn
 seaborn.set(font='Arial',context='talk',font_scale=1., style='white')
 
@@ -1650,18 +1652,20 @@ def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True,
  
 ### Generalization of Neural dynamics across tasks #####
 ### Generalization of neural dynamics -- population R2 ### -- figure 6(?)
-def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = False):
+def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = False,
+    plot_by_day = False):
     
     ''' 
     not presently sure if including action means "current action" or previous action 
+        -- remember that including action forced the model to represent potent action accurately. 
     '''
 
     ###### Magnitude boundaries ####
     mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
     
     ########### FIGS ##########
-    fco, axco = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
-    fob, axob = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
+    # fco, axco = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
+    # fob, axob = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
     fbth, axbth = plt.subplots(ncols = 2, nrows = 2, figsize = (8, 8))
 
     if use_action:
@@ -1690,7 +1694,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         alphas = [1.,1.,1.]
 
         ###### Weird model name ......######
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_action%s.pkl' %(model_set_number, use_action), 'rb'))
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
 
         if ndays_none:
             if animal == 'grom':
@@ -1708,6 +1712,14 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         R2s_plot_spks = np.zeros((2, 3, ndays))
         R2s_plot_acts = np.zeros((2, 3, ndays)) 
 
+        #######################################
+        ##### Summary X vs. WIN bar plot ######
+        #######################################
+        ### Here we want to do within task vs. across task R2 -- combined bar plot: 
+        pwi = np.zeros((ndays, 2, 2)) # days  x co/obs x spks/act
+        px = np.zeros((ndays, 2, 2))
+        pall = np.zeros((ndays, 2, 2))
+
         for i_d, nd in enumerate(ndays_all):
 
             ### Split by task -- assess R2 separately:  
@@ -1718,26 +1730,28 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
 
                 predict_key = 'spks'
 
+                #### Get info about task / push / spks
                 task = dat[(nd, 'task')][task_ix]
                 push = dat[(nd, 'np')][task_ix, :]
-                spks = dat[(nd, 'spikes')][task_ix, :]
+                spks = dat[(nd, 'spks')][task_ix, :]
 
-                mn_spks = np.mean(dat[(nd, 'spikes')], axis=0)
+                mn_spks = np.mean(dat[(nd, 'spks')], axis=0)
                 mn_push = np.mean(dat[(nd, 'np')], axis=0)
 
-                if predict_key == 'spks':
-                    truth = spks; 
-                    truth_mn = mn_spks
+                #if predict_key == 'spks':
+                truth = spks.copy(); 
+                truth_mn = mn_spks.copy()
                 
-                elif predict_key == 'psh':
-                    truth = push; 
-                    truth_mn = mn_push; 
+                # elif predict_key == 'psh':
+                #     truth = push.copy() 
+                #     truth_mn = mn_push.copy() 
 
                 ### Get the KG: 
                 if animal == 'grom':
-                    KG, _, _ = get_KG_decoder_grom(nd)
+                    KG, _, _ = generate_models.get_KG_decoder_grom(nd)
+                
                 elif animal == 'jeev':
-                    KG, _, _ = get_KG_decoder_jeev(nd)
+                    KG, _, _ = generate_models.get_KG_decoder_jeev(nd)
                     KG = np.squeeze(np.array(KG))
 
                 ### convert this to discrete commands
@@ -1748,66 +1762,42 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                     ### for different task 
                     data_mod = dat[(nd, mod)][task_ix, :, :] ### T x N x 3 [train on task 0, train on task 1, train on both]
 
+                    ### Iterate through the 3 possibilities; 
                     for trg_ix, (tsk_col, tsk_alph) in enumerate(zip(colors, alphas)):
 
-                        R2 = get_R2(truth, data_mod[:, :, trg_ix], pop = True, ignore_nans = True)
+                        ### Data fit on models from trg_ix -- shouldn't be any nans; 
+                        R2 = util_fcns.get_R2(truth, data_mod[:, :, trg_ix], pop = True)#, ignore_nans = True)
+
+                        ### Data from task i_t, fit on trg_ix, on day: 
                         R2s_plot_spks[i_t, trg_ix, i_d] = R2; 
 
-                        ax[i_t, 0].bar(i_d + (9*trg_ix), R2, color=tsk_col)
+                        if plot_by_day:
+                            xaxis = i_d*4 + trg_ix
+                        else:
+                            xaxis = i_d + 9*trg_ix 
+
+                        ax[i_t, 0].bar(xaxis, R2, color=tsk_col)
                         ax[i_t, 0].set_title('R2 Neural Activity, \n %s' %mod)
                         
                         if predict_key == 'spks':
                             ###### Estimated Push ######
-                            R2 = get_R2(push, np.dot(KG, data_mod[:, :, trg_ix].T).T, pop = True, ignore_nans = True)
+                            R2 = util_fcns.get_R2(push, np.dot(KG, data_mod[:, :, trg_ix].T).T, pop = True, ignore_nans = True)
                             R2s_plot_acts[i_t, trg_ix, i_d] = R2;
 
-                            ax[i_t, 1].bar(i_d + (9*trg_ix), R2, color=tsk_col)
+                            ax[i_t, 1].bar(xaxis, R2, color=tsk_col)
                             ax[i_t, 1].set_title('R2 Push Activity, \n %s' %mod)
-            
+        
+                    #### For these 3 possibilities -- figure out which is which; 
+                    #### Within task training; 
+                    pwi[i_d, i_t, 0] = R2s_plot_spks[i_t, i_t, i_d]
+                    pwi[i_d, i_t, 1] = R2s_plot_acts[i_t, i_t, i_d]
+                    
+                    non_tsk = np.mod(i_t + 1, 2)
+                    px[i_d, i_t, 0] = R2s_plot_spks[i_t, non_tsk, i_d]
+                    px[i_d, i_t, 1] = R2s_plot_acts[i_t, non_tsk, i_d]
 
-        ### Here we want to do within task vs. across task: 
-        pwi = np.zeros((ndays, 2, 2)) # days  x co/obs x spks/act
-        px = np.zeros((ndays, 2, 2))
-        pall = np.zeros((ndays, 2, 2))
-
-        for i_d, nd in enumerate(ndays_all):
-            pred_wi = []; 
-            pred_x = []; 
-
-            ### Get the KG: 
-            if animal == 'grom':
-                KG, _, _ = get_KG_decoder_grom(nd)
-            elif animal == 'jeev':
-                KG, _, _ = get_KG_decoder_jeev(nd)
-                KG = np.squeeze(np.array(KG))
-
-            ### Data ###
-            for i_t in range(2):
-                task_ix = np.nonzero(dat[(nd, 'task')] == i_t)[0]
-                spks_true = dat[(nd, 'spikes')][task_ix, :]
-                psh_true = dat[(nd, 'np')][task_ix, :]
-
-                ### Model used ###
-                for i_train in range(3):
-
-                    pred = dat[(nd, mod)][task_ix, :, i_train]
-                    psh = np.dot(KG, pred.T).T
-
-                    r2i = get_R2(spks_true, pred, pop = True, ignore_nans = True)
-                    r2i_psh = get_R2(psh_true, psh, pop = True, ignore_nans = True)
-
-                    if i_t == i_train:
-                        pwi[i_d, i_t, 0] = r2i
-                        pwi[i_d, i_t, 1] = r2i_psh
-
-                    elif i_train == 2:
-                        pall[i_d, i_t, 0] = r2i
-                        pall[i_d, i_t, 1] = r2i_psh
-
-                    else:
-                        assert np.abs(i_train - i_t) == 1
-                        px[i_d, i_t, 0] = r2i
-                        px[i_d, i_t, 1] = r2i_psh
+                    pall[i_d, i_t, 0] = R2s_plot_spks[i_t, 2, i_d]
+                    pall[i_d, i_t, 1] = R2s_plot_acts[i_t, 2, i_d]
 
         PWI = [pwi[:, :, 0].reshape(-1), pwi[:, :, 1].reshape(-1), ]
         PX = [px[:, :, 0].reshape(-1), px[:, :, 1].reshape(-1) ]
@@ -1834,7 +1824,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
             #### Figure w/ combo ####
             axbth[z, i_a].bar(0, np.mean(pwii), color='w', edgecolor='k', width=.4, linewidth=.2)
             axbth[z, i_a].bar(0.4, np.mean(pxi), color='grey', edgecolor='k', width=.4, linewidth=.2)
-            #axbth[z, i_a].bar(0.8, np.mean(palli), color='k', edgecolor='k', width=.4, linewidth=.2)
+            axbth[z, i_a].bar(0.8, np.mean(palli), color='k', edgecolor='k', width=.4, linewidth=.2)
             
         
             for i_d in range(ndays):
@@ -1842,8 +1832,8 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                 # axob[z, i_a].plot([0, .4], [R2s_plot_spks[1, 1, i_d], R2s_plot_spks[1, 0, i_d]], 'k-', linewidth = 1.)
 
                 for x in range(2):
-                    #axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'k-', linewidth = 1.)
-                    axbth[z, i_a].plot([0, .4,], [pwii[2*i_d + x], pxi[2*i_d + x]], 'k-', linewidth = 1.)
+                    axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'k-', linewidth = 1.)
+                    #axbth[z, i_a].plot([0, .4,], [pwii[2*i_d + x], pxi[2*i_d + x]], 'k-', linewidth = 1.)
 
                     DAYs.append(i_d)
 
@@ -1860,14 +1850,14 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
 
             axbth[z, i_a].set_title('%s, Monk %s'%(tis[z], animal),fontsize = 8)
             axbth[z, i_a].set_ylabel('R2')
-            axbth[z, i_a].set_xticks([0., .4])
-            axbth[z, i_a].set_xticklabels(['Within', 'Across'])
+            axbth[z, i_a].set_xticks([0., .4, .8])
+            axbth[z, i_a].set_xticklabels(['Within', 'Across', 'Both'])
         ### stats: 
 
         print 'Neural, subj %s, w vs x' %(animal)
         w_vs_x = np.hstack(( np.hstack((RW)), np.hstack((RX)) ))
         grps = np.hstack(( np.zeros_like(RW), np.zeros_like(RX)+1))
-        pv, slp = run_LME(DAYs, grps, w_vs_x)
+        pv, slp = util_fcns.run_LME(DAYs, grps, w_vs_x)
         print('pv: %.2f, slp %.2f'%(pv, slp))
 
         if pv < 0.001: 
@@ -1880,7 +1870,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         print 'ACTION, subj %s, w vs x' %(animal)
         w_vs_x = np.hstack(( np.hstack((RW_A)), np.hstack((RX_A)) ))
         grps = np.hstack(( np.zeros_like(RW_A), np.zeros_like(RX_A)+1))
-        pv, slp = run_LME(DAYs, grps, w_vs_x)
+        pv, slp = util_fcns.run_LME(DAYs, grps, w_vs_x)
         print('pv: %.2f, slp %.2f'%(pv, slp))
 
         if pv < 0.001: 
@@ -1892,10 +1882,10 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         else:
             axbth[1, i_a].text(0.2, np.max(w_vs_x), 'n.s.')
 
-    fco.tight_layout()
-    fob.tight_layout()
+    #fco.tight_layout()
+    #fob.tight_layout()
     fbth.tight_layout()
-    fbth.savefig('gen_w_vs_x.svg')
+    #fbth.savefig('gen_w_vs_x.svg')
 
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
 ### Use model predictions to generate means -- potent and null options included. 

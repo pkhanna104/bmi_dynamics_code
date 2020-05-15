@@ -5,8 +5,11 @@ import scipy
 import datetime
 from db import dbfunctions as dbfn
 import pickle
+import analysis_config
 
-storage_loc = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
+######### Methods for extracting trial metrics, Rew per min etc. used to analyze online results #########
+
+storage_loc = analysis_config.config['grom_pref']
 
 def targ_ix_to_3x3_subplot(ix):
     if ix == 0:
@@ -70,7 +73,6 @@ def process_targets(te_list, new_hdf_name, add_spk_cnts=False):
     rpm_table = h5file.createTable("/", 'rpm', RPM, "RPM in 2 min chunks, aligned to next rew")
 
     extra = {}    
-
 
     row_cnt = -1
 

@@ -1,3 +1,7 @@
+###########################################################################################
+####### method for plotting mean trajectories of cursor aligned to a specific command #####
+###########################################################################################
+
 import pickle
 import numpy as np; 
 import matplotlib.pyplot as plt 

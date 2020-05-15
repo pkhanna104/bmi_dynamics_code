@@ -11,6 +11,9 @@ import pandas
 import seaborn
 seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
+######################################################################
+####### Methods for analyzing online CO vs. OBS shared results #######
+######################################################################
 
 #########################################
 #### Start 3/2 #############

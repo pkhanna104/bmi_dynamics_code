@@ -1,3 +1,6 @@
+######## OLDER METHODS FOR EXTRACTING TUNING TRENDS ##########
+######### Has code with insanely rigorous compariosns of mFR over time to ensure effect is not due to drift ########
+
 import prelim_analysis as pa
 from matplotlib import mlab, cm
 import matplotlib.pyplot as plt

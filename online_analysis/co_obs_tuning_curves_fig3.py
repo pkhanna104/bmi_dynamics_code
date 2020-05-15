@@ -1,3 +1,6 @@
+######## OLDER METHODS FOR EXTRACTING TUNING TRENDS ##########
+######### Has code with insanely rigorous compariosns of mFR over time to ensure effect is not due to drift ########
+
 # ** ** CO Obs Tuning Curves
 # Updated April 2017-Copy_with_custom_fit_by_day_radial_tuning-July 2017-Figure1FG,3G-Copy1
 
