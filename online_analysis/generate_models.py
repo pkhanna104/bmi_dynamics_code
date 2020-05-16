@@ -174,7 +174,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     only_potent_predictor = False,
 
     fit_task_specific_model_test_task_spec = False,
-    fit_task_spec_and_general = False):
+    fit_task_spec_and_general = False,
+    fit_condition_spec_no_general = False):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -188,7 +189,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     Modified 9/13/19 to add neural tuning on top of this; 
     Modified 9/16/19 to add model return on top of this; 
     Modiefied 9/17/19 to use specialized alphas for each model, and change notation to specify y_{t-1} and/or y_{t+1}
-    Modified 5/7/20 to use "generate models list to determine most model parameters"
+    Modified 5/7/20 to use "generate models list" to determine model parameters instead of looping throuhg ;
 
     Input param: hdf_filename: name to save params to 
     Input param: animal: 'grom' or jeev'
@@ -207,6 +208,12 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         use_lags: list of lags to actually use (e.g. np.arange(-4, 5, 2))
         normalize_neurons: whether to compute a within-day mFR and sdFR so that high FR neurons don't dominate R2 
             calculations
+
+    Task specificity: 
+        -- fit_task_specific_model_test_task_spec --- leftover from sept 2019 -- fit on task specific data / test on it 
+        -- fit_task_spec_and_general -- fit on task spec data and general data and use models to reconstruct all data; 
+        -- fit_condition_spec_no_general -- fit data on condition specific data, reconstruct all data. 
+
     Output param: 
     '''
     model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(model_set_number)
@@ -312,6 +319,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                 if fit_task_spec_and_general:
                     nT, nn = sub_spikes.shape
                     model_data[i_d, mod] = np.zeros((nT, nn, 3)) 
+                
+                elif fit_condition_spec_no_general:
+                    nT, nn = sub_spikes.shape
+                    model_data[i_d, mod] = np.zeros((nT, nn, 20)) 
+                
                 else:
                     model_data[i_d, mod] = np.zeros_like(sub_spikes) 
 
@@ -334,114 +346,119 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         #### Get training / testing sets split up --- test on 80% one task, test on 20% same tasks 20% other task
         if fit_task_spec_and_general:
             test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp)
-            #import pdb; pdb.set_trace()
         
+        elif fit_condition_spec_no_general:
+            test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_condition_spec(n_folds, data_temp)
+            model_data[i_d, 'type_of_model'] = type_of_model
         ####### Get the test / train indices balanced over both tasks; 
         else:
             test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
-            type_of_model = np.zeros((n_folds, )) - 1
+            type_of_model = np.zeros((n_folds, ))
 
         for i_fold, type_of_model_index in enumerate(type_of_model):
 
-            ### TEST DATA ####
-            data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
-            data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
-            data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
-            data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
-            data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
+            if type_of_model_index < 0:
+                pass
+            else:
+                ### TEST DATA ####
+                data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
+                data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
+                data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
+                data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
+                data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
 
-            ### TRAIN DATA ####
-            data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
-            data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
-            data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
-            data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
-            data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
+                ### TRAIN DATA ####
+                data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
+                data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
+                data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
+                data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
+                data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
 
-            nneur = sub_spk_temp_all.shape[2]
+                nneur = sub_spk_temp_all.shape[2]
 
-            variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
-            
-            ### For each variable in the model: 
-            for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
+                variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
+                
+                ### For each variable in the model: 
+                for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
 
-                ### These are teh params; 
-                _, model_nm, _, _, _ = model_var_list_i
+                    ### These are teh params; 
+                    _, model_nm, _, _, _ = model_var_list_i
 
-                ## Store the params; 
-                model_data[model_nm, 'variables'] = variables
-                #import pdb; pdb.set_trace()
+                    ## Store the params; 
+                    model_data[model_nm, 'variables'] = variables
+                    #import pdb; pdb.set_trace()
 
-                if ridge:
-                    alpha_spec = ridge_dict[animal][0][i_d, model_nm]
-                    model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
-                        only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
-                        fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec)
-                    save_model = True
-                else:
-                    raise Exception('Need to figure out teh stirng business again -- removed for clarity')
-                    model_ = ols(st, data_temp_dict).fit()
-                    save_model = False
-
-                if save_model:
-                    h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
-                        test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
-                        only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth,
-                        fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec)
-
-                    ### Save models, make predictions ####
-                    ### Need to figure out which spikes are where:
-                    if fit_task_specific_model_test_task_spec:
-                        ix0 = np.nonzero(data_temp_dict_test['tsk'] == 0)[0]
-                        ix1 = np.nonzero(data_temp_dict_test['tsk'] == 1)[0]
-                        
-                        model_data[i_d, model_nm][test_ix[i_fold][ix0], :] = np.squeeze(np.array(pred_Y[0]))
-                        model_data[i_d, model_nm][test_ix[i_fold][ix1], :] = np.squeeze(np.array(pred_Y[1]))
-                    
-                    elif fit_task_spec_and_general:
-                        model_data[i_d, model_nm][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
-                        
+                    if ridge:
+                        alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+                        model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
+                            only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
+                            fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec)
+                        save_model = True
                     else:
-                        model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
-                       
-                        ### Save model -- for use later. 
-                        if model_set_number == 8:
-                            model_data[i_d, model_nm, i_fold, 'model'] = model_; 
-                            model_data[i_d, model_nm, i_fold, 'model_testix'] = test_ix[i_fold]; 
+                        raise Exception('Need to figure out teh stirng business again -- removed for clarity')
+                        model_ = ols(st, data_temp_dict).fit()
+                        save_model = False
 
+                    if save_model:
+                        h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
+                            test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
+                            only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth,
+                            fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec)
 
-                    #### Add / null potent? 
-                    if include_null_pot:
-
-                        ### Get predictors together: 
-                        x_test = [];
-                        for vr in variables:
-                            x_test.append(data_temp_dict_test[vr][: , np.newaxis])
-                        X = np.mat(np.hstack((x_test)))
-
-                        ### Get null and potent -- KG_null_proj, KG_potent_orth
-                        X_null = np.dot(KG_null_proj, X.T).T
-                        X_pot =  np.dot(KG_potent_orth, X.T).T
-
-                        assert np.allclose(X, X_null + X_pot)
-
-                        ### Need to divide the intercept into null / potent: 
-                        intc = model_.intercept_
-                        intc_null = np.dot(KG_null_proj, intc)
-                        intc_pot = np.dot(KG_potent_orth, intc)
-
-                        assert np.allclose(np.sum(np.abs(np.dot(KG, intc_null))), 0)
-                        assert np.allclose(np.sum(np.abs(np.dot(KG, X_null.T))), 0)
-
-                        pred_null = np.mat(X_null)*np.mat(model_.coef_).T + intc_null[np.newaxis, :]
-                        pred_pot = np.mat(X_pot)*np.mat(model_.coef_).T + intc_pot[np.newaxis, :]
-
-                        assert np.allclose(pred_Y, pred_null + pred_pot)
-
-                        ### This just propogates the identity; 
-                        # model_data[i_d, giant_model_name][test_ix[i_fold], :] = X.copy()
-                        model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
-                        model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
+                        ### Save models, make predictions ####
+                        ### Need to figure out which spikes are where:
+                        if fit_task_specific_model_test_task_spec:
+                            ix0 = np.nonzero(data_temp_dict_test['tsk'] == 0)[0]
+                            ix1 = np.nonzero(data_temp_dict_test['tsk'] == 1)[0]
+                            
+                            model_data[i_d, model_nm][test_ix[i_fold][ix0], :] = np.squeeze(np.array(pred_Y[0]))
+                            model_data[i_d, model_nm][test_ix[i_fold][ix1], :] = np.squeeze(np.array(pred_Y[1]))
                         
+                        elif fit_task_spec_and_general or fit_condition_spec_no_general:
+                            model_data[i_d, model_nm][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
+                            
+                        else:
+                            model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
+                           
+                            ### Save model -- for use later. 
+                            if model_set_number == 8:
+                                model_data[i_d, model_nm, i_fold, 'model'] = model_; 
+                                model_data[i_d, model_nm, i_fold, 'model_testix'] = test_ix[i_fold]; 
+
+
+                        #### Add / null potent? 
+                        if include_null_pot:
+
+                            ### Get predictors together: 
+                            x_test = [];
+                            for vr in variables:
+                                x_test.append(data_temp_dict_test[vr][: , np.newaxis])
+                            X = np.mat(np.hstack((x_test)))
+
+                            ### Get null and potent -- KG_null_proj, KG_potent_orth
+                            X_null = np.dot(KG_null_proj, X.T).T
+                            X_pot =  np.dot(KG_potent_orth, X.T).T
+
+                            assert np.allclose(X, X_null + X_pot)
+
+                            ### Need to divide the intercept into null / potent: 
+                            intc = model_.intercept_
+                            intc_null = np.dot(KG_null_proj, intc)
+                            intc_pot = np.dot(KG_potent_orth, intc)
+
+                            assert np.allclose(np.sum(np.abs(np.dot(KG, intc_null))), 0)
+                            assert np.allclose(np.sum(np.abs(np.dot(KG, X_null.T))), 0)
+
+                            pred_null = np.mat(X_null)*np.mat(model_.coef_).T + intc_null[np.newaxis, :]
+                            pred_pot = np.mat(X_pot)*np.mat(model_.coef_).T + intc_pot[np.newaxis, :]
+
+                            assert np.allclose(pred_Y, pred_null + pred_pot)
+
+                            ### This just propogates the identity; 
+                            # model_data[i_d, giant_model_name][test_ix[i_fold], :] = X.copy()
+                            model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
+                            model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
+                            
     h5file.close()
     print 'H5 File Done: ', hdf_filename
 
@@ -451,6 +468,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     else:
         if fit_task_specific_model_test_task_spec:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec.pkl' %model_set_number, 'wb'))
+        elif fit_task_spec_and_general:
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %model_set_number, 'wb'))
+        elif fit_condition_spec_no_general:
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec.pkl' %model_set_number, 'wb'))
         else:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'wb'))
 

@@ -1,3 +1,4 @@
+#### Utils for model generation ######
 import analysis_config
 import prelim_analysis as pa 
 from resim_ppf import ppf_pa
@@ -580,7 +581,61 @@ def get_training_testings_generalization(n_folds, data_temp):
 
     return test_ix, train_ix, type_of_model.astype(int)
 
+def get_training_testings_condition_spec(n_folds, data_temp):
+    '''
+    same as above, but with each train_ix for a specific target
+    '''
+    
+    train_ix = dict();
+    test_ix = dict(); 
+    type_of_model = np.zeros((20*n_folds)) - 1
 
+    ### Get training and testing datasets: 
+    N_pts = []; N = []; TSK_TG = []
+
+    ### List which points are from which task: 
+    for tsk in range(2):
+
+        for targ in range(10):
+
+            ### Get task specific indices; 
+            ix = np.nonzero(np.logical_and(data_temp['tsk'] == tsk, data_temp['trg'] == targ))[0]
+
+            if len(ix) > 0:
+            
+                ### Shuffle the task indices
+                N_pts.append(ix[np.random.permutation(len(ix))])
+                N.append(len(ix))
+
+                ### Added task / target ###
+                TSK_TG.append([tsk, targ])
+
+    ##### For each fold ###
+    for i_f, fold_perc in enumerate(np.arange(0., 1., 1./n_folds)):
+
+        ### [1, 2, 3, 4, 5] ###
+        train_ix[i_f] = []; 
+        test_ix[i_f] = []; 
+
+        for i_t, (tsk, targ) in enumerate(TSK_TG):
+
+            ### Get all these points to test; 
+            tst = N_pts[i_t][int(fold_perc*N[i_t]):int((fold_perc+(1./n_folds))*N[i_t])]
+            
+            #### Also add 20% of OTHER targets to testing; 
+            tst2 = []
+            for i_t2 in range(len(TSK_TG)):
+                if i_t2 != i_t: 
+                    tst2.append(N_pts[i_t2][int(fold_perc*N[i_t2]):int((fold_perc+(1./n_folds))*N[i_t2])])
+
+            ### Add all non-testing points from this task to training; 
+            trn = np.array([j for i, j in enumerate(N_pts[i_t]) if j not in tst])
+
+            train_ix[i_f + n_folds*(tsk*10 + targ)] = trn; 
+            test_ix[i_f + n_folds*(tsk*10 + targ)] = np.hstack((tst, np.hstack(( tst2)) ))
+            type_of_model[i_f + n_folds*(tsk*10 + targ)] = tsk*10 + targ
+    
+    return test_ix, train_ix, type_of_model.astype(int)
 
 #### GET Variable names from params #######
 def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, include_action_lags=False,
