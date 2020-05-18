@@ -420,8 +420,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         
                         elif fit_condition_spec_no_general:
                             ### List the indices and the prediction and the fold: 
-                            model_data[i_d, model_nm][type_of_model_index, 'ix'] = test_ix[i_fold]
-                            model_data[i_d, model_nm][type_of_model_index, 'pred'] = np.squeeze(np.array(pred_Y))
+                            model_data[i_d, model_nm][type_of_model_index, 'ix'].append(test_ix[i_fold])
+                            model_data[i_d, model_nm][type_of_model_index, 'pred'].append(np.squeeze(np.array(pred_Y)))
                             
                         else:
                             model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))

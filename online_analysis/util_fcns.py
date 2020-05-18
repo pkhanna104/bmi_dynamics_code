@@ -62,15 +62,59 @@ def get_angles():
     plt.plot(rang, ang_bins)
 
 #### Linear mixed effect modeling: 
-def run_LME(Days, Grp, Metric):
+def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
     data = pd.DataFrame(dict(Days=Days, Grp=Grp, Metric=Metric))
     md = smf.mixedlm("Metric ~ Grp", data, groups=data["Days"])
     mdf = md.fit()
     pv = mdf.pvalues['Grp']
     slp = mdf.params['Grp']
+
+    if bar_plot:
+        f, ax = plt.subplots(figsize = (4, 4))
+        ix = np.unique(Grp)
+        ymax = 0; 
+
+        for i in ix:
+            ixx = np.nonzero(Grp == i)[0]
+            ax.bar(i, np.mean(Metric[ixx]))
+            ax.errorbar(i, np.std(Metric[ixx])/np.sqrt(len(ixx)), marker='|', color='k')
+            ymax = np.max(np.array([ymax, np.mean(Metric[ixx])]))
+
+        ixd = np.unique(Days)
+        for i_d in ixd:
+            tmp = []
+            for i in ix: 
+                ixx = np.nonzero(np.logical_and(Days == i_d, Grp == i))[0]
+                tmp.append(np.mean(Metric[ixx]))
+            ax.plot(ix, tmp, 'k-')
+
+        ax.plot([ix[0], ix[-1]], 1.2*np.array([ymax, ymax]), 'k-')
+
+        if pv < 0.001:
+            string = '***'
+        elif pv < 0.01:
+            string = '**'
+        elif pv < 0.05:
+            string = '*'
+        else:
+            string = 'n.s.'
+        ax.text(np.mean(np.array([ix[0], ix[-1]])), 1.3*ymax, string, color='k')
+        ax.set_ylim([0., 1.4*ymax])
+        if xlabels is None: 
+            pass
+        else:
+            ax.set_xticks(np.unique(Grp))
+            ax.set_xticklabels(xlabels, rotation = 45)
+        ax.set_title(title)
+        f.tight_layout()
+
+
+
     return pv, slp
 
 def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
+    assert(y_true.shape == y_pred.shape)
+
     if np.logical_and(len(y_true.shape) == 1, len(y_pred.shape) == 1):
         y_true = y_true[:, np.newaxis]
         y_pred = y_pred[:, np.newaxis]
