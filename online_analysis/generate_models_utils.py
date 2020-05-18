@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 
 import sklearn.linear_model
 import scipy.stats
+from collections import defaultdict
 
 pref = analysis_config.config['grom_pref']
 n_entries_hdf = 800
@@ -584,6 +585,8 @@ def get_training_testings_generalization(n_folds, data_temp):
 def get_training_testings_condition_spec(n_folds, data_temp):
     '''
     same as above, but with each train_ix for a specific target
+
+    updated 5/18/20 -- removed the outside target testing; 
     '''
     
     train_ix = dict();
@@ -617,6 +620,7 @@ def get_training_testings_condition_spec(n_folds, data_temp):
         train_ix[i_f] = []; 
         test_ix[i_f] = []; 
 
+        #### Corresponds to task / target ####
         for i_t, (tsk, targ) in enumerate(TSK_TG):
 
             ### Get all these points to test; 
@@ -624,15 +628,17 @@ def get_training_testings_condition_spec(n_folds, data_temp):
             
             #### Also add 20% of OTHER targets to testing; 
             tst2 = []
-            for i_t2 in range(len(TSK_TG)):
-                if i_t2 != i_t: 
-                    tst2.append(N_pts[i_t2][int(fold_perc*N[i_t2]):int((fold_perc+(1./n_folds))*N[i_t2])])
+
+            ### Skip other target testing; 
+            # for i_t2 in range(len(TSK_TG)):
+            #     if i_t2 != i_t: 
+            #         tst2.append(N_pts[i_t2][int(fold_perc*N[i_t2]):int((fold_perc+(1./n_folds))*N[i_t2])])
 
             ### Add all non-testing points from this task to training; 
             trn = np.array([j for i, j in enumerate(N_pts[i_t]) if j not in tst])
 
             train_ix[i_f + n_folds*(tsk*10 + targ)] = trn; 
-            test_ix[i_f + n_folds*(tsk*10 + targ)] = np.hstack((tst, np.hstack(( tst2)) ))
+            test_ix[i_f + n_folds*(tsk*10 + targ)] = np.hstack((tst))#, np.hstack(( tst2)) ))
             type_of_model[i_f + n_folds*(tsk*10 + targ)] = tsk*10 + targ
     
     return test_ix, train_ix, type_of_model.astype(int)

@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import datetime
 import gc
 import tables, pickle
+from collections import defaultdict
 
 from sklearn.linear_model import Ridge
 import scipy
@@ -321,8 +322,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     model_data[i_d, mod] = np.zeros((nT, nn, 3)) 
                 
                 elif fit_condition_spec_no_general:
-                    nT, nn = sub_spikes.shape
-                    model_data[i_d, mod] = np.zeros((nT, nn, 20)) 
+                    ### Use whatever keys are available
+                    model_data[i_d, mod] = defaultdict(list)
                 
                 else:
                     model_data[i_d, mod] = np.zeros_like(sub_spikes) 
@@ -414,8 +415,13 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             model_data[i_d, model_nm][test_ix[i_fold][ix0], :] = np.squeeze(np.array(pred_Y[0]))
                             model_data[i_d, model_nm][test_ix[i_fold][ix1], :] = np.squeeze(np.array(pred_Y[1]))
                         
-                        elif fit_task_spec_and_general or fit_condition_spec_no_general:
+                        elif fit_task_spec_and_general:
                             model_data[i_d, model_nm][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
+                        
+                        elif fit_condition_spec_no_general:
+                            ### List the indices and the prediction and the fold: 
+                            model_data[i_d, model_nm][type_of_model_index, 'ix'] = test_ix[i_fold]
+                            model_data[i_d, model_nm][type_of_model_index, 'pred'] = np.squeeze(np.array(pred_Y))
                             
                         else:
                             model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
