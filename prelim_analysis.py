@@ -12,6 +12,8 @@ import pickle
 import scipy
 import os, copy
 import scipy.io as sio
+import analysis_config 
+
 # te = 3138
 
 # if te==3136:
@@ -518,7 +520,7 @@ def get_target_ix(targ_pos):
     #        [-7.07106781e+00,  7.07106781e+00],
     #        [-1.00000000e+01,  1.22464680e-15]])
 
-    dats = sio.loadmat('/Users/preeyakhanna/fa_analysis/online_analysis/unique_targ.mat')
+    dats = sio.loadmat(analysis_config.config['grom_pref'] + 'unique_targ.mat')
     unique_targ = dats['unique_targ']
 
     targ_ix = np.zeros((targ_pos.shape[0]), )
