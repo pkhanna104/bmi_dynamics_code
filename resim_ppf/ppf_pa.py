@@ -339,7 +339,7 @@ def plot_jeev_trials(task = 'obs'):
     input_type = fk.task_filelist
     
     if task == 'co':
-        te_num = input_type[0][0][1]
+        te_num = input_type[0][0][0]
     elif task == 'obs':
         te_num = input_type[0][1][0]
     
@@ -365,8 +365,22 @@ def plot_jeev_trials(task = 'obs'):
             ax.plot(cursor_state[trl][:, 0], cursor_state[trl][:, 2], '-', color = colors[i], linewidth=1.0)
 
         ### Plot the target: 
-        ax.plot(np.array([.04, targ_i_all[ix[0], 0]])*20, np.array([.14, targ_i_all[ix[0], 1]])*20, 'k-.')
+        if task == 'co':
+            ax.plot(np.array([.04, targ_i_all[ix[0], 0]])*20, np.array([.14, targ_i_all[ix[0], 1]])*20, 'k-.')
+        else:
+            tg = targ_i_all[ix[0], :]
 
+            ### Subtract obstacle target center; 
+            tg = tg - np.array([0., 2.5])
+
+            ### Convert cm --> m 
+            tg = tg / 100.
+
+            ### Add back the other center; 
+            tg = tg + np.array([.04, .14])
+
+            ### Plot the whole thing
+            ax.plot(np.array([.04, tg[0]])*20, np.array([.14,tg[1]])*20, 'k-.')
 
 
 
