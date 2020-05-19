@@ -9,6 +9,9 @@ from resim_ppf import *
 import pickle
 import analysis_config
 
+###### notes -- pos  = pos_ppf * 20, vel = vel_ppf*20 ; 
+###### targetPos is real target position 
+
 trialList = np.zeros((11, 3))
 trialList[1,:]  = [5, 2, 11]
 trialList[2,:]  = [11, 2, 5]
