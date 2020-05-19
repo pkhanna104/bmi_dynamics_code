@@ -1661,10 +1661,6 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
 
     updates 5/18/20 -- made it so that also computed R2 on each day, not for each task separately 
     '''
-
-    ###### Magnitude boundaries ####
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
-    
     ########### FIGS ##########
     # fco, axco = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
     # fob, axob = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
@@ -1947,9 +1943,6 @@ def plot_r2_bar_tg_spec_7_gen():
     updates 5/18/20 -- made it so that also computed R2 on each day, not for each target/condition separately 
         -- todo eventually figure otu how we want to do stats
     '''
-    ###### Magnitude boundaries ####
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
-    
     ########### FIGS ##########
     ##### Each thing is its own data;
     ##### jeev & grom;  
