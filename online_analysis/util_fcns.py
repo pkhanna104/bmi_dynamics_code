@@ -4,9 +4,12 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import pandas as pd
 
+import scipy.io as sio
 import matplotlib.pyplot as plt
 
 from resim_ppf import file_key
+
+import analysis_config
 
 def get_cov_diffs(ix_co, ix_ob, spks, diffs, method = 1):
     cov1 = np.cov(10*spks[ix_co, :].T); 
@@ -54,12 +57,11 @@ def commands2bins(commands, mag_boundaries, animal, day_ix, vel_ix = [3, 5], ndi
         command_bins.append(np.hstack((mag_bins[:, np.newaxis], ang_bins[:, np.newaxis])))
     return command_bins
 
-
-def populate_state(data_temp, animal):
+def add_targ_locs(data_temp, animal):
 
     targ_ix = data_temp['trg']
     tsk_ix = data_temp['tsk']
-    targ_pos = get_targ_pos(animal, targ_ix)
+    targ_pos = get_targ_pos(animal, targ_ix.astype(int), tsk_ix.astype(int))
 
     data_temp['trgx'] = targ_pos[:, 0]
     data_temp['trgy'] = targ_pos[:, 1]
@@ -78,13 +80,37 @@ def populate_state(data_temp, animal):
 
     elif animal == 'jeev':
         centerPos = np.array([ 0.0377292,  0.1383867])
-        data_temp['centx'] = np.zeros((len(targ_ix))) + centerPos[0]
-        data_temp['centy'] = np.zeros((len(targ_ix))) + centerPos[1]
- 
+        data_temp['centx'] = 20*(np.zeros((len(targ_ix))) + centerPos[0])
+        data_temp['centy'] = 20*(np.zeros((len(targ_ix))) + centerPos[1])
+        
         data_temp['obsx'] = np.zeros((len(targ_ix)))
         data_temp['obsy'] = np.zeros((len(targ_ix)))
+        
+        co_ix = np.nonzero(tsk_ix == 0)[0]
+        data_temp['trgx'][co_ix] = 20*data_temp['trgx'][co_ix]
+        data_temp['trgy'][co_ix] = 20*data_temp['trgy'][co_ix]
+        
 
+        obs_ix = np.nonzero(tsk_ix == 1)[0]
+        obs_tg = get_obs_pos_jeev(targ_ix[obs_ix].astype(int))
 
+        data_temp['obsx'][obs_ix] = obs_tg[:, 0]
+        data_temp['obsy'][obs_ix] = obs_tg[:, 1]
+
+        ### Convert obs stuff to same coordinates as pos / vel; 
+        for _, (ik, key) in enumerate(zip([0, 1, 0, 1], ['trgx', 'trgy', 'obsx', 'obsy'])):
+            tg = np.squeeze(np.array(data_temp[key][obs_ix] - np.array([0., 2.5])[ik]))
+
+            ### Convert cm --> m 
+            tg = tg / 100.
+
+            ### Add back the other center; 
+            tg = tg + centerPos[ik]
+
+            ### Substitute back in; 
+            data_temp[key][obs_ix] = 20*tg.copy()
+
+    return data_temp
 
 def get_targ_pos(animal, targ_ix, task_ix):
     if animal == 'grom':
@@ -95,16 +121,24 @@ def get_targ_pos(animal, targ_ix, task_ix):
             targ_pos[i_t, :] = unique_targ[tg_ix, :]
 
     elif animal == 'jeev':
-        targ_pos = np.zeros((len(targ_ix)), 2)
+        targ_pos = np.zeros((len(targ_ix), 2))
         ix0 = np.nonzero(task_ix == 0)[0]
         ix1 = np.nonzero(task_ix == 1)[0]
 
         targ_pos[ix0] = file_key.targ_ix_to_loc(targ_ix[ix0])
 
         ### Get obstacle target location; 
-        targ_pox[ix1] = file_key.targ_ix_to_loc_obs(targ_ix[ix1])
+        targ_pos[ix1] = file_key.targ_ix_to_loc_obs(targ_ix[ix1])
 
     return targ_pos
+
+def get_obs_pos_jeev(targ_ix):
+    jdat = sio.loadmat(analysis_config.config['BMI_DYN'] + 'resim_ppf/jeev_obs_positions_from_amy.mat')
+    obs_pos = []
+    for it, tg in enumerate(targ_ix):
+        int_targ_num = jdat['trialList'][tg, 1] - 1 #Python indexing
+        obs_pos.append(jdat['targPos'][int_targ_num, :])
+    return np.vstack((obs_pos))
 
 def get_angles():
     rang = np.linspace(-2*np.pi, 2*np.pi, 200)

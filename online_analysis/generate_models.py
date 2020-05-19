@@ -2,7 +2,7 @@
 
 from analysis_config import config 
 import analysis_config
-import generate_models_utils, generate_models_list
+import generate_models_utils, generate_models_list, util_fcns
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -310,9 +310,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             model_data[i_d, 'pos'] = np.vstack((np.array(data_temp['posx_tm0']), np.array(data_temp['posy_tm0']))).T
             model_data[i_d, 'vel'] = np.vstack((np.array(data_temp['velx_tm0']), np.array(data_temp['vely_tm0']))).T
             model_data[i_d, 'vel_tm1'] = np.vstack((np.array(data_temp['velx_tm1']), np.array(data_temp['vely_tm1']))).T
+            model_data[i_d, 'pos_tm1'] = np.vstack((np.array(data_temp['posx_tm1']), np.array(data_temp['posy_tm1']))).T
             model_data[i_d, 'trl'] = np.squeeze(np.array(data_temp['trl']))
             
-            ### Models -- save predicitons
+            ### Models -- save predictions
             for mod in models_to_include:
 
                 ### Models to save ##########
@@ -480,6 +481,186 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec.pkl' %model_set_number, 'wb'))
         else:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'wb'))
+
+######## Possible STEP 2 -- fit the residuals #####
+def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
+    model = 'hist_1pos_0psh_0spksm_1_spksp_0', n_folds = 5):
+    '''
+    method to open up a model fit above, compute the residules, and then fit the residules to state encoding? 
+        -- need to make sure all the correct variables are in the dictionary; 
+    
+    inputs; 
+        animal == jeev or grom ; 
+        model_set_number = file to pull from ; 
+        state_vars = list of state variables to pull from ; 
+        fit_task_spec_and_general = [CO task / OBS task / General ]
+        fit_condition_spec_no_general = [all keys with indices and own target]
+        model = name of dynamics model -- this should be relatively constant; 
+
+    '''
+
+    ### Open up the model, compute the residuals from the previous model; 
+    ### then set them as true; 
+    ### save the original data, the dynamics prediction, the state prediction so all types of R2 can be computed; 
+    suffx = ''
+
+    ### Load this animal's data;
+    suffx1 = '_task_spec_pls_gen'
+    suffx2 = '_cond_spec'
+    
+    dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d%s.pkl' %(model_set_number, suffx1), 'rb'))
+    dat_cond = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d%s.pkl' %(model_set_number, suffx2), 'rb'))
+
+    ### Go through all the days; 
+    ndays = analysis_config.data_params[animal + '_ndays']
+    order_dict = analysis_config.data_params[animal+'_ordered_input_type']
+    input_type = analysis_config.data_params[animal+'_input_type']
+
+    ### Start a model dictionary; ###
+    rez_dict = {}; pred_dict = {}
+
+    ### Go through all the days ###
+    for i_d, day in enumerate(input_type):
+
+        rez_dict[i_d] = {}
+        pred_dict[i_d] = {}
+        data_temp_rez = {}
+
+        true_spks = dat[i_d, 'spks']
+
+        ### Now compute the residuals ###
+        #### Get the general thing: 
+        rez_dict[i_d]['res', 'gen'] = true_spks - dat[i_d, model][:, :, 2]
+
+        ### Compile the 'within task' 
+        tsk_spec = np.zeros_like(true_spks)
+        tsk0 = np.nonzero(dat[i_d, 'task'] == 0)[0]
+        tsk1 = np.nonzero(dat[i_d, 'task'] == 1)[0]
+
+        ### Get 'within' task for CO and OBS ###
+        tsk_spec = np.zeros_like(true_spks)
+        tsk_spec[tsk0, :] = dat[i_d, model][tsk0, :, 0]
+        tsk_spec[tsk1, :] = dat[i_d, model][tsk1, :, 1]
+
+        ### copy the tsk spec one: 
+        rez_dict[i_d]['res', 'tsk'] = true_spks - tsk_spec.copy()
+
+        ### Now get the condition specific model ### 
+        cond_spec = np.zeros_like(true_spks)
+        ix_all = []; 
+        for trg in range(20):
+            if len(dat_cond[i_d, model][trg, 'ix']) > 0:
+                IX = np.hstack((dat_cond[i_d, model][trg, 'ix'])); 
+                PRED = np.vstack((dat_cond[i_d, model][trg, 'pred'])); 
+                cond_spec[IX, :] = PRED.copy()
+                ix_all.append(IX)
+            else:
+                pass
+
+        ix_all = np.hstack((ix_all))
+        assert(len(ix_all) == tsk_spec.shape[0])
+
+        ### Save the residuals ###
+        rez_dict[i_d]['res', 'cond'] = true_spks - cond_spec.copy()
+        
+        _, data_temp, _, _, _ = generate_models_utils.get_spike_kinematics(animal,
+            day, order_dict[i_d], 1)
+
+        data_temp = util_fcns.add_targ_locs(data_temp, animal)
+
+        #### Add the residuals 
+        data_temp_rez['res_cond'] = rez_dict[i_d]['res','cond']
+        data_temp_rez['res_tsk'] = rez_dict[i_d]['res', 'tsk']
+        data_temp_rez['res_gen'] = rez_dict[i_d]['res', 'gen']
+
+
+        variables = []
+        for i_s, sv in enumerate(state_vars):
+            if 'pos' in sv:
+                variables.append(['posx_tm1', 'posy_tm1'])
+            elif 'vel' in sv:
+                variables.append(['velx_tm1', 'vely_tm1'])
+            elif 'trg' in sv:
+                variables.append(['trgx', 'trgy', 'centx', 'centy', 'obsx', 'obsy'])
+            elif 'tsk' in sv:
+                variables.append(['tsk'])
+
+        variables = np.hstack((variables))
+        import pdb; pdb.set_trace()
+        ###### Add relevant stuff to rez dict
+        rez_dict[i_d]['trg'] = data_temp['trg']
+        rez_dict[i_d]['tsk'] = data_temp['tsk']
+        rez_dict[i_d]['true_spks'] = true_spks.copy()
+        rez_dict[i_d]['pred_spks_cond'] = cond_spec.copy()
+        rez_dict[i_d]['pred_spks_tsk'] = tsk_spec.copy()
+        rez_dict[i_d]['pred_spks_gen'] = dat[i_d, model][:, :, 2].copy()
+
+        ################################################################################
+        ############ For each of these --- fit a gen B, task B, cond specific B; #######
+        for i_M, rez_mod in enumerate(['gen', 'tsk', 'cond']):
+            predict_key = 'res_' + rez_mod
+            pred_dict[i_d][predict_key] = {}
+            
+            for i_m, mod_type in enumerate(['gen', 'tsk', 'cond']):
+                pred_dict[i_d][predict_key]['B'+mod_type] = np.zeros_like(data_temp_rez[predict_key])
+
+                ### Get out the training / testing indices #####
+                if mod_type in ['gen', 'tsk']:
+                    test_ix, train_ix, mtype = generate_models_utils.get_training_testings_generalization(n_folds, data_temp)            
+                else:
+                    test_ix, train_ix, mtype = generate_models_utils.get_training_testings_condition_spec(n_folds, data_temp)
+
+                IX_tot = [] 
+
+                #### Aggregate state ####
+                for i_fold, type_of_model_index in enumerate(mtype):
+                    
+                    if type_of_model_index < 0:
+                        pass
+                    
+                    else:
+                    
+                        alpha_spec = 0; 
+                        model_ = fit_ridge(data_temp_rez[predict_key][train_ix[i_fold], :], data_temp.iloc[train_ix[i_fold]], variables, alpha=alpha_spec)
+                        
+                        ### Plot predictions 
+                        model_, predY = generate_models_utils.sklearn_mod_to_ols(model_, data_temp.iloc[test_ix[i_fold]], 
+                            variables, predict_key, testY = data_temp_rez[predict_key][test_ix[i_fold], :])
+
+                        ### Ok, now figure out how to store these guys ####
+                        if mod_type == 'gen' and type_of_model_index == 2:
+                            pred_dict[i_d][predict_key]['B'+mod_type][test_ix[i_fold], :] = predY.copy()
+                            IX_tot.append(test_ix[i_fold])
+                        
+                        ### CO model: only fill in the CO task; 
+                        elif mod_type == 'tsk' and type_of_model_index == 0:
+                            ix_co = np.nonzero(data_temp['tsk'][test_ix[i_fold]] == 0)[0]
+                            pred_dict[i_d][predict_key]['B'+mod_type][test_ix[i_fold][ix_co], :] = predY[ix_co, :].copy()
+                            IX_tot.append(test_ix[i_fold][ix_co])
+                        
+                        ### OBS model -- only fill in the obstacle task 
+                        elif mod_type == 'tsk' and type_of_model_index == 1:
+                            ix_ob = np.nonzero(data_temp['tsk'][test_ix[i_fold]] == 1)[0]
+                            pred_dict[i_d][predict_key]['B'+mod_type][test_ix[i_fold][ix_ob], :] = predY[ix_ob, :].copy()
+                            IX_tot.append(test_ix[i_fold][ix_ob])
+                        
+                        elif mod_type == 'cond':
+                            assert(np.all(data_temp['trg'][test_ix[i_fold]] == np.mod(type_of_model_index, 10)))
+                            assert(np.all(data_temp['tsk'][test_ix[i_fold]] == type_of_model_index / 10))
+                            pred_dict[i_d][predict_key]['B'+mod_type][test_ix[i_fold], :] = predY.copy()
+                            IX_tot.append(test_ix[i_fold])
+
+                ### Now aggregate together -- check taht all indices were covered ####
+                IX_tot = np.hstack((IX_tot))
+                if mod_type == 'gen':
+                    assert(len(np.unique(IX_tot)) == data_temp_rez[predict_key].shape[0])
+                else:
+                    assert(len(IX_tot) == data_temp_rez[predict_key].shape[0])
+                    assert(len(np.unique(IX_tot)) == len(IX_tot))
+
+    #### Save stuff for later; 
+    D = dict(pred_dict=pred_dict, rez_dict = rez_dict)
+    pickle.dump(D, open(analysis_config.config[animal+'_pref'] + 'res_model_fit_state.pkl', 'wb'))
 
 #### UTILS #####
 def panda_to_dict(D):

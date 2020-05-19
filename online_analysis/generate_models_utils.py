@@ -787,7 +787,7 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
 
  
 def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
-    KG_pot = None, fit_task_specific_model_test_task_spec = False):
+    KG_pot = None, fit_task_specific_model_test_task_spec = False, testY = None):
     
     # Called from h5_add_model: 
     # model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
@@ -798,7 +798,11 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
     for vr in x_var_names:
         x_test.append(test_data[vr][: , np.newaxis])
     X = np.mat(np.hstack((x_test)))
-    Y = np.mat(test_data[predict_key])
+    
+    if testY is None:
+        Y = np.mat(test_data[predict_key])
+    else:
+        Y = np.mat(testY.copy())
 
     assert(X.shape[0] == Y.shape[0])
     assert(X.shape[1] == len(x_var_names))
