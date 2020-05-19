@@ -6,6 +6,8 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 
+from resim_ppf import file_key
+
 def get_cov_diffs(ix_co, ix_ob, spks, diffs, method = 1):
     cov1 = np.cov(10*spks[ix_co, :].T); 
     cov2 = np.cov(10*spks[ix_ob, :].T); 
@@ -51,6 +53,58 @@ def commands2bins(commands, mag_boundaries, animal, day_ix, vel_ix = [3, 5], ndi
 
         command_bins.append(np.hstack((mag_bins[:, np.newaxis], ang_bins[:, np.newaxis])))
     return command_bins
+
+
+def populate_state(data_temp, animal):
+
+    targ_ix = data_temp['trg']
+    tsk_ix = data_temp['tsk']
+    targ_pos = get_targ_pos(animal, targ_ix)
+
+    data_temp['trgx'] = targ_pos[:, 0]
+    data_temp['trgy'] = targ_pos[:, 1]
+
+    if animal == 'grom': 
+        data_temp['centx'] = np.zeros((len(targ_ix)))
+        data_temp['centy'] = np.zeros((len(targ_ix)))
+        
+        data_temp['obsx'] = np.zeros((len(targ_ix)))
+        data_temp['obsy'] = np.zeros((len(targ_ix)))
+
+        #### Divide target by 2. to get obstacle locations 
+        obs_ix = np.nonzero(tsk_ix == 1)[0]
+        data_temp['obsx'][obs_ix] = data_temp['trgx'][obs_ix] / 2.
+        data_temp['obsy'][obs_ix] = data_temp['trgy'][obs_ix] / 2.
+
+    elif animal == 'jeev':
+        centerPos = np.array([ 0.0377292,  0.1383867])
+        data_temp['centx'] = np.zeros((len(targ_ix))) + centerPos[0]
+        data_temp['centy'] = np.zeros((len(targ_ix))) + centerPos[1]
+ 
+        data_temp['obsx'] = np.zeros((len(targ_ix)))
+        data_temp['obsy'] = np.zeros((len(targ_ix)))
+
+
+
+def get_targ_pos(animal, targ_ix, task_ix):
+    if animal == 'grom':
+        dats = sio.loadmat(analysis_config.config['grom_pref'] + 'unique_targ.mat')
+        unique_targ = dats['unique_targ']
+        targ_pos = np.zeros((len(targ_ix), 2))
+        for i_t, tg_ix in enumerate(targ_ix):
+            targ_pos[i_t, :] = unique_targ[tg_ix, :]
+
+    elif animal == 'jeev':
+        targ_pos = np.zeros((len(targ_ix)), 2)
+        ix0 = np.nonzero(task_ix == 0)[0]
+        ix1 = np.nonzero(task_ix == 1)[0]
+
+        targ_pos[ix0] = file_key.targ_ix_to_loc(targ_ix[ix0])
+
+        ### Get obstacle target location; 
+        targ_pox[ix1] = file_key.targ_ix_to_loc_obs(targ_ix[ix1])
+
+    return targ_pos
 
 def get_angles():
     rang = np.linspace(-2*np.pi, 2*np.pi, 200)
@@ -107,8 +161,6 @@ def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
             ax.set_xticklabels(xlabels, rotation = 45)
         ax.set_title(title)
         f.tight_layout()
-
-
 
     return pv, slp
 
