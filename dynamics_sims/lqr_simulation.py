@@ -13,6 +13,8 @@ try:
 except:
     print('Not importing test_smoothness_mets and pa. Its fine, they are not vital')
 
+import analysis_config
+
 ### Main Functions ###
 ### Main Classes: 
     ### Cursor / Experiment_Cursor -- classes that implement a BMI decoder
@@ -56,14 +58,14 @@ except:
 cmap_list = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab', 'teal', 
 'steelblue', 'midnightblue', 'darkmagenta', 'k']
 
-pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
+pref = analysis_config.config['grom_pref']
 
 grom_input_type = [[[4377], [4378, 4382]], [[4395], [4394]], [[4411], [4412, 4415]], [[4499], 
 [4497, 4498, 4504]], [[4510], [4509, 4514]], [[4523, 4525], [4520, 4522]], [[4536], 
 [4532, 4533]], [[4553], [4549]], [[4558], [4560]]]
 
 data_LDS = dict()
-data_LDS['grom', 0] = dat = pickle.load(open(pref+'LDSmodels_nstates_%d_combined_models_w_dyn_inno_norms.pkl' %20, 'rb'))
+# data_LDS['grom', 0] = dat = pickle.load(open(pref+'LDSmodels_nstates_%d_combined_models_w_dyn_inno_norms.pkl' %20, 'rb'))
 
 class Cursor(object):
     '''
