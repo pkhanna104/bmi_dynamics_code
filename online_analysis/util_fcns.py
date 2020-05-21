@@ -6,6 +6,7 @@ import pandas as pd
 
 import scipy.io as sio
 import matplotlib.pyplot as plt
+import pickle
 
 from resim_ppf import file_key
 
@@ -149,6 +150,19 @@ def get_angles():
     plt.plot(rang, ang)
     plt.plot(rang, ang_bins)
 
+#### Extract Data ###
+def get_grom_decoder(day_ix):
+    co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
+    input_type = analysis_config.data_params['grom_input_type']
+
+    ### First CO task for that day: 
+    te_num = input_type[day_ix][0][0]
+    dec = co_obs_dict[te_num, 'dec']
+    decix = dec.rfind('/')
+    decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
+    F, KG = decoder.filt.get_sskf()
+    return F, KG
+
 #### Linear mixed effect modeling: 
 def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
     data = pd.DataFrame(dict(Days=Days, Grp=Grp, Metric=Metric))
@@ -206,8 +220,8 @@ def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
         y_pred = y_pred[:, np.newaxis]
     if ignore_nans:
         ### Assume Y-true, y_pred are T x N matrices: 
-        SSR_i = np.nansum((y_true - y_pred)**2, axis=0)
-        SST_i = np.nansum((y_true - np.nanmean(y_true, axis=0)[np.newaxis, :])**2, axis=0)
+        SSR_i = np.nansum(np.square(y_true - y_pred), axis=0)
+        SST_i = np.nansum(np.square(y_true - np.nanmean(y_true, axis=0)[np.newaxis, :]), axis=0)
 
         if pop:
             return 1 - np.nansum(SSR_i)/np.nansum(SST_i)
@@ -216,13 +230,14 @@ def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
     else: 
 
         ### Assume Y-true, y_pred are T x N matrices: 
-        SSR_i = np.sum((y_true - y_pred)**2, axis=0)
-        SST_i = np.sum((y_true - np.mean(y_true, axis=0)[np.newaxis, :])**2, axis=0)
+        SSR_i = np.sum(np.square(y_true - y_pred), axis=0)
+        SST_i = np.sum(np.square(y_true - np.mean(y_true, axis=0)[np.newaxis, :]), axis=0)
 
         if pop:
             return 1 - np.sum(SSR_i)/np.sum(SST_i)
         else:
             return 1 - (SSR_i / SST_i)
+
 ### Plotting ###
 def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):
     bp = ax.boxplot(data, patch_artist=True, positions = [xax], widths=[width])
