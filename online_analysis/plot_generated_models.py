@@ -1692,7 +1692,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         alphas = [1.,1.,1.]
 
         ###### Weird model name ......######
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
 
         if ndays_none:
             if animal == 'grom':
@@ -2143,10 +2143,10 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
                                 pred_rez = pred_dict[day][A][B]
 
                                 if res_or_total == 'res':
-                                    ax[targ/5, targ%5].bar(ib*4 + ia, util_fcns.get_R2(rez_true[ix, :], pred[ix, :]),
+                                    ax[targ/5, targ%5].bar(ib*4 + ia, util_fcns.get_R2(rez_true[ix, :], pred_rez[ix, :]),
                                         width = 1., color=colors[ia])
                                     if B == 'Btsk':
-                                        tmp.append(util_fcns.get_R2(rez_true[ix, :], pred[ix, :]))
+                                        tmp.append(util_fcns.get_R2(rez_true[ix, :], pred_rez[ix, :]))
 
                                 elif res_or_total == 'total':
                                     ax[targ/5, targ%5].bar(ib*4 + ia, util_fcns.get_R2(true[ix, :], pred_rez[ix, :] + pred_A[ix, :]),
@@ -2175,7 +2175,7 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
         Day = np.hstack((Day))
         Val = np.hstack((Val))
         Cat = np.hstack((Cat))
-
+        import pdb; pdb.set_trace()
         #### Comparisons --
         xlab = ['Cond Spec A', 'Tsk Spec A', 'Gen A']
         for i, (i1, i2, noti) in enumerate([[0, 1, 2], [1, 2, 0], [0, 2, 1]]):

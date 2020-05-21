@@ -174,7 +174,7 @@ def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
             for i in ix: 
                 ixx = np.nonzero(np.logical_and(Days == i_d, Grp == i))[0]
                 tmp.append(np.mean(Metric[ixx]))
-            ax.plot(ix, tmp, 'k-')
+            ax.plot(ix, tmp, '-', color='gray', linewidth=.5)
 
         ax.plot([ix[0], ix[-1]], 1.2*np.array([ymax, ymax]), 'k-')
 
