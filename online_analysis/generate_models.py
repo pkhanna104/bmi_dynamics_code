@@ -427,11 +427,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         else:
                             model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
                            
-                            ### Save model -- for use later. 
-                            if model_set_number == 8:
-                                model_data[i_d, model_nm, i_fold, 'model'] = model_; 
-                                model_data[i_d, model_nm, i_fold, 'model_testix'] = test_ix[i_fold]; 
-
+                        ### Save model -- for use later.
+                        print('Adding model') 
+                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
+                        
 
                         #### Add / null potent? 
                         if include_null_pot:
@@ -587,6 +586,7 @@ def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 
 
         variables = np.hstack((variables))
         import pdb; pdb.set_trace()
+
         ###### Add relevant stuff to rez dict
         rez_dict[i_d]['trg'] = data_temp['trg']
         rez_dict[i_d]['tsk'] = data_temp['tsk']
@@ -956,7 +956,6 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
             max_alpha[i_d, model_nm] = alp[ix_max, 0]
 
     return max_alpha
-
 
 #### Decoder UTILS ####
 def get_KG_decoder_grom(day_ix):
