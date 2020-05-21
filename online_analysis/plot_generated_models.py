@@ -1938,12 +1938,14 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
     #fbth.savefig('gen_w_vs_x.svg')
 
 ### Want to plot target specifc (within) vs. task specific (within) vs. general model; 
-def plot_r2_bar_tg_spec_7_gen():
+def plot_r2_bar_tg_spec_7_gen(neural_or_action = 'neural'):
     '''
     method to plot condition specific vs. task specific vs. general A R2 
 
     updates 5/18/20 -- made it so that also computed R2 on each day, not for each target/condition separately 
         -- todo eventually figure otu how we want to do stats
+
+    neural_or_action: plots R2 for either neural activity or the potent activity; 
     '''
     ########### FIGS ##########
     ##### Each thing is its own data;
@@ -1963,10 +1965,10 @@ def plot_r2_bar_tg_spec_7_gen():
         dat_cond = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec.pkl' %(model_set_number), 'rb'))
         dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
 
-
         if animal == 'grom':
             ndays_all = np.arange(9);
             ndays = 9; 
+
         elif animal == 'jeev':
             ndays_all = [0, 2, 3];
             ndays = 3; 
@@ -1988,9 +1990,11 @@ def plot_r2_bar_tg_spec_7_gen():
 
         for i_d, nd in enumerate(ndays_all):
             
-            # lme_r2_comb = []
-            # lme_day_comb = []
-            # lme_mod_comb = []; 
+            ### Get kalman gain;
+            if animal == 'grom':
+                KG, _, _ = generate_models.get_KG_decoder_grom(nd)
+            elif animal == 'jeev':
+                KG, _, _ = generate_models.get_KG_decoder_jeev(nd)
 
             true_spks = []; 
             pred_cond = []; 
@@ -2018,7 +2022,6 @@ def plot_r2_bar_tg_spec_7_gen():
                     spks_pred_gen = dat[(nd, model_nm)][cond_ix, :, 2]
                     spks_pred_tsk = dat[(nd, model_nm)][cond_ix, :, i_t]
                     
-
                     ### Get the correct output ###
                     cond_key = i_t*10 + i_trg
 
@@ -2038,19 +2041,24 @@ def plot_r2_bar_tg_spec_7_gen():
                         spks_pred_cond = prd[ix_ord, :]
 
                         #### Save these guys #####
-                        true_spks.append(spks_true)
-                        pred_gen.append(spks_pred_gen)
-                        pred_tsk.append(spks_pred_tsk)
-                        pred_cond.append(spks_pred_cond)
+                        true_val_conv = n2a(spks_true, neural_or_action, KG)
+                        pred_gen_conv = n2a(spks_pred_gen, neural_or_action, KG)
+                        pred_tsk_conv = n2a(spks_pred_tsk, neural_or_action, KG)
+                        pred_cond_conv = n2a(spks_pred_cond, neural_or_action, KG)
 
-                        ### Get R2s 
-                        R2s_plot_spks[cond_key, 0, i_d] = util_fcns.get_R2(spks_true, spks_pred_cond, pop = True)
-                        R2s_plot_spks[cond_key, 1, i_d] = util_fcns.get_R2(spks_true, spks_pred_tsk, pop = True)
-                        R2s_plot_spks[cond_key, 2, i_d] = util_fcns.get_R2(spks_true, spks_pred_gen, pop = True)
+                        true_spks.append(true_val_conv)
+                        pred_gen.append(pred_gen_conv)
+                        pred_tsk.append(pred_tsk_conv)
+                        pred_cond.append(pred_cond_conv)
+
+                        ### Get R2s: [cond/tsk/gen]
+                        R2s_plot_spks[cond_key, 0, i_d]= util_fcns.get_R2(true_val_conv, pred_cond_conv, pop = True)
+                        R2s_plot_spks[cond_key, 1, i_d] = util_fcns.get_R2(true_val_conv, pred_tsk_conv, pop = True)
+                        R2s_plot_spks[cond_key, 2, i_d] = util_fcns.get_R2(true_val_conv, pred_gen_conv, pop = True)
             
                         LME_R2.append(R2s_plot_spks[cond_key, :, i_d])
                         LME_day.append(np.zeros((3, )) + i_d)
-                        LME_model_type.append(np.arange(3))
+                        LME_model_type.append(np.arange(3)) #[cond/tsk/gen]
 
             f, axi = plt.subplots()
             
@@ -2064,10 +2072,11 @@ def plot_r2_bar_tg_spec_7_gen():
             lme_r2_comb.append(util_fcns.get_R2(true_spks, pred_tsk))
             lme_r2_comb.append(util_fcns.get_R2(true_spks, pred_gen))
             lme_day_comb.append(np.zeros((3,)) + nd)
-            lme_mod_comb.append(np.arange(3))
+            lme_mod_comb.append(np.arange(3)) # [cond/tsk/gen]
 
 
             for i_cond in range(20):
+                # [cond/tsk/gen]
                 axi.bar(i_cond, R2s_plot_spks[i_cond, 0, i_d], color='lightblue', width = .25)
                 axi.bar(i_cond+.25, R2s_plot_spks[i_cond, 1, i_d], color='blue', width = .25)
                 axi.bar(i_cond+.5, R2s_plot_spks[i_cond, 2, i_d], color='darkblue', width = .25)
@@ -2086,7 +2095,6 @@ def plot_r2_bar_tg_spec_7_gen():
         pv, slp = util_fcns.run_LME(LME_day[ix2], LME_model_type[ix2], LME_R2[ix2], bar_plot = True,
             xlabels = ['Task-Spec', 'General'], title = 'Cond spec R2')
 
-
         ##### For combined R2 across tasks ###
         lme_r2_comb = np.hstack((lme_r2_comb))
         lme_day_comb = np.hstack((lme_day_comb))
@@ -2095,11 +2103,20 @@ def plot_r2_bar_tg_spec_7_gen():
         ix1 = np.hstack(([i for i, j in enumerate(lme_mod_comb) if j in [0, 2]]))
         ix2 = np.hstack(([i for i, j in enumerate(lme_mod_comb) if j in [1, 2]]))
 
-        import pdb; pdb.set_trace()
         pv, slp = util_fcns.run_LME(lme_day_comb[ix1], lme_mod_comb[ix1], lme_r2_comb[ix1], bar_plot = True,
             xlabels = ['Cond-Spec', 'General'], title = 'Day R2s')
         pv, slp = util_fcns.run_LME(lme_day_comb[ix2], lme_mod_comb[ix2], lme_r2_comb[ix2], bar_plot = True,
             xlabels = ['Task-Spec', 'General'], title = 'Day R2s')
+
+def n2a(spks, neural_or_action, KG):
+    if neural_or_action == 'neural':
+        return spks 
+    
+    elif neural_or_action == 'action':
+        assert(KG.shape[0] == 2)
+        assert(KG.shape[1] == spks.shape[1])
+
+        return np.dot(KG, spks.T).T
 
 def plot_r2_bar_state_encoding(res_or_total = 'res'):
     ''' method to plot 9 bars for each animal / day , mapping out [gen / tsk / cond ] A x [gen / tsk / cond ] B 
@@ -2130,7 +2147,7 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
 
                     ix = np.nonzero(np.logical_and(rez_dict[day]['trg'] == targ, rez_dict[day]['tsk'] == task))[0]
                     if len(ix) > 0:
-                        tmp = []; 
+                        tmp = dict(Bcond=[], Btsk=[], Bgen = []);
 
                         for ia, A in enumerate(['res_cond', 'res_tsk', 'res_gen']):
                             rez_true = rez_dict[day]['res', A[4:]]
@@ -2145,14 +2162,13 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
                                 if res_or_total == 'res':
                                     ax[targ/5, targ%5].bar(ib*4 + ia, util_fcns.get_R2(rez_true[ix, :], pred_rez[ix, :]),
                                         width = 1., color=colors[ia])
-                                    if B == 'Btsk':
-                                        tmp.append(util_fcns.get_R2(rez_true[ix, :], pred_rez[ix, :]))
+                                    
+                                    tmp[B].append(util_fcns.get_R2(rez_true[ix, :], pred_rez[ix, :]))
 
                                 elif res_or_total == 'total':
                                     ax[targ/5, targ%5].bar(ib*4 + ia, util_fcns.get_R2(true[ix, :], pred_rez[ix, :] + pred_A[ix, :]),
                                         width = 1., color=colors[ia])
-                                    if B == 'Btsk':
-                                        tmp.append(util_fcns.get_R2(true[ix, :], pred_rez[ix, :] + pred_A[ix, :]))
+                                    tmp[B].append(util_fcns.get_R2(true[ix, :], pred_rez[ix, :] + pred_A[ix, :]))
                                 
                                 ax[targ/5, targ%5].set_title('%s, Day %d\n Task %d, Targ %d' %(animal, day, task, targ), fontsize = 8)
                     
@@ -2170,19 +2186,47 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
         for i_d in range(len(pred_dict.keys())):
             for j, tmp in enumerate(R2_dict[animal][i_d]):
                 Day.append(np.zeros((3, )) + i_d)
-                Val.append(tmp)
+                Val.append(tmp['Bcond'])
                 Cat.append(np.arange(3))
         Day = np.hstack((Day))
         Val = np.hstack((Val))
         Cat = np.hstack((Cat))
-        import pdb; pdb.set_trace()
+        
         #### Comparisons --
+        cols = ['lightblue', 'blue', 'black']
         xlab = ['Cond Spec A', 'Tsk Spec A', 'Gen A']
         for i, (i1, i2, noti) in enumerate([[0, 1, 2], [1, 2, 0], [0, 2, 1]]):
             ix = np.nonzero(Cat != noti)[0]
             util_fcns.run_LME(Day[ix], Cat[ix], Val[ix], bar_plot = True, xlabels = [xlab[i1], xlab[i2]],
                 title = res_or_total)
 
+        ### Full summary plot 
+        x2lab = ['Bcond', 'Btsk', 'Bgen']
+        f, ax = plt.subplots()
+        xl = []; xlt = []; 
+        for bix, bx in enumerate(x2lab):
+            ### For animal, make summary plot ###
+            Day = []; 
+            Val = []; 
+            Cat = []; 
+
+            for i_d in range(len(pred_dict.keys())):
+                for j, tmp in enumerate(R2_dict[animal][i_d]):
+                    Day.append(np.zeros((3, )) + i_d)
+                    Val.append(tmp[bx])
+                    Cat.append(np.arange(3))
+            Day = np.hstack((Day))
+            Val = np.hstack((Val))
+            Cat = np.hstack((Cat))
+
+            for i in range(3):
+                ix = np.nonzero(Cat == i)[0]
+                ax.bar(i + 4*bix, np.mean(Val[ix]), color = cols[i])
+                xl.append(xlab[i] + '\n' + bx)
+                xlt.append(i + 4*bix)
+        ax.set_xticks(xlt)
+        ax.set_xticklabels(xl, rotation=45)
+        f.tight_layout()
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
 ### Use model predictions to generate means -- potent and null options included. 
 def mean_diffs_plot(animal = 'grom', min_obs = 15, load_file = 'default', dt = 1, 
