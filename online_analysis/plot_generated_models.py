@@ -1940,6 +1940,8 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
 ### Want to plot target specifc (within) vs. task specific (within) vs. general model; 
 def plot_r2_bar_tg_spec_7_gen():
     '''
+    method to plot condition specific vs. task specific vs. general A R2 
+
     updates 5/18/20 -- made it so that also computed R2 on each day, not for each target/condition separately 
         -- todo eventually figure otu how we want to do stats
     '''
@@ -1959,7 +1961,7 @@ def plot_r2_bar_tg_spec_7_gen():
         ###### Get model name ......######
         model_set_number = 7; 
         dat_cond = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec.pkl' %(model_set_number), 'rb'))
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
 
 
         if animal == 'grom':
@@ -2099,7 +2101,87 @@ def plot_r2_bar_tg_spec_7_gen():
         pv, slp = util_fcns.run_LME(lme_day_comb[ix2], lme_mod_comb[ix2], lme_r2_comb[ix2], bar_plot = True,
             xlabels = ['Task-Spec', 'General'], title = 'Day R2s')
 
+def plot_r2_bar_state_encoding(res_or_total = 'res'):
+    ''' method to plot 9 bars for each animal / day , mapping out [gen / tsk / cond ] A x [gen / tsk / cond ] B 
 
+        res_or_total; whether to plot the R2 of the residuals from the A matrix regression, or to plot 
+            the R2 of the total --> 
+    '''
+    R2_dict = {}; 
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        R2_dict[animal] = {}
+
+        ### load up the big file that has it all; 
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'res_model_fit_state.pkl', 'rb'))
+
+        ### Get out pred vs. rez dicts 
+        pred_dict = dat['pred_dict']
+        rez_dict = dat['rez_dict']
+        colors = ['lightblue', 'blue', 'k']
+
+        ### For each day ####
+        for i_d, day in enumerate(pred_dict.keys()):
+            R2_dict[animal][i_d] = []
+            for task in range(2):
+                f, ax = plt.subplots(nrows = 2, ncols = 5, figsize = (12, 6))
+
+                for targ in range(10):
+
+                    ix = np.nonzero(np.logical_and(rez_dict[day]['trg'] == targ, rez_dict[day]['tsk'] == task))[0]
+                    if len(ix) > 0:
+                        tmp = []; 
+
+                        for ia, A in enumerate(['res_cond', 'res_tsk', 'res_gen']):
+                            rez_true = rez_dict[day]['res', A[4:]]
+                            
+                            ### True spks not just rez ##
+                            true = rez_dict[day]['true_spks']
+                            pred_A = rez_dict[day]['pred_spks_'+A[4:]]
+
+                            for ib, B in enumerate(['Bcond', 'Btsk', 'Bgen']):
+                                pred_rez = pred_dict[day][A][B]
+
+                                if res_or_total == 'res':
+                                    ax[targ/5, targ%5].bar(ib*4 + ia, util_fcns.get_R2(rez_true[ix, :], pred[ix, :]),
+                                        width = 1., color=colors[ia])
+                                    if B == 'Btsk':
+                                        tmp.append(util_fcns.get_R2(rez_true[ix, :], pred[ix, :]))
+
+                                elif res_or_total == 'total':
+                                    ax[targ/5, targ%5].bar(ib*4 + ia, util_fcns.get_R2(true[ix, :], pred_rez[ix, :] + pred_A[ix, :]),
+                                        width = 1., color=colors[ia])
+                                    if B == 'Btsk':
+                                        tmp.append(util_fcns.get_R2(true[ix, :], pred_rez[ix, :] + pred_A[ix, :]))
+                                
+                                ax[targ/5, targ%5].set_title('%s, Day %d\n Task %d, Targ %d' %(animal, day, task, targ), fontsize = 8)
+                    
+                    ax[targ/5, targ%5].set_ylim([-.1, .3])
+                    ax[targ/5, targ%5].set_xlim([-1, 11])
+                    R2_dict[animal][i_d].append(tmp)
+                    
+                f.tight_layout()
+
+        ### For animal, make summary plot ###
+        Day = []; 
+        Val = []; 
+        Cat = []; 
+
+        for i_d in range(len(pred_dict.keys())):
+            for j, tmp in enumerate(R2_dict[animal][i_d]):
+                Day.append(np.zeros((3, )) + i_d)
+                Val.append(tmp)
+                Cat.append(np.arange(3))
+        Day = np.hstack((Day))
+        Val = np.hstack((Val))
+        Cat = np.hstack((Cat))
+
+        #### Comparisons --
+        xlab = ['Cond Spec A', 'Tsk Spec A', 'Gen A']
+        for i, (i1, i2, noti) in enumerate([[0, 1, 2], [1, 2, 0], [0, 2, 1]]):
+            ix = np.nonzero(Cat != noti)[0]
+            util_fcns.run_LME(Day[ix], Cat[ix], Val[ix], bar_plot = True, xlabels = [xlab[i1], xlab[i2]],
+                title = res_or_total)
 
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
 ### Use model predictions to generate means -- potent and null options included. 
