@@ -1,0 +1,241 @@
+import analysis_config
+from online_analysis import util_fcns
+from matplotlib import cm
+import copy
+import matplotlib as mpl
+
+def plot_pred(command_bins, push, trg, tsk, trl, mag_bound, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 5,
+             arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, pred_push = None,
+             scale_rad = 2.): 
+    
+    ### Get the mean angle / magnitudes ###
+    mag_bound = scale_rad*np.hstack((mag_bound))
+    ang_mns = np.linspace(0, 2*np.pi, 9)
+    mag_mns = [np.mean([0., mag_bound[0]])]
+    for i in range(2):
+        mag_mns.append(np.mean([mag_bound[i], mag_bound[i+1]]))
+    mag_mns.append(np.mean([mag_bound[2], mag_bound[2] + 2]))
+    
+    ### INDEX LEVEL 1 -- Get all the trg0 / trg1 data; 
+    ix0 = np.nonzero(np.logical_and(trg == targ0, tsk == 0))[0]
+    ix1 = np.nonzero(np.logical_and(trg == targ1, tsk == 1))[0]
+    
+    ### For the CO task go through commands and get the ones with enough observations ;
+    com0 = command_bins[ix0, :]
+    com1 = command_bins[ix1, :]
+    
+    psh0 = push[ix0, :]
+    psh1 = push[ix1, :]
+    
+    if pred_push is None:
+        pred_psh0 = None
+        pred_psh1 = None
+    else:
+        pred_psh0 = pred_push[ix0, :]
+        pred_psh1 = pred_push[ix1, :]
+    
+    trl0 = trl[ix0]
+    trl1 = trl[ix1]
+    
+    trg0 = trg[ix0]
+    trg1 = trg[ix1]
+    
+    
+    ### Go through -- which bins have enough min_obs in both tasks; 
+    keep = []
+    for m in range(4):
+        for a in range(8):
+            
+            ### INDEX LEVEL 2 -- Indices to get the mag / angle from each task 
+            i0 = np.nonzero(np.logical_and(com0[:, 0] == m, com0[:, 1] == a))[0]
+            i1 = np.nonzero(np.logical_and(com1[:, 0] == m, com1[:, 1] == a))[0]
+            
+            ### Save these ###
+            if np.logical_and(len(i0) >= min_obs, len(i1) >= min_obs):
+                
+                ### Add the m / a / indices for this so we can go through them later; 
+                keep.append([m, a, i0.copy(), i1.copy()])
+    
+    ### Now for each for these, plot the main thing; 
+    for i_m, (m, a, i0, i1) in enumerate(keep):
+        
+        ### Make a figure centered on this command; 
+        fig, ax_all = plt.subplots(ncols = 2, figsize = (10, 50/8.))
+        fig.subplots_adjust(bottom=0.3)
+        for ia, (ax, tgi) in enumerate(zip(ax_all, [targ0, targ1])):
+            
+            ### Set the axis to square so the arrows show up correctly 
+            ax.axis('equal')
+            title_string = 'cotg%d_obstg%d_mag%d_ang%d' %(targ0, targ1, m, a)
+            
+            ax.set_title('Task %d, Targ %d Mag %d, Ang %d' %(ia, tgi, m, a))
+
+            ### Plot the division lines; 
+            for A in np.linspace(-np.pi/8., (2*np.pi) - np.pi/8., 9):
+                ax.plot([0, lims*np.cos(A)], [0, lims*np.sin(A)], 'k-', linewidth=.5)
+            
+            ### Plot the circles 
+            t = np.arange(0, np.pi * 2.0, 0.01)
+            tmp = np.hstack(([0], mag_bound, [mag_bound[2] + 2]))
+            for mm in tmp:
+                x = mm * np.cos(t)
+                y = mm * np.sin(t)
+                ax.plot(x, y, 'k-', linewidth = .5)
+        
+        ### Get mean neural push for each task ###
+        mn0 = np.mean(psh0[i0, :], axis=0)
+        mn1 = np.mean(psh1[i1, :], axis=0)
+        
+        ### Plot this mean neural push as big black arrow ###
+        ax_all[0].quiver(mag_mns[m]*np.cos(ang_mns[a]), mag_mns[m]*np.sin(ang_mns[a]), mn0[0], mn0[1], 
+                  width=arrow_scale*2, color = 'k', angles='xy', scale=1, scale_units='xy')
+        
+        ax_all[1].quiver(mag_mns[m]*np.cos(ang_mns[a]), mag_mns[m]*np.sin(ang_mns[a]), mn1[0], mn1[1], 
+                  width=arrow_scale*2, color = 'k', angles='xy', scale=1, scale_units='xy')             
+        
+        ### ADJUSTMENT TO LEVEL 2 -- Now get the NEXT action commands ###
+        i0p1 = i0 + 1; 
+        i1p1 = i1 + 1; 
+        
+        ### If exceeds length after adding "1"
+        if i0p1[-1] > (len(trl0) -1):
+            i0p1 = i0p1[:-1]
+        if i1p1[-1] > (len(trl1) -1):
+            i1p1 = i1p1[:-1]
+        ### Remove the commands that are equal to the minimum bin_cnt (=1) 
+        ### because they spilled over from the last trial ###
+        kp0 = np.nonzero(trl0[i0p1] > 1)[0]
+        kp1 = np.nonzero(trl1[i1p1] > 1)[0]
+        
+        ### Keep these guys ###
+        i0p1 = i0p1[kp0]
+        i1p1 = i1p1[kp1]
+        
+        ### Arrows dict 
+        ### We need to create this because we're not sure how big to maek the colormap when plotting; 
+        arrows_dict = {}
+        arrows_dict[0] = []
+        arrows_dict[1] = []
+        
+        pred_arrows_dict = {}
+        pred_arrows_dict[0] = []
+        pred_arrows_dict[1] = []
+        
+        index_dict = {}
+        index_dict[0] = []
+        index_dict[1] = []
+        
+        ### These should all be the same target still ###
+        assert(np.all(trg0[i0p1] == targ0))
+        assert(np.all(trg1[i1p1] == targ1))
+        
+        ### Iterate through the tasks ###
+
+        for m in range(4):
+            for a in range(8):
+                ### LEVEL 3 -- OF THE NEXT ACTION COMMANDS, which match the action #####
+                j0 = np.nonzero(np.logical_and(com0[i0p1, 0] == m, com0[i0p1, 1] == a))[0]
+                j1 = np.nonzero(np.logical_and(com1[i1p1, 0] == m, com1[i1p1, 1] == a))[0]
+
+                for i_, (index, index_og, pshi, predpshi) in enumerate(zip([j0, j1], [i0p1, i1p1], [psh0, psh1],
+                                                                [pred_psh0, pred_psh1])):
+                    if len(index) >= min_obs2:
+                        print('Adding followup tsk %d, m %d, a %d' %(i_, m, a))
+
+                        ### Great plot this;
+                        mn_next_action = np.mean(pshi[index_og[index], :], axis=0)
+                        xi = mag_mns[m]*np.cos(ang_mns[a])
+                        yi = mag_mns[m]*np.sin(ang_mns[a])
+                        vx = mn_next_action[0];
+                        vy = mn_next_action[1]; 
+
+                        arrows_dict[i_].append([copy.deepcopy(xi), copy.deepcopy(yi), 
+                                                 copy.deepcopy(vx), copy.deepcopy(vy), len(index)])
+                        index_dict[i_].append(len(index))
+                        
+                        #### Predicted Action ####
+                        if predpshi is None:
+                            pass
+                        else:
+                            pred_mn_next_action = np.mean(predpshi[index_og[index], :], axis=0)
+                            p_vx = pred_mn_next_action[0]
+                            p_vy = pred_mn_next_action[1]
+                            
+                            pred_arrows_dict[i_].append([copy.deepcopy(xi), copy.deepcopy(yi), 
+                                                 copy.deepcopy(p_vx), copy.deepcopy(p_vy)])
+        
+        #import pdb; pdb.set_trace()
+        ### Now figure out the color lists for CO / OBS separately; 
+        mx_co = np.max(np.hstack((index_dict[0])))
+        mn_co = np.min(np.hstack((index_dict[0])))
+        co_cols = np.linspace(0., 1., mx_co - mn_co + 1)
+        co_colors = [cm.viridis(x) for x in co_cols]
+        print('Co mx = %d, mn = %d' %(mx_co, mn_co))
+        
+        mx_ob = np.max(np.hstack((index_dict[1])))
+        mn_ob = np.min(np.hstack((index_dict[1])))
+        obs_cols = np.linspace(0., 1., mx_ob - mn_ob+1)
+        obs_colors = [cm.viridis(x) for x in obs_cols]
+        print('Obs mx = %d, mn = %d' %(mx_ob, mn_ob))
+        
+        for tsk, (mnN, cols) in enumerate(zip([mn_co, mn_ob], [co_colors, obs_colors])):
+            
+            print('Len arrows_dict[%d]: %d' %(tsk, len(arrows_dict[tsk])))
+            ### go through all the arrows;
+            for arrow in arrows_dict[tsk]:
+                
+                ### Parse the parts 
+                xi, yi, vx, vy, N = arrow; 
+                
+                ### Plot it;
+                ax_all[tsk].quiver(xi, yi, vx, vy,
+                                  width = arrow_scale, color = cols[N - mnN], 
+                                    angles='xy', scale=1, scale_units='xy')
+            
+            for pred_arrow in pred_arrows_dict[tsk]:
+                
+                ### Parse the parts
+                pxi, pyi, pvx, pvy = pred_arrow
+                
+                ### Plot it; 
+                ax_all[tsk].quiver(pxi, pyi, pvx, pvy, 
+                                  angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
+                                  linestyle = 'dashed', edgecolor='r', facecolor='none', 
+                                  linewidth = 1.)
+
+        for ia, ax in enumerate(ax_all):
+            ax.set_xlim([-lims, lims])
+            ax.set_ylim([-lims, lims])
+            
+        ### Set colorbar; 
+        cmap = mpl.cm.viridis
+        if mn_co == mx_co:
+            norm = mpl.colors.Normalize(vmin=mn_co, vmax=mx_co+.1)
+        else:
+            norm = mpl.colors.Normalize(vmin=mn_co, vmax=mx_co)
+        cax0 = fig.add_axes([0.1, 0.1, 0.3, 0.05])
+        cb1 = mpl.colorbar.ColorbarBase(cax0, cmap=cmap,
+                            norm=norm, orientation='horizontal',
+                            boundaries = np.arange(mn_co-0.5, mx_co+1.5, 1.))
+        cb1.set_ticks(np.arange(mn_co, mx_co+1))
+        cb1.set_ticklabels(np.arange(mn_co, mx_co+1))
+
+            
+        
+        cb1.set_label('Counts')
+        if mn_ob == mn_ob:
+            norm = mpl.colors.Normalize(vmin=mn_ob, vmax=mx_ob+.1)
+        else:
+            norm = mpl.colors.Normalize(vmin=mn_ob, vmax=mx_ob)
+        cax1 = fig.add_axes([0.6, .1, .3, .05])
+        cb1 = mpl.colorbar.ColorbarBase(cax1, cmap=cmap,
+                            norm=norm, orientation='horizontal',
+                            boundaries = np.arange(mn_ob-0.5, mx_ob+1.5, 1.))
+        cb1.set_label('Counts')
+        cb1.set_ticks(np.arange(mn_ob, mx_ob+1))
+        cb1.set_ticklabels(np.arange(mn_ob, mx_ob+1)) 
+        
+        
+        ### Save this ? 
+        if save:
+            fig.savefig(save_dir+'/'+prefix+'_'+title_string+'.png')
