@@ -3,10 +3,11 @@ from online_analysis import util_fcns
 from matplotlib import cm
 import copy
 import matplotlib as mpl
+import numpy as np 
+import matplotlib.pyplot as plt
 
-def plot_pred(command_bins, push, trg, tsk, trl, mag_bound, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 5,
-             arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, pred_push = None,
-             scale_rad = 2.): 
+def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 5,
+             arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, pred_push = None, scale_rad = 2.): 
     
     ### Get the mean angle / magnitudes ###
     mag_bound = scale_rad*np.hstack((mag_bound))
@@ -34,8 +35,8 @@ def plot_pred(command_bins, push, trg, tsk, trl, mag_bound, targ0 = 0., targ1 = 
         pred_psh0 = pred_push[ix0, :]
         pred_psh1 = pred_push[ix1, :]
     
-    trl0 = trl[ix0]
-    trl1 = trl[ix1]
+    bn0 = bin_num[ix0]
+    bn1 = bin_num[ix1]
     
     trg0 = trg[ix0]
     trg1 = trg[ix1]
@@ -98,14 +99,14 @@ def plot_pred(command_bins, push, trg, tsk, trl, mag_bound, targ0 = 0., targ1 = 
         i1p1 = i1 + 1; 
         
         ### If exceeds length after adding "1"
-        if i0p1[-1] > (len(trl0) -1):
+        if i0p1[-1] > (len(bn0) -1):
             i0p1 = i0p1[:-1]
-        if i1p1[-1] > (len(trl1) -1):
+        if i1p1[-1] > (len(bn1) -1):
             i1p1 = i1p1[:-1]
         ### Remove the commands that are equal to the minimum bin_cnt (=1) 
         ### because they spilled over from the last trial ###
-        kp0 = np.nonzero(trl0[i0p1] > 1)[0]
-        kp1 = np.nonzero(trl1[i1p1] > 1)[0]
+        kp0 = np.nonzero(bn0[i0p1] > 1)[0]
+        kp1 = np.nonzero(bn1[i1p1] > 1)[0]
         
         ### Keep these guys ###
         i0p1 = i0p1[kp0]
@@ -239,3 +240,173 @@ def plot_pred(command_bins, push, trg, tsk, trl, mag_bound, targ0 = 0., targ1 = 
         ### Save this ? 
         if save:
             fig.savefig(save_dir+'/'+prefix+'_'+title_string+'.png')
+
+def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 = 20,
+             arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, 
+             pred_push = None, scale_rad = 2.): 
+    '''
+    command_bins -- discretized commands over all bins 
+    push -- continuous pushses
+    bin_num -- indices within the trial 
+    mag_bound -- magnitude boundaries
+    min_obs2 -- number of counts of future actions needed to plot; 
+
+    pred_push -- general dynamics predictions; 
+    scale_rad -- how to scale out the radius for better visualization; 
+    '''
+
+    ### Get the mean angle / magnitudes ###
+    mag_bound = scale_rad*np.hstack((mag_bound))
+    ang_mns = np.linspace(0, 2*np.pi, 9)
+    mag_mns = [np.mean([0., mag_bound[0]])]
+    for i in range(2):
+        mag_mns.append(np.mean([mag_bound[i], mag_bound[i+1]]))
+    mag_mns.append(np.mean([mag_bound[2], mag_bound[2] + 2]))
+    
+    ### Go through -- which bins have enough min_obs in both tasks; 
+    keep = []
+    for m in range(4):
+        for a in range(8):
+            
+            ### INDEX LEVEL 2 -- Indices to get the mag / angle from each task 
+            ix = np.nonzero(np.logical_and(command_bins[:, 0] == m, command_bins[:, 1] == a))[0]
+            
+            ### Add the m / a / indices for this so we can go through them later; 
+            keep.append([m, a, ix.copy()])
+    
+    ### Now for each for these, plot the main thing; 
+    for i_m, (m, a, ixi) in enumerate(keep):
+        
+        ### Make a figure centered on this command; 
+        fig, ax_all = plt.subplots(figsize = (8, 10))
+        fig.subplots_adjust(bottom=0.3)
+        
+        ### Set the axis to square so the arrows show up correctly 
+        ax_all.axis('equal')
+        title_string = 'ALL_mag%d_ang%d' %(m, a)
+
+        ax_all.set_title('Mag %d, Ang %d' %( m, a))
+
+        ### Plot the division lines; 
+        for A in np.linspace(-np.pi/8., (2*np.pi) - np.pi/8., 9):
+            ax_all.plot([0, lims*np.cos(A)], [0, lims*np.sin(A)], 'k-', linewidth=.5)
+            
+        ### Plot the circles 
+        t = np.arange(0, np.pi * 2.0, 0.01)
+        tmp = np.hstack(([0], mag_bound, [mag_bound[2] + 2]))
+        for mm in tmp:
+            x = mm * np.cos(t)
+            y = mm * np.sin(t)
+            ax_all.plot(x, y, 'k-', linewidth = .5)
+        
+        ### Get mean neural push for each task ###
+        mn = np.mean(push[ixi, :], axis=0)
+        
+        ### Plot this mean neural push as big black arrow ###
+        ax_all.quiver(mag_mns[m]*np.cos(ang_mns[a]), mag_mns[m]*np.sin(ang_mns[a]), mn[0], mn[1], 
+                  width=arrow_scale*2, color = 'k', angles='xy', scale=1, scale_units='xy')
+        
+        ### ADJUSTMENT TO LEVEL 2 -- Now get the NEXT action commands ###
+        ixip1 = ixi + 1; 
+        
+        ### If exceeds length after adding "1"
+        if ixip1[-1] > (len(push) -1):
+            ixip1 = ixip1[:-1]
+        
+        ### Remove the commands that are equal to the minimum bin_cnt (=1) 
+        ### because they spilled over from the last trial ###
+        kp0 = np.nonzero(bin_num[ixip1] > 1)[0]
+        
+        ### Keep these guys ###
+        index_og = ixip1[kp0]
+        
+        ### Arrows dict 
+        ### We need to create this because we're not sure how big to maek the colormap when plotting; 
+        arrows_dict = []        
+        pred_arrows_dict = []
+        index_dict = []
+        
+        ### Iterate through the tasks ###
+        for m in range(4):
+            for a in range(8):
+
+                ### LEVEL 2 -- OF THE NEXT ACTION COMMANDS, which match the action #####
+                index = np.nonzero(np.logical_and(command_bins[index_og, 0] == m, command_bins[index_og, 1] == a))[0]
+
+                if len(index) >= min_obs2:
+                    print('Followup, m %d, a %d' %(m, a))
+                    
+                    ### Great plot this;
+                    mn_next_action = np.mean(push[index_og[index], :], axis=0)
+                    xi = mag_mns[m]*np.cos(ang_mns[a])
+                    yi = mag_mns[m]*np.sin(ang_mns[a])
+                    vx = mn_next_action[0];
+                    vy = mn_next_action[1]; 
+
+                    arrows_dict.append([copy.deepcopy(xi), copy.deepcopy(yi), 
+                                             copy.deepcopy(vx), copy.deepcopy(vy), len(index)])
+                    index_dict.append(len(index))
+                    
+                    #### Predicted Action ####
+                    if pred_push is None:
+                        pass
+                    else:
+                        pred_mn_next_action = np.mean(pred_push[index_og[index], :], axis=0)
+                        p_vx = pred_mn_next_action[0]
+                        p_vy = pred_mn_next_action[1]
+                        
+                        pred_arrows_dict.append([copy.deepcopy(xi), copy.deepcopy(yi), 
+                                             copy.deepcopy(p_vx), copy.deepcopy(p_vy)])
+        
+        #import pdb; pdb.set_trace()
+        ### Now figure out the color lists for CO / OBS separately; 
+        if len(index_dict) > 0:
+            mx_ = np.max(np.hstack((index_dict)))
+            mn_ = np.min(np.hstack((index_dict)))
+            cols = np.linspace(0., 1., mx_ - mn_ + 1)
+            colors = [cm.viridis(x) for x in cols]
+            print('All mx = %d, mn = %d' %(mx_, mn_))
+        
+            for arrow in arrows_dict:
+                
+                ### Parse the parts 
+                xi, yi, vx, vy, N = arrow; 
+                
+                ### Plot it;
+                ax_all.quiver(xi, yi, vx, vy,
+                                  width = arrow_scale, color = colors[N - mn_], 
+                                    angles='xy', scale=1, scale_units='xy')
+            
+            for pred_arrow in pred_arrows_dict:
+                
+                ### Parse the parts
+                pxi, pyi, pvx, pvy = pred_arrow
+                
+                ### Plot it; 
+                ax_all.quiver(pxi, pyi, pvx, pvy, 
+                                  angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
+                                  linestyle = 'dashed', edgecolor='r', facecolor='none', 
+                                  linewidth = 1.)
+
+        
+            ax_all.set_xlim([-lims, lims])
+            ax_all.set_ylim([-lims, lims])
+                
+            ### Set colorbar; 
+            cmap = mpl.cm.viridis
+            if mn_ == mx_:
+                norm = mpl.colors.Normalize(vmin=mn_, vmax=mx_+.1)
+            else:
+                norm = mpl.colors.Normalize(vmin=mn_, vmax=mx_)
+            cax0 = fig.add_axes([0.15, 0.1, 0.7, 0.05])
+            cb1 = mpl.colorbar.ColorbarBase(cax0, cmap=cmap,
+                                norm=norm, orientation='horizontal',
+                                boundaries = np.arange(mn_-0.5, mx_+1.5, 1.))
+            tmp2 = np.mean([mn_, mx_+1])
+            cb1.set_ticks([mn_, tmp2, mx_+1]) 
+            cb1.set_ticklabels([mn_, tmp2, mx_+1])
+            cb1.set_label('Counts')
+
+            ### Save this ? 
+            if save:
+                fig.savefig(save_dir+'/'+prefix+'_'+title_string+'.png')
