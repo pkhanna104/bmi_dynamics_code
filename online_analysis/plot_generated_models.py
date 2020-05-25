@@ -2116,7 +2116,7 @@ def n2a(spks, neural_or_action, KG):
         assert(KG.shape[0] == 2)
         assert(KG.shape[1] == spks.shape[1])
 
-        return np.dot(KG, spks.T).T
+        return np.squeeze(np.array(np.dot(KG, spks.T).T))
 
 def plot_r2_bar_state_encoding(res_or_total = 'res'):
     ''' method to plot 9 bars for each animal / day , mapping out [gen / tsk / cond ] A x [gen / tsk / cond ] B 
