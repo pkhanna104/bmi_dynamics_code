@@ -120,7 +120,9 @@ def get_model_var_list(model_set_number):
     elif model_set_number == 11:
         model_var_list.append([np.array([-1, -2]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity; 
         model_var_list.append([np.array([1, 2]),   'hist_1pos_0psh_0spksm_0_spksp_1', 0, 0, 1]) ### only future neural activity; 
-        model_var_list.append([np.array([-1, 1]),  'hist_1pos_0psh_0spksm_1_spksp_1', 0, 1, 0]) ### only previous neural activity; 
+        model_var_list.append([np.array([-1, 1]),  'hist_1pos_0psh_0spksm_1_spksp_1', 0, 1, 1]) ### both;  
+        model_var_list.append([np.array([-2, 2]),  'hist_1pos_0psh_0spksm_1_spksp_1', 0, 1, 1]) ### only previous neural activity; 
+        
         predict_key = 'spks'
         history_bins_max = 2; 
 

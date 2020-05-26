@@ -829,7 +829,7 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
 
         ### Get all the variables together ###
         variables = np.hstack(( [vel_model_nms, pos_model_nms, tg_model_nms, tsk_model_nms, push_model_nms, neur_nms1, neur_nms2] ))
-        variables_list.append(variables)
+        variables_list.append(np.unique(variables))
     return variables_list
 
 def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, r2_ind_or_pop = 'pop'):
