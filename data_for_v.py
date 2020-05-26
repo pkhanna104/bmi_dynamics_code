@@ -3,7 +3,7 @@ co = [4377]
 obs = [4378, 4382]
 
 def get_cursor_state_and_neural_push(co, obs, animal='grom', 
-    binsize_ms=100., savename='for_v.pkl', pre_go=0.):
+    binsize_ms=100., savename='for_v.pkl', pre_go=1.):
 
     from online_analysis import fit_LDS, co_obs_tuning_matrices
     import prelim_analysis as pa
