@@ -24,7 +24,7 @@
 ### As we drop 2x1 columns of the V matrix (zero out neurons), see how the Trace(diag(S)**2) changes
 
 import pickle
-import co_obs_tuning_matrices
+import analysis_config
 import numpy as np
 import fit_LDS
 import prelim_analysis as pa
@@ -35,7 +35,7 @@ import scipy.stats
 def main():
 
     binsize_ms = 100.
-    datafiles = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/co_obs_file_dict.pkl'))
+    datafiles = pickle.load(open(analysis_config.config['grom_pref'] + 'co_obs_file_dict.pkl'))
     important_neuron_ix = dict()
     animal = 'grom'
     importance_thresh = 0.8
@@ -47,29 +47,30 @@ def main():
         cursor_KG_all = []
         
         for task in range(2):
-            te_nums = co_obs_tuning_matrices.input_type[day][task]
+            te_nums = analysis_config.data_params['grom_input_type'][day][task]
             
             for te_num in te_nums:
-                bin_spk_nonz, targ_ix, trial_ix_all, KG, _, exclude_ix = fit_LDS.pull_data(te_num, animal,
-                    pre_go=1, binsize_ms=binsize_ms, keep_units='all')
+                # bin_spk_nonz, targ_ix, trial_ix_all, KG, _, exclude_ix = fit_LDS.pull_data(te_num, animal,
+                #     pre_go=1, binsize_ms=binsize_ms, keep_units='all')
 
                 # Let's get the actual 
                 hdf = datafiles[te_num, 'hdf']
                 name = hdf.split('/')[-1]
-                hdf = tables.openFile('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'+name)
+                hdf = tables.openFile(analysis_config.config['grom_pref']+name)
 
                 # decoder: 
                 dec = datafiles[te_num, 'dec']
                 dec = dec.split('/')[-1]
-                decoder = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'+dec))
+                decoder = pickle.load(open(analysis_config.config['grom_pref']+dec))
+                F, KG = decoder.filt.get_sskf()
 
                 rew_ix = np.array([t[1] for it, t in enumerate(hdf.root.task_msgs[:]) if t[0]=='reward'])
 
-                _, _, _, _, cursor_KG = pa.extract_trials_all(hdf, rew_ix, neural_bins = binsize_ms,
+                bin_spk_nonz, _, _, _, cursor_KG = pa.extract_trials_all(hdf, rew_ix, neural_bins = binsize_ms,
                     drives_neurons_ix0=3, hdf_key='spike_counts', keep_trials_sep=True,
                     reach_tm_is_hdf_cursor_pos=False, reach_tm_is_hdf_cursor_state=False, 
                     reach_tm_is_kg_vel=True, include_pre_go= 1, **dict(kalman_gain=KG))
-
+                exclude_ix = []; 
                 bin_spk_all.extend([bs for ib, bs in enumerate(bin_spk_nonz) if ib not in exclude_ix])
                 cursor_KG_all.extend([kg for ik, kg in enumerate(cursor_KG) if ik not in exclude_ix])
 
@@ -116,6 +117,8 @@ def main():
         # Do SVD on the KG*inv_cov_sqrt: 
         KG_new = np.dot(KG, cov_sqrt)
         U, S, Vh = np.linalg.svd(KG_new)
+        
+        #import pdb; pdb.set_trace()
         Smat = np.zeros((2, N))
         for i in range(2):
             Smat[i, i] = S[i]
