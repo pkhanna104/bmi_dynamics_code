@@ -878,10 +878,9 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
         model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_1psh_0spksm_0_spksp_0', 'hist_1pos_3psh_0spksm_0_spksp_0']
     
     elif model_set_number == 10:
-        model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_0_spksp_1']
-    
-    elif model_set_number == 11:
-         model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_0_spksp_1', 'hist_1pos_0psh_0spksm_1_spksp_1']
+        model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_0_spksp_1',
+                       'hist_1pos_0psh_0spksm_2_spksp_0', 'hist_1pos_0psh_0spksm_0_spksp_2', 
+                       'hist_1pos_0psh_0spksm_1_spksp_1', 'hist_1pos_0psh_0spksm_2_spksp_2']
 
     if animal == 'grom':
         hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number)

@@ -1965,7 +1965,7 @@ def generic_r2_plotter(model_set_number, model_nms, model_suffx, plot_ix = None,
             for i_m2 in range(len(model_nms[i_m])):
                 bars += 1; 
         width = 1./(bars + 2.)
-        cols = np.linspace(0., 1., bars+1)
+        cols = np.linspace(0., 1., bars)
         colors = [plt.cm.viridis(x) for x in cols]
 
         print('Bars %d, Width = %.2f' %(bars, width))
