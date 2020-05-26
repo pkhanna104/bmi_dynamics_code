@@ -1937,6 +1937,122 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
     fbth.tight_layout()
     #fbth.savefig('gen_w_vs_x.svg')
 
+def generic_r2_plotter(model_set_number, model_nms, model_suffx, plot_ix = None, 
+    neural_or_action = 'neural', ylabs = None, savedir = None):
+    '''
+    general method to plot R2s by target, then all together for visualization
+    
+    model_set_number: list of model sets to plot; 
+    model_nms: list of lists -- each entry corresponds to a model_set_number above; within that entry list all the model nms
+        desired to be plotted; 
+    model_set_suffx: where there's a specific model set suffix to plot; 
+    plot_ix: for the data saved from the models, whether there needs to be an index specified for the 3rd dimension (T x N x ?)
+        -- for task specific / generic models, the answer is '2' for general, '0' for CO, '1' for OBS; 
+    '''
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        if animal == 'grom':
+            ndays_all = np.arange(analysis_config.data_params['grom_ndays'])
+            ndays = 9; 
+
+        elif animal == 'jeev':
+            ndays_all = [0, 2, 3]
+            ndays  = 3; 
+
+        ### How many bars will there be? 
+        bars = 0; 
+        for i_m in range(len(model_set_number)):
+            for i_m2 in range(len(model_nms[i_m])):
+                bars += 1; 
+        width = 1./(bars + 2.)
+        cols = np.linspace(0., 1., bars+1)
+        colors = [plt.cm.viridis(x) for x in cols]
+
+        print('Bars %d, Width = %.2f' %(bars, width))
+        
+        ### Iterate trhough teh days; 
+        for i_d, nd in enumerate(ndays_all):
+       
+            ### hold onto real / predicted data;
+            ### keys are [set, model_nm, 'tsk_'] or [set, model_nm, 'all_']
+            data_dict = {}
+
+            ### Get kalman gain;
+            if animal == 'grom':
+                KG, _, _ = generate_models.get_KG_decoder_grom(nd)
+            elif animal == 'jeev':
+                KG, _, _ = generate_models.get_KG_decoder_jeev(nd)
+
+            ### Make a plot! 
+            fig, ax = plt.subplots(figsize = (12, 4))
+            bar = -1; 
+
+            for i_m, (msn, model_nms_msn) in enumerate(zip(model_set_number, model_nms)):
+
+                ### Load teh data; 
+                dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d%s.pkl' %(msn, model_suffx), 'rb'))
+
+                for i_m2, model_nm in enumerate(model_nms_msn):
+                    
+                    data_dict[msn, model_nm, 'all'] = []
+                    data_dict[msn, model_nm, 'tsk0'] = []
+                    data_dict[msn, model_nm, 'tsk1'] = []
+
+                    bar += 1
+
+                    ### Now ensure that 
+                    for i_t in range(2):
+
+                        for i_trg in range(10):
+
+                            ### task specific indices: 
+                            cond_ix = np.nonzero(np.logical_and(dat[(nd, 'trg')] == i_trg, 
+                                dat[(nd, 'task')] == i_t))[0]
+
+                            if len(cond_ix) > 0:
+                                #### true value 
+                                spks_true = dat[(nd, 'spks')][cond_ix, :]
+                                true_val_conv = n2a(spks_true, neural_or_action, KG)
+
+                                if plot_ix is None:
+                                    spks_pred = dat[(nd, model_nm)][cond_ix, :]
+                                
+                                else:
+                                    spks_pred = dat[(nd, model_nm)][cond_ix, :, plot_ix]
+
+                                #### predicted value; 
+                                pred_conv = n2a(spks_pred, neural_or_action, KG)
+
+                                ### Add to the data; 
+                                data_dict[msn, model_nm, 'all'].append([true_val_conv, pred_conv])
+                                data_dict[msn, model_nm, 'tsk%d'%i_t].append([true_val_conv, pred_conv])
+
+                                ### Plotting R2; 
+                                ax.bar(bar*width + i_t*15 + i_trg, 
+                                    util_fcns.get_R2(true_val_conv, pred_conv, pop = True),
+                                    width = width, color = colors[bar])
+
+                        ### Task Summary: 
+                        pred = np.vstack([p[1] for p in data_dict[msn, model_nm, 'tsk%d'%i_t]])
+                        true = np.vstack([p[0] for p in data_dict[msn, model_nm, 'tsk%d'%i_t]])
+
+                        ax.bar(bar*width + 2*15 + i_t*2, util_fcns.get_R2(true, pred, pop=True),
+                            width = width, color = colors[bar] )
+
+                    ### Full summary; 
+                    pred = np.vstack([a[1] for a in data_dict[msn, model_nm, 'all']])
+                    true = np.vstack([a[0] for a in data_dict[msn, model_nm, 'all']])
+
+                    ax.bar(bar*width + 2*15 + 2*2, util_fcns.get_R2(true, pred, pop=True),
+                        width = width, color = colors[bar] )
+
+            ax.set_title('Animal %s, Day %d' %(animal, nd))
+
+            if savedir is None:
+                pass
+            else:
+                fig.savefig(savedir + '%s_day%d_%s.png' %(animal, nd, neural_or_action))
+
 ### Want to plot target specifc (within) vs. task specific (within) vs. general model; 
 def plot_r2_bar_tg_spec_7_gen(neural_or_action = 'neural'):
     '''
@@ -2002,7 +2118,7 @@ def plot_r2_bar_tg_spec_7_gen(neural_or_action = 'neural'):
             pred_gen = []; 
 
             ### Get out the type of models 
-            type_of_models = dat_cond[i_d, 'type_of_model']
+            type_of_models = dat_cond[nd, 'type_of_model']
             
             ### Split by task -- assess R2 separately:  
             for i_t in range(2):
@@ -2227,6 +2343,9 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
         ax.set_xticks(xlt)
         ax.set_xticklabels(xl, rotation=45)
         f.tight_layout()
+
+
+
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
 ### Use model predictions to generate means -- potent and null options included. 
 def mean_diffs_plot(animal = 'grom', min_obs = 15, load_file = 'default', dt = 1, 

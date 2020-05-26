@@ -130,7 +130,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
             nneur = sub_spk_temp_all.shape[2]
 
             variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
-            
+            #import pdb; pdb.set_trace()
             
             ### For each variable in the model: 
             for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
@@ -876,14 +876,20 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
 
     elif model_set_number == 8:
         model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_1psh_0spksm_0_spksp_0', 'hist_1pos_3psh_0spksm_0_spksp_0']
+    
+    elif model_set_number == 10:
+        model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_0_spksp_1']
+    
+    elif model_set_number == 11:
+         model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_0_spksp_1', 'hist_1pos_0psh_0spksm_1_spksp_1']
 
     if animal == 'grom':
-        hdf = tables.openFile('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/grom_sweep_alpha_days_models_set%d.h5' %model_set_number)
+        hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number)
         if ndays is None:
             ndays = 9; 
     
     elif animal == 'jeev':
-        hdf = tables.openFile('/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/jeev_sweep_alpha_days_models_set%d.h5' %model_set_number)
+        hdf = tables.openFile(analysis_config.config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d.h5' %model_set_number)
         if ndays is None:
             ndays = 4; 
 
