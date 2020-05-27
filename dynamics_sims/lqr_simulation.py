@@ -65,7 +65,7 @@ grom_input_type = [[[4377], [4378, 4382]], [[4395], [4394]], [[4411], [4412, 441
 [4532, 4533]], [[4553], [4549]], [[4558], [4560]]]
 
 data_LDS = dict()
-# data_LDS['grom', 0] = dat = pickle.load(open(pref+'LDSmodels_nstates_%d_combined_models_w_dyn_inno_norms.pkl' %20, 'rb'))
+#data_LDS['grom', 0] = dat = pickle.load(open(pref+'gromLDSmodels_nstates_%d_combined_models_w_dyn_inno_norms.pkl' %15, 'rb'))
 
 class Cursor(object):
     '''
@@ -89,7 +89,6 @@ class Cursor(object):
         self.keep_offset = keep_offset
         self.nstates = self.state.shape[0]
 
-
         if ninputs == 'state_matched':
             self.ninputs = self.nstates;
         else:
@@ -102,7 +101,12 @@ class Cursor(object):
         self.B = np.zeros((self.nstates, self.ninputs))
 
         # Zero out position effects: 
-        self.B[[0, 1], :] = 0; 
+        #self.B[[0, 1], :] = 0; 
+
+        # Edit changed 5/26/20 --> accounted for instantaneous position update; 
+        # Only the first 2 input states affect the cursor evolution; 
+        self.B[0, 0] = self.dt
+        self.B[1, 1] = self.dt
 
         # Make velocity direct read-out of input: 
         self.B[2, 0] = 1; 
@@ -111,8 +115,16 @@ class Cursor(object):
         # Dynamics matrix: 
         self.A = np.eye(self.nstates)
         self.A[0, 0] = self.A[1, 1] = 1. # Position is persistent
-        self.A[0, 2] = self.A[1, 3] = self.dt
-        self.A[2, 2] = self.A[3, 3] = .7 # Velocity decay
+        self.A[0, 2] = self.A[1, 3] = 0.7*self.dt
+        self.A[2, 2] = self.A[3, 3] = 0.7 # Velocity decay
+
+        # Add some random, small offset #
+        # Added 5/26/20 #
+        if self.keep_offset:
+            
+            offs = np.random.randn(2, )*.05; 
+            self.A[[2, 3], 4] = offs.copy()
+            self.A[[0, 1], 4] = self.dt*offs.copy()
 
         ## Cursor "inputs" are neural state
         self.input_type = 'state'
@@ -173,24 +185,38 @@ class Experiment_Cursor(Cursor):
         self.input_type = 'obs'
 
 class Brain(object):
-    def __init__(self, nstates, ninputs, state_noise_weight, eig_decay, freq):
+    def __init__(self, nstates, ninputs, state_noise_weight, eig_decay, freq, brain_offset = False):
         
         # Assign:
-        self.nstates = nstates
         self.ninputs = ninputs
         self.eig_decay = eig_decay
+        self.brain_offset = brain_offset
+        if self.brain_offset:
+            self.nstates = nstates + 1
+        else:
+            self.nstates = nstates
 
         # Get A: 
         self.A = self.create_A(nstates, eig_decay, freq)
 
+        assert(self.A.shape[0] == self.A.shape[1] == self.nstates)
+
         # Get B: 
         self.B = self.create_B(nstates, ninputs)
 
+        assert(self.B.shape[0] == self.A.shape[1] == self.nstates)
+
         # Get W: 
-        self.W = np.eye(nstates)*state_noise_weight
+        self.W = np.eye(self.nstates)*state_noise_weight
+
+        if self.brain_offset:
+            self.W[-1, -1] = 0.
 
         # Get initial state: 
         self.state = np.mat(np.zeros((nstates, 1))).reshape(-1, 1)
+        
+        if self.brain_offset:
+            self.state = np.vstack((self.state, [1]))
 
     def create_A(self, nstates, decay, ang_frequency):
         ### ang_frequency --> in degrees
@@ -204,6 +230,10 @@ class Brain(object):
             As.append(A1)
 
         A = scipy.linalg.block_diag(*As)
+        
+        if self.brain_offset:
+            A = np.vstack((np.hstack((A, np.zeros((len(A))))), np.zeros((len(A)+1))))
+            A[-1, -1] = 1.
 
         
         # ### What is A, and W? 
@@ -265,6 +295,10 @@ class Brain(object):
 
         # Make influence of B on neural activity a unit vector 
         B = B / np.linalg.norm(B, axis=1)[:, np.newaxis]
+
+        if self.brain_offset:
+            B = np.vstack((B, np.zeros((ninputs, 1)) ))
+
         return B
 
     def get_next_state(self, input1):
@@ -287,10 +321,16 @@ class NHPBrain(Brain):
     def __init__(self, ninputs, day = 0, animal = 'grom', state_noise_weight = 0.,
         zeroA = False, modA = None):
 
-        A, C = get_saved_LDS(day = day, animal = animal)
-
+        if zeroA: 
+            print('Testing, fix this later')
+            C = np.random.randn(44, 20)
+            #import pdb; pdb.set_trace()
+        else:
+            A, C = get_saved_LDS(day = day, animal = animal)
+            
         if zeroA:
-            self.A = self.create_A(A.shape[0], 0., 0.)
+            #self.A = self.create_A(A.shape[0], 0., 0.)
+            self.A = self.create_A(20, 0., 0.)
         else:
             self.A = A.copy()
 
@@ -774,7 +814,7 @@ class Combined_Curs_Brain_LQR_Simulation_Data_Driven(Combined_Curs_Brain_LQR_Sim
         self.keep_offset = keep_offset
 
 ### Extract LDS from TEs ###
-def get_saved_LDS(day = 0, animal = 'grom', nstates = 20):
+def get_saved_LDS(day = 0, animal = 'grom', nstates = 20, zeroA = False):
     if animal != 'grom':
         raise Exception('Havent processed jeevs LDS yet --> fit_LDS.fit_LDS_CO_Obs')
 
@@ -817,6 +857,7 @@ def sweep_nstates_plot_norm_u(states = np.arange(4, 12, 2)):
 def sims_with_diff_dynamics_strengths(states = 4, inputs = 4,
     dynamics_strength = [0., .25, .5, .75, .9, .99], task = 'co', state_noise = .01): 
     
+    ### These aren't really frequencies -- these are angles / timestep ###
     freqs = [0., 5., 10., 15., 20., 30., 40.]
     for freq in freqs:
 
