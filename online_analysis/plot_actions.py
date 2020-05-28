@@ -754,6 +754,126 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
     ax[1].set_ylabel('Pred Mag Change')
     f.tight_layout()
  
+def plot_dAngle_dMag_xcond(command_bins=None, push=None, bin_num=None, mag_bound=None, trg=None, 
+    tsk=None, pred_push=None, min_obs = 15, **kwargs):
+    '''
+    method to take command bins for a specific task/target where there are more than min_obs
+    then take the next action and predicted next action
+    '''
+
+    f, ax = plt.subplots(ncols = 2, figsize = (8, 4))
+    reg_dict = dict(d_dA = [], pred_d_dA = [], d_dM = [], pred_d_dM = [])
+
+    for tg0 in range(10):
+        ix_tg0 = np.nonzero(np.logical_and(tsk == 0, trg == tg0))[0]
+
+        for tg1 in range(10):
+            ix_tg1 = np.nonzero(np.logical_and(tsk == 1, trg == tg1))[0]
+
+            for m in range(4):
+                for a in range(8):
+
+                    ### Make sure there are enough of this bin in BOTH conditions; 
+                    com_ix0 = np.nonzero(np.logical_and(command_bins[ix_tg0, 0] == m, command_bins[ix_tg0, 1] == a))[0]
+                    com_ix1 = np.nonzero(np.logical_and(command_bins[ix_tg1, 0] == m, command_bins[ix_tg1, 1] == a))[0]
+
+                    ### Great! Plot this comparison ###
+                    com_ix0_tp1 = com_ix0 + 1
+                    com_ix1_tp1 = com_ix1 + 1
+
+                    ### Remove the long ones
+                    com_ix0_tp1 = com_ix0_tp1[com_ix0_tp1 < len(command_bins)]
+                    com_ix1_tp1 = com_ix1_tp1[com_ix1_tp1 < len(command_bins)]
+
+                    ### Remove the ones that cross over trials 
+                    com_ix0_tp1 = com_ix0_tp1[bin_num[com_ix0_tp1] > np.min(bin_num)]
+                    com_ix1_tp1 = com_ix1_tp1[bin_num[com_ix1_tp1] > np.min(bin_num)]
+
+                    ### Re-do so now the same length
+                    com_ix0 = com_ix0_tp1 - 1; 
+                    com_ix1 = com_ix1_tp1 - 1; 
+
+                    if np.logical_and(len(com_ix0_tp1) >= min_obs, len(com_ix1_tp1) >= min_obs):
+
+                        ### Average segment ####
+                        mn_seg0 = np.mean(push[com_ix0, :], axis=0)
+                        mn_seg1 = np.mean(push[com_ix1, :], axis=0)
+
+                        ### Average next segment ####
+                        mn_seg0_tp1 = np.mean(push[com_ix0_tp1, :], axis=0)
+                        mn_seg1_tp1 = np.mean(push[com_ix1_tp1, :], axis=0)
+
+                        ### Average predicted next segment; 
+                        pred_mn_seg0_tp1 = np.mean(pred_push[com_ix0_tp1, :], axis=0)
+                        pred_mn_seg1_tp1 = np.mean(pred_push[com_ix1_tp1, :], axis=0)
+
+                        ### Angle differences ###
+                        ### What are the across condition difference ###
+                        ### Diffs of Diffs ### 
+                        dA_0, dM_0 = get_diffs(mn_seg0_tp1, mn_seg0)
+                        dA_1, dM_1 = get_diffs(mn_seg1_tp1, mn_seg1)
+                        
+                        pdA_0, pdM_0 = get_diffs(pred_mn_seg0_tp1, mn_seg0)
+                        pdA_1, pdM_1 = get_diffs(pred_mn_seg1_tp1, mn_seg1)
+
+                        ### Get the CW / CCW part; 
+                        dA_0 = np.sign(np.cross(mn_seg0, mn_seg0_tp1))*dA_0
+                        dA_1 = np.sign(np.cross(mn_seg1, mn_seg1_tp1))*dA_1
+
+                        pdA_0 = np.sign(np.cross(mn_seg0, pred_mn_seg0_tp1))*pdA_0
+                        pdA_1 = np.sign(np.cross(mn_seg1, pred_mn_seg1_tp1))*pdA_1
+                        
+                        ### Now get the differences in angle; 
+                        d_dA = dA_0 - dA_1; 
+                        d_pdA = pdA_0 - pdA_1; 
+
+                        ### Now do the same thing with magnitudes;
+                        d_dM = dM_0 - dM_1; 
+                        d_pdM = pdM_0 - pdM_1; 
+
+                        if tg1 == tg0 + 1:
+                            col = 'r'
+                        else:   
+                            col = 'k'
+
+                        ax[0].plot(r2a(d_dA), r2a(d_pdA), '.', color=col)
+                        ax[1].plot(d_dM, d_pdM, '.', color=col)
+
+                        reg_dict['d_dA'].append(r2a(d_dA))
+                        reg_dict['pred_d_dA'].append(r2a(d_pdA))
+                        
+                        reg_dict['d_dM'].append(d_dM)
+                        reg_dict['pred_d_dM'].append(d_pdM)
+
+    ax[0].set_xlabel('Ang Diffs in (True Next - Current)\n Action Across Cond (ang)')
+    ax[0].set_ylabel('Ang Diffs in (Pred Next - Current)\n Action Across Cond (ang)')
+    ax[1].set_xlabel('Mag Diffs in (True Next - Current)\n Action Across Cond')
+    ax[1].set_ylabel('Mag Diffs in (Pred Next - Current)\n Action Across Cond')
+
+    ax[0].plot([-150, 150], [-150, 150], 'k-')
+    ax[1].plot([-3, 1], [-3, 1], 'k-')
+
+    reg_dict = util_fcns.hstack_keys(reg_dict)
+
+    ### Plot predictions #### 
+    slp,intc,rv,pv,stedrr = scipy.stats.linregress(reg_dict['d_dA'], reg_dict['pred_d_dA'])
+    r2 = util_fcns.get_R2(reg_dict['d_dA'], reg_dict['pred_d_dA'])
+    ax[0].set_title('Slp: %.2f, Rval: %.2f, R2 err: %.2f' %(slp, rv, r2), color = 'b')
+    xtmp = np.linspace(-150, 150, 10)
+    ytmp = slp*xtmp + intc
+    ax[0].plot(xtmp, ytmp, 'b--')
+
+    slp,intc,rv,pv,stedrr = scipy.stats.linregress(reg_dict['d_dM'], reg_dict['pred_d_dM'])
+    r2 = util_fcns.get_R2(reg_dict['d_dM'], reg_dict['pred_d_dM'])
+    ax[1].set_title('Slp: %.2f, Rval: %.2f, R2-err: %.2f' %(slp, rv, r2), color = 'b')
+    xtmp = np.linspace(-3, 1, 10)
+    ytmp = slp*xtmp + intc
+    ax[1].plot(xtmp, ytmp, 'b--')
+    f.tight_layout()
+
+def r2a(rad):
+    return rad/np.pi*180.
+
 ############ Preproc #######
 def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 10, minobs2 = 3):
     if animal == 'grom':
