@@ -6,8 +6,9 @@ import matplotlib as mpl
 import numpy as np 
 import matplotlib.pyplot as plt
 
-def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 5,
-             arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, pred_push = None, scale_rad = 2.): 
+def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 3,
+             arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, pred_push = None, scale_rad = 2.,
+             add_ang_mag_subplots = False): 
     
     ### Get the mean angle / magnitudes ###
     mag_bound = scale_rad*np.hstack((mag_bound))
@@ -41,59 +42,28 @@ def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ
     trg0 = trg[ix0]
     trg1 = trg[ix1]
     
-    
     ### Go through -- which bins have enough min_obs in both tasks; 
     keep = []
-    for m in range(4):
-        for a in range(8):
+    for m_ in range(4):
+        for a_ in range(8):
             
             ### INDEX LEVEL 2 -- Indices to get the mag / angle from each task 
-            i0 = np.nonzero(np.logical_and(com0[:, 0] == m, com0[:, 1] == a))[0]
-            i1 = np.nonzero(np.logical_and(com1[:, 0] == m, com1[:, 1] == a))[0]
+            i0 = np.nonzero(np.logical_and(com0[:, 0] == m_, com0[:, 1] == a_))[0]
+            i1 = np.nonzero(np.logical_and(com1[:, 0] == m_, com1[:, 1] == a_))[0]
             
             ### Save these ###
             if np.logical_and(len(i0) >= min_obs, len(i1) >= min_obs):
                 
                 ### Add the m / a / indices for this so we can go through them later; 
-                keep.append([m, a, i0.copy(), i1.copy()])
+                keep.append([m_, a_, i0.copy(), i1.copy()])
     
     ### Now for each for these, plot the main thing; 
-    for i_m, (m, a, i0, i1) in enumerate(keep):
-        
-        ### Make a figure centered on this command; 
-        fig, ax_all = plt.subplots(ncols = 2, figsize = (10, 50/8.))
-        fig.subplots_adjust(bottom=0.3)
-        for ia, (ax, tgi) in enumerate(zip(ax_all, [targ0, targ1])):
-            
-            ### Set the axis to square so the arrows show up correctly 
-            ax.axis('equal')
-            title_string = 'cotg%d_obstg%d_mag%d_ang%d' %(targ0, targ1, m, a)
-            
-            ax.set_title('Task %d, Targ %d Mag %d, Ang %d' %(ia, tgi, m, a))
-
-            ### Plot the division lines; 
-            for A in np.linspace(-np.pi/8., (2*np.pi) - np.pi/8., 9):
-                ax.plot([0, lims*np.cos(A)], [0, lims*np.sin(A)], 'k-', linewidth=.5)
-            
-            ### Plot the circles 
-            t = np.arange(0, np.pi * 2.0, 0.01)
-            tmp = np.hstack(([0], mag_bound, [mag_bound[2] + 2]))
-            for mm in tmp:
-                x = mm * np.cos(t)
-                y = mm * np.sin(t)
-                ax.plot(x, y, 'k-', linewidth = .5)
+    for i_m, (mi, ai, i0, i1) in enumerate(keep):           
         
         ### Get mean neural push for each task ###
-        mn0 = np.mean(psh0[i0, :], axis=0)
-        mn1 = np.mean(psh1[i1, :], axis=0)
-        
-        ### Plot this mean neural push as big black arrow ###
-        ax_all[0].quiver(mag_mns[m]*np.cos(ang_mns[a]), mag_mns[m]*np.sin(ang_mns[a]), mn0[0], mn0[1], 
-                  width=arrow_scale*2, color = 'k', angles='xy', scale=1, scale_units='xy')
-        
-        ax_all[1].quiver(mag_mns[m]*np.cos(ang_mns[a]), mag_mns[m]*np.sin(ang_mns[a]), mn1[0], mn1[1], 
-                  width=arrow_scale*2, color = 'k', angles='xy', scale=1, scale_units='xy')             
-        
+        segment_mn0 = np.mean(psh0[i0, :], axis=0)
+        segment_mn1 = np.mean(psh1[i1, :], axis=0)
+
         ### ADJUSTMENT TO LEVEL 2 -- Now get the NEXT action commands ###
         i0p1 = i0 + 1; 
         i1p1 = i1 + 1; 
@@ -105,9 +75,12 @@ def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ
             i1p1 = i1p1[:-1]
         ### Remove the commands that are equal to the minimum bin_cnt (=1) 
         ### because they spilled over from the last trial ###
-        kp0 = np.nonzero(bn0[i0p1] > 1)[0]
-        kp1 = np.nonzero(bn1[i1p1] > 1)[0]
+        kp0 = np.nonzero(bn0[i0p1] > np.min(bin_num))[0]
+        kp1 = np.nonzero(bn1[i1p1] > np.min(bin_num))[0]
         
+        print('Min Bin num %d' %(np.min(bin_num)))
+        print('Len rm %d, len pre rm %d' %(len(i0p1), len(kp0)))
+
         ### Keep these guys ###
         i0p1 = i0p1[kp0]
         i1p1 = i1p1[kp1]
@@ -125,6 +98,14 @@ def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ
         index_dict = {}
         index_dict[0] = []
         index_dict[1] = []
+
+        dA_dict = {}
+        dA_dict[0] = []
+        dA_dict[1] = []
+
+        dM_dict = {}
+        dM_dict[0] = []
+        dM_dict[1] = []
         
         ### These should all be the same target still ###
         assert(np.all(trg0[i0p1] == targ0))
@@ -132,21 +113,22 @@ def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ
         
         ### Iterate through the tasks ###
 
-        for m in range(4):
-            for a in range(8):
-                ### LEVEL 3 -- OF THE NEXT ACTION COMMANDS, which match the action #####
-                j0 = np.nonzero(np.logical_and(com0[i0p1, 0] == m, com0[i0p1, 1] == a))[0]
-                j1 = np.nonzero(np.logical_and(com1[i1p1, 0] == m, com1[i1p1, 1] == a))[0]
+        for mp in range(4):
+            for ap in range(8):
 
-                for i_, (index, index_og, pshi, predpshi) in enumerate(zip([j0, j1], [i0p1, i1p1], [psh0, psh1],
-                                                                [pred_psh0, pred_psh1])):
+                ### LEVEL 3 -- OF THE NEXT ACTION COMMANDS, which match the action #####
+                j0 = np.nonzero(np.logical_and(com0[i0p1, 0] == mp, com0[i0p1, 1] == ap))[0]
+                j1 = np.nonzero(np.logical_and(com1[i1p1, 0] == mp, com1[i1p1, 1] == ap))[0]
+
+                for i_, (index, index_og, pshi, predpshi, segmn) in enumerate(zip([j0, j1], [i0p1, i1p1], [psh0, psh1],
+                                                                [pred_psh0, pred_psh1], [segment_mn0, segment_mn1])):
                     if len(index) >= min_obs2:
-                        print('Adding followup tsk %d, m %d, a %d' %(i_, m, a))
+                        print('Adding followup tsk %d, m %d, a %d' %(i_, mp, ap))
 
                         ### Great plot this;
                         mn_next_action = np.mean(pshi[index_og[index], :], axis=0)
-                        xi = mag_mns[m]*np.cos(ang_mns[a])
-                        yi = mag_mns[m]*np.sin(ang_mns[a])
+                        xi = mag_mns[mp]*np.cos(ang_mns[ap])
+                        yi = mag_mns[mp]*np.sin(ang_mns[ap])
                         vx = mn_next_action[0];
                         vy = mn_next_action[1]; 
 
@@ -159,91 +141,239 @@ def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ
                             pass
                         else:
                             pred_mn_next_action = np.mean(predpshi[index_og[index], :], axis=0)
+                            
+                            #### Get the error associated with the predicted action ####
+                            dA, dM = get_diffs(pred_mn_next_action, segmn)
+                            dA_dict[i_].append(dA)
+                            dM_dict[i_].append(dM)
+
                             p_vx = pred_mn_next_action[0]
                             p_vy = pred_mn_next_action[1]
                             
                             pred_arrows_dict[i_].append([copy.deepcopy(xi), copy.deepcopy(yi), 
-                                                 copy.deepcopy(p_vx), copy.deepcopy(p_vy)])
+                                                 copy.deepcopy(p_vx), copy.deepcopy(p_vy), dA, dM, mp, ap])
         
         #import pdb; pdb.set_trace()
         ### Now figure out the color lists for CO / OBS separately; 
-        mx_co = np.max(np.hstack((index_dict[0])))
-        mn_co = np.min(np.hstack((index_dict[0])))
-        co_cols = np.linspace(0., 1., mx_co - mn_co + 1)
-        co_colors = [cm.viridis(x) for x in co_cols]
-        print('Co mx = %d, mn = %d' %(mx_co, mn_co))
+        tmpx = 0; 
+        if len(index_dict[0]) > 0:
+            mx_co = np.max(np.hstack((index_dict[0])))
+            mn_co = np.min(np.hstack((index_dict[0])))
+            co_cols = np.linspace(0., 1., mx_co - mn_co + 1)
+            co_colors = [cm.viridis(x) for x in co_cols]
+            print('Co mx = %d, mn = %d' %(mx_co, mn_co))
+            tmpx += 1
         
-        mx_ob = np.max(np.hstack((index_dict[1])))
-        mn_ob = np.min(np.hstack((index_dict[1])))
-        obs_cols = np.linspace(0., 1., mx_ob - mn_ob+1)
-        obs_colors = [cm.viridis(x) for x in obs_cols]
-        print('Obs mx = %d, mn = %d' %(mx_ob, mn_ob))
-        
-        for tsk, (mnN, cols) in enumerate(zip([mn_co, mn_ob], [co_colors, obs_colors])):
-            
-            print('Len arrows_dict[%d]: %d' %(tsk, len(arrows_dict[tsk])))
-            ### go through all the arrows;
-            for arrow in arrows_dict[tsk]:
-                
-                ### Parse the parts 
-                xi, yi, vx, vy, N = arrow; 
-                
-                ### Plot it;
-                ax_all[tsk].quiver(xi, yi, vx, vy,
-                                  width = arrow_scale, color = cols[N - mnN], 
-                                    angles='xy', scale=1, scale_units='xy')
-            
-            for pred_arrow in pred_arrows_dict[tsk]:
-                
-                ### Parse the parts
-                pxi, pyi, pvx, pvy = pred_arrow
-                
-                ### Plot it; 
-                ax_all[tsk].quiver(pxi, pyi, pvx, pvy, 
-                                  angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
-                                  linestyle = 'dashed', edgecolor='r', facecolor='none', 
-                                  linewidth = 1.)
+        if len(index_dict[1]) > 0:
+            mx_ob = np.max(np.hstack((index_dict[1])))
+            mn_ob = np.min(np.hstack((index_dict[1])))
+            obs_cols = np.linspace(0., 1., mx_ob - mn_ob+1)
+            obs_colors = [cm.viridis(x) for x in obs_cols]
+            print('Obs mx = %d, mn = %d' %(mx_ob, mn_ob))
+            tmpx += 1
 
-        for ia, ax in enumerate(ax_all):
-            ax.set_xlim([-lims, lims])
-            ax.set_ylim([-lims, lims])
-            
-        ### Set colorbar; 
-        cmap = mpl.cm.viridis
-        if mn_co == mx_co:
-            norm = mpl.colors.Normalize(vmin=mn_co, vmax=mx_co+.1)
-        else:
-            norm = mpl.colors.Normalize(vmin=mn_co, vmax=mx_co)
-        cax0 = fig.add_axes([0.1, 0.1, 0.3, 0.05])
-        cb1 = mpl.colorbar.ColorbarBase(cax0, cmap=cmap,
-                            norm=norm, orientation='horizontal',
-                            boundaries = np.arange(mn_co-0.5, mx_co+1.5, 1.))
-        cb1.set_ticks(np.arange(mn_co, mx_co+1))
-        cb1.set_ticklabels(np.arange(mn_co, mx_co+1))
+        if tmpx == 2:
 
+            ######## Make a figure centered on this command; ###########
+            if add_ang_mag_subplots:
+                fig, ax_all = plt.subplots(ncols = 2, nrows = 3, figsize = (10, 150/8.))
+            else:
+                fig, ax_all = plt.subplots(ncols = 2, figsize = (10, 50/8.))
+                ax_all = ax_all[np.newaxis, :]
+                fig.subplots_adjust(bottom=0.3)
             
+            for axi in ax_all.reshape(-1):
+                axi.axis('equal')
+
+            for ia, (ax, tgi) in enumerate(zip(ax_all[0, :], [targ0, targ1])):
+                
+                ### Set the axis to square so the arrows show up correctly 
+                ax.axis('equal')
+                title_string = 'cotg%d_obstg%d_mag%d_ang%d' %(targ0, targ1, mi, ai)
+
+                ### Plot the division lines; 
+                for A in np.linspace(-np.pi/8., (2*np.pi) - np.pi/8., 9):
+                    for axi in ax_all[:, ia]:
+                        axi.plot([0, lims*np.cos(A)], [0, lims*np.sin(A)], 'k-', linewidth=.5)
+                
+                ### Plot the circles 
+                t = np.arange(0, np.pi * 2.0, 0.01)
+                tmp = np.hstack(([0], mag_bound, [mag_bound[2] + 2]))
+                for mm in tmp:
+                    x = mm * np.cos(t)
+                    y = mm * np.sin(t)
+                    for axi in ax_all[:, ia]:
+                        axi.plot(x, y, 'k-', linewidth = .5)
+
+            ### Plot this mean neural push as big black arrow ###
+            ax_all[0, 0].quiver(mag_mns[mi]*np.cos(ang_mns[ai]), mag_mns[mi]*np.sin(ang_mns[ai]), segment_mn0[0], segment_mn0[1], 
+                      width=arrow_scale*2, color = 'k', angles='xy', scale=1, scale_units='xy')
+            
+            ax_all[0, 1].quiver(mag_mns[mi]*np.cos(ang_mns[ai]), mag_mns[mi]*np.sin(ang_mns[ai]), segment_mn1[0], segment_mn1[1], 
+                      width=arrow_scale*2, color = 'k', angles='xy', scale=1, scale_units='xy')  
+
+
+
+            #### Get a unified colorbar; 
+            ##### Get color for angle / magnitude here; #######
+            if add_ang_mag_subplots:
+                tmp_a = np.hstack(( np.hstack(( dA_dict[0] )), np.hstack(( dA_dict[1] )) ))
+                tmp_m = np.hstack(( np.hstack(( dM_dict[0] )), np.hstack(( dM_dict[1] )) ))
+                npts = 10.
+                tmp_cols = np.linspace(0., 1., npts)
+                sub_colors = [cm.viridis(x) for x in tmp_cols]
+                
+                ### These are the center colors for each of the segments; 
+                ang_dict = np.linspace(np.min(tmp_a), np.max(tmp_a), npts)
+                mag_dict = np.linspace(np.min(tmp_m), np.max(tmp_m), npts)
+
+
+            #### Now plot the ind. plots ###
+            for tsk, (mnN, cols, segmn) in enumerate(zip([mn_co, mn_ob], [co_colors, obs_colors], [segment_mn0, segment_mn1])):
+                
+                cmap = mpl.cm.viridis
+                num_corr = [0, 0]
+
+                print('Len arrows_dict[%d]: %d' %(tsk, len(arrows_dict[tsk])))
+                ### go through all the arrows;
+                for arrow in arrows_dict[tsk]:
+                    
+                    ### Parse the parts 
+                    xi, yi, vx, vy, N = arrow; 
+                    #import pdb; pdb.set_trace()
+                    ### Plot it;
+                    ax_all[0, tsk].quiver(xi, yi, vx, vy,
+                                      width = arrow_scale, color = cols[N - mnN], 
+                                        angles='xy', scale=1, scale_units='xy')
+                
+                for pred_arrow in pred_arrows_dict[tsk]:
+                    
+                    ### Parse the parts
+                    pxi, pyi, pvx, pvy, da, dm, mp, ap = pred_arrow
+                    
+                    #### Is this correct direction ? ######
+                    corr_dir = assess_corr_dir([mi, ai], [mp, ap], segmn, np.array([pvx, pvy]))
+
+                    if corr_dir is None: 
+                        ax_all[0, tsk].quiver(pxi, pyi, pvx, pvy, 
+                                          angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
+                                          linestyle = 'dashed', edgecolor='gray', facecolor='none', 
+                                          linewidth = 1.)
+
+                    elif corr_dir == True: 
+                        ### Plot it; 
+                        num_corr[0] += 1
+                        num_corr[1] += 1
+                        
+                        ax_all[0, tsk].quiver(pxi, pyi, pvx, pvy, 
+                                          angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
+                                          linestyle = 'dashed', edgecolor='r', facecolor='none', 
+                                          linewidth = 1.)
+
+
+                    elif corr_dir == False: 
+                        num_corr[1] += 1
+                        ### Plot it; 
+                        ax_all[0, tsk].quiver(pxi, pyi, pvx, pvy, 
+                                          angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
+                                          facecolor='r', alpha = 0.4, linewidth=0.)
+
+
+                    #### Plot the predictions; 
+                    if add_ang_mag_subplots:
+                        x_pts, y_pts = get_pts_in_sector(mp, ap, mag_bound)
+
+                        ### Which color ix is da and dr; 
+                        ang_col_ix = np.argmin(np.abs(ang_dict - da))
+                        mag_col_ix = np.argmin(np.abs(mag_dict - dm))
+
+                        ax_all[1, tsk].plot(x_pts, y_pts, '.', color = sub_colors[ang_col_ix])
+                        ax_all[2, tsk].plot(x_pts, y_pts, '.', color = sub_colors[mag_col_ix])
+
+                if num_corr[1] > 0:
+                    pc = int(100*(float(num_corr[0])/float(num_corr[1])))
+                else:
+                    pc = -1
+
+                if tsk == 0:
+                    ax_all[0, tsk].set_title('Task %d, Targ %d Mag %d, Ang %d, PC = %d' %(tsk, targ0, mi, ai, pc))
+                elif tsk == 1:
+                    ax_all[0, tsk].set_title('Task %d, Targ %d Mag %d, Ang %d, PC = %d' %(tsk, targ1, mi, ai, pc))
+                
+                ##### Now plot the colorbars for Angle / Magnitude; 
+                if add_ang_mag_subplots:
+                    for _, (r, dicts, clab) in enumerate(zip([1, 2], [ang_dict, mag_dict], ['dAngle (deg)', 'dMag'])):
+                        
+                        rfrombott = 2 - r
+                        cax1 = fig.add_axes([tsk*.45 + .15, (rfrombott*.27) + .1, 0.3, 0.01])
+
+                        if r == 1:
+                            norm = mpl.colors.Normalize(vmin=dicts[0]/np.pi*180, vmax=dicts[-1]/np.pi*180)
+                            tmp = np.array([dicts[0], np.mean(dicts), dicts[-1]])/np.pi*180
+                            dt = 1/20.*(tmp[-1] - tmp[0])
+                            tmp[0] += dt
+                            tmp[-1] -= dt
+                            tmp = tmp.astype(int)
+
+                        else:
+                            norm = mpl.colors.Normalize(vmin=dicts[0], vmax=dicts[-1])
+                            tmp = np.array([dicts[0], np.mean(dicts), dicts[-1]])
+                            dt = 1/20.*(dicts[-1] - dicts[0])
+                            tmp[0] += dt 
+                            tmp[-1] -= dt
+                            tmp = 1/100.*(np.round(100*tmp).astype(int))
+
+                        cb2 = mpl.colorbar.ColorbarBase(cax1, cmap=cmap,
+                                            norm=norm, orientation='horizontal')
+                        cb2.set_ticks(tmp)
+                        cb2.set_ticklabels(tmp)
+                        cb2.set_label(clab)
+
+
+            for ia, ax in enumerate(ax_all.reshape(-1)):
+                ax.set_xlim([-lims, lims])
+                ax.set_ylim([-lims, lims])
+                ax.set_xticks([])
+                ax.set_xticklabels([])
+
+            ### Set colorbar for the main distriubitons 
+            if mn_co == mx_co:
+                norm = mpl.colors.Normalize(vmin=mn_co, vmax=mx_co+.1)
+            else:
+                norm = mpl.colors.Normalize(vmin=mn_co, vmax=mx_co)
+            if add_ang_mag_subplots:
+                cax0 = fig.add_axes([0*.45 + .15, (2*.27) + .1, 0.3, 0.01])
+            else:
+                cax0 = fig.add_axes([0.1, 0.1, 0.3, 0.05])
+            cb1 = mpl.colorbar.ColorbarBase(cax0, cmap=cmap,
+                                norm=norm, orientation='horizontal',
+                                boundaries = np.arange(mn_co-0.5, mx_co+1.5, 1.))
+            cb1.set_ticks(np.arange(mn_co, mx_co+1))
+            cb1.set_ticklabels(np.arange(mn_co, mx_co+1))
+            cb1.set_label('Counts')
+
+            if mn_ob == mn_ob:
+                norm = mpl.colors.Normalize(vmin=mn_ob, vmax=mx_ob+.1)
+            else:
+                norm = mpl.colors.Normalize(vmin=mn_ob, vmax=mx_ob)
+            if add_ang_mag_subplots:
+                cax1 = fig.add_axes([1*.45 + .15, (2*.27) + .1, 0.3, 0.01])
+            else:
+                cax1 = fig.add_axes([0.6, .1, .3, .05])
+            cb1 = mpl.colorbar.ColorbarBase(cax1, cmap=cmap,
+                                norm=norm, orientation='horizontal',
+                                boundaries = np.arange(mn_ob-0.5, mx_ob+1.5, 1.))
+            cb1.set_label('Counts')
+            cb1.set_ticks(np.arange(mn_ob, mx_ob+1))
+            cb1.set_ticklabels(np.arange(mn_ob, mx_ob+1)) 
         
-        cb1.set_label('Counts')
-        if mn_ob == mn_ob:
-            norm = mpl.colors.Normalize(vmin=mn_ob, vmax=mx_ob+.1)
-        else:
-            norm = mpl.colors.Normalize(vmin=mn_ob, vmax=mx_ob)
-        cax1 = fig.add_axes([0.6, .1, .3, .05])
-        cb1 = mpl.colorbar.ColorbarBase(cax1, cmap=cmap,
-                            norm=norm, orientation='horizontal',
-                            boundaries = np.arange(mn_ob-0.5, mx_ob+1.5, 1.))
-        cb1.set_label('Counts')
-        cb1.set_ticks(np.arange(mn_ob, mx_ob+1))
-        cb1.set_ticklabels(np.arange(mn_ob, mx_ob+1)) 
-        
-        
-        ### Save this ? 
-        if save:
-            fig.savefig(save_dir+'/'+prefix+'_'+title_string+'.png')
+            ### Save this ? 
+            if save:
+                fig.savefig(save_dir+'/'+prefix+'_'+title_string+'.png')
 
 def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 = 20,
              arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, 
-             pred_push = None, scale_rad = 2.): 
+             pred_push = None, scale_rad = 2., add_ang_mag_subplots = False): 
     '''
     command_bins -- discretized commands over all bins 
     push -- continuous pushses
@@ -253,6 +383,8 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
 
     pred_push -- general dynamics predictions; 
     scale_rad -- how to scale out the radius for better visualization; 
+    add_ang_mag_subplots -- add 2 additional subplots that visualize dAngle, dMag 
+        as dots; 
     '''
 
     ### Get the mean angle / magnitudes ###
@@ -278,16 +410,26 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
     for i_m, (m, a, ixi) in enumerate(keep):
         
         ### Make a figure centered on this command; 
-        fig, ax_all = plt.subplots(figsize = (8, 10))
-        fig.subplots_adjust(bottom=0.3)
+        if add_ang_mag_subplots:
+            fig, ax_all = plt.subplots(ncols = 3, figsize = (18, 6))
+            fig.subplots_adjust(bottom=0.1)
         
-        ### Set the axis to square so the arrows show up correctly 
-        ax_all.axis('equal')
+        else:
+            fig, ax_all = plt.subplots(figsize = (8, 10))
+            fig.subplots_adjust(bottom=0.3)
+            ax_all = [ax_all]
+        
+        ### Set the axis to square so the arrows show up correctly
+        for ax in ax_all:
+            ax.axis('equal')
+
+        ### Used to save later; 
         title_string = 'ALL_mag%d_ang%d' %(m, a)
 
         ### Plot the division lines; 
         for A in np.linspace(-np.pi/8., (2*np.pi) - np.pi/8., 9):
-            ax_all.plot([0, lims*np.cos(A)], [0, lims*np.sin(A)], 'k-', linewidth=.5)
+            for ax in ax_all:
+                ax.plot([0, lims*np.cos(A)], [0, lims*np.sin(A)], 'k-', linewidth=.5)
             
         ### Plot the circles 
         t = np.arange(0, np.pi * 2.0, 0.01)
@@ -295,13 +437,14 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
         for mm in tmp:
             x = mm * np.cos(t)
             y = mm * np.sin(t)
-            ax_all.plot(x, y, 'k-', linewidth = .5)
+            for ax in ax_all:
+                ax.plot(x, y, 'k-', linewidth = .5)
         
         ### Get mean neural push for each task ###
         segment_mn = np.mean(push[ixi, :], axis=0)
         
         ### Plot this mean neural push as big black arrow ###
-        ax_all.quiver(mag_mns[m]*np.cos(ang_mns[a]), mag_mns[m]*np.sin(ang_mns[a]), segment_mn[0], segment_mn[1], 
+        ax_all[0].quiver(mag_mns[m]*np.cos(ang_mns[a]), mag_mns[m]*np.sin(ang_mns[a]), segment_mn[0], segment_mn[1], 
                   width=arrow_scale*2, color = 'k', angles='xy', scale=1, scale_units='xy')
         
         ### ADJUSTMENT TO LEVEL 2 -- Now get the NEXT action commands ###
@@ -314,7 +457,7 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
        
             ### Remove the commands that are equal to the minimum bin_cnt (=1) 
             ### because they spilled over from the last trial ###
-            kp0 = np.nonzero(bin_num[ixip1] > 1)[0]
+            kp0 = np.nonzero(bin_num[ixip1] > np.min(bin_num))[0]
             
             ### Keep these guys ###
             index_og = ixip1[kp0]
@@ -323,7 +466,13 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
             ### We need to create this because we're not sure how big to maek the colormap when plotting; 
             arrows_dict = []        
             pred_arrows_dict = []
+
+            ### Used to make the colorbar; 
             index_dict = []
+
+            ### Used to make dA, dR colorbar; 
+            dA_dict = []; 
+            dR_dict = []; 
             
             ### Iterate through the tasks ###
             for mp in range(4):
@@ -348,47 +497,72 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
                         
                         #### Predicted Action ####
                         if pred_push is None:
-                            pass
+                            partsss
                         else:
                             pred_mn_next_action = np.mean(pred_push[index_og[index], :], axis=0)
                             p_vx = pred_mn_next_action[0]
                             p_vy = pred_mn_next_action[1]
                             
+                            ### Get an estimate of the diff ang / diff mag from the reference; 
+                            dA, dR = get_diffs(pred_mn_next_action, segment_mn)
+                            
+                            ### Add so we can do colorbar later; 
+                            dA_dict.append(dA)
+                            dR_dict.append(dR)
+
                             pred_arrows_dict.append([copy.deepcopy(xi), copy.deepcopy(yi), 
-                                                 copy.deepcopy(p_vx), copy.deepcopy(p_vy), mp, ap])
+                                                 copy.deepcopy(p_vx), copy.deepcopy(p_vy), mp, ap, dA, dR])
             
             #import pdb; pdb.set_trace()
             ### Now figure out the color lists for CO / OBS separately; 
             if len(index_dict) > 0:
                 num_corr = [0, 0] ## Total correct / total assessed; 
 
+                #### Colors for distribution counts; ####
                 mx_ = np.max(np.hstack((index_dict)))
                 mn_ = np.min(np.hstack((index_dict)))
                 cols = np.linspace(0., 1., mx_ - mn_ + 1)
                 colors = [cm.viridis(x) for x in cols]
                 print('All mx = %d, mn = %d' %(mx_, mn_))
             
+                ### Get colors for dA / dR; 
+                mxa_ = np.max(np.hstack((dA_dict)))
+                mna_ = np.min(np.hstack((dA_dict)))
+
+                mxr_ = np.max(np.hstack((dR_dict)))
+                mnr_ = np.min(np.hstack((dR_dict)))
+                
+                npts = 5; 
+
+                ### Color dict ###
+                cols = np.linspace(0., 1., npts)
+                sub_colors = [cm.viridis(x) for x in cols]
+                
+                ### These are the center colors for each of the segments; 
+                ang_dict = np.linspace(mna_, mxa_, npts)
+                mag_dict = np.linspace(mnr_, mxr_, npts)
+
                 for arrow in arrows_dict:
                     
                     ### Parse the parts 
                     xi, yi, vx, vy, N = arrow; 
                     
                     ### Plot it;
-                    ax_all.quiver(xi, yi, vx, vy,
+                    ax_all[0].quiver(xi, yi, vx, vy,
                                       width = arrow_scale, color = colors[N - mn_], 
                                         angles='xy', scale=1, scale_units='xy')
                 
                 for pred_arrow in pred_arrows_dict:
                     
                     ### Parse the parts
-                    pxi, pyi, pvx, pvy, mi, ai = pred_arrow
+                    pxi, pyi, pvx, pvy, mi, ai, da, dr = pred_arrow
                     
                     ### Plot the arrows in "outline / dashd red" if they are correct
                     ### Plot them in "filled in alpha red" if they are wrong; 
                     corr_dir = assess_corr_dir([m, a], [mi, ai], segment_mn, np.array([pvx, pvy]))
 
                     if corr_dir is None: 
-                        ax_all.quiver(pxi, pyi, pvx, pvy, 
+                        ax_all[0].quiver(pxi, pyi, pvx, pvy, 
                                           angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
                                           linestyle = 'dashed', edgecolor='gray', facecolor='none', 
                                           linewidth = 1.)
@@ -398,7 +572,7 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
                         num_corr[0] += 1
                         num_corr[1] += 1
                         
-                        ax_all.quiver(pxi, pyi, pvx, pvy, 
+                        ax_all[0].quiver(pxi, pyi, pvx, pvy, 
                                           angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
                                           linestyle = 'dashed', edgecolor='r', facecolor='none', 
                                           linewidth = 1.)
@@ -407,25 +581,54 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
                     elif corr_dir == False: 
                         num_corr[1] += 1
                         ### Plot it; 
-                        ax_all.quiver(pxi, pyi, pvx, pvy, 
+                        ax_all[0].quiver(pxi, pyi, pvx, pvy, 
                                           angles = 'xy', scale_units = 'xy', scale = 1, width=arrow_scale,
                                           facecolor='r', alpha = 0.4, linewidth=0.)
 
-                
-            
-                ax_all.set_xlim([-lims, lims])
-                ax_all.set_ylim([-lims, lims])
+                    ######## Add info on the new plots ########
+                    if add_ang_mag_subplots:
 
-                pc = int(100*(float(num_corr[0])/float(num_corr[1])))
-                ax_all.set_title('Mag %d, Ang %d, Perc Corr: %d' %( m, a, pc))
+                        ### Get the axes 
+                        ang_ax = ax_all[1]; 
+                        mag_ax = ax_all[2]; 
 
-                ### Set colorbar; 
+                        ### Plot a scatter? 
+                        x_pts, y_pts = get_pts_in_sector(mi, ai, mag_bound)
+
+                        ### Which color ix is da and dr; 
+                        ang_col_ix = np.argmin(np.abs(ang_dict - da))
+                        mag_col_ix = np.argmin(np.abs(mag_dict - dr))
+
+                        ax_all[1].plot(x_pts, y_pts, '.', color = sub_colors[ang_col_ix])
+                        ax_all[2].plot(x_pts, y_pts, '.', color = sub_colors[mag_col_ix])
+
+                for ax in ax_all:
+                    ax.set_xlim([-lims, lims])
+                    ax.set_ylim([-lims, lims])
+                    ax.set_xticks([])
+                    ax.set_xticklabels([])
+
+                    if num_corr[1] == 0:
+                        pass
+                    else:
+                        pc = int(100*(float(num_corr[0])/float(num_corr[1])))
+                        ax.set_title('Mag %d, Ang %d, Perc Corr: %d' %( m, a, pc))
+
+                ##################################################################
+                ########### Set colorbar for the main color plot #################
+                ##################################################################
                 cmap = mpl.cm.viridis
+                
                 if mn_ == mx_:
                     norm = mpl.colors.Normalize(vmin=mn_, vmax=mx_+.1)
                 else:
                     norm = mpl.colors.Normalize(vmin=mn_, vmax=mx_)
-                cax0 = fig.add_axes([0.15, 0.1, 0.7, 0.05])
+    
+                if add_ang_mag_subplots:
+                    cax0 = fig.add_axes([0.15, 0.1, 0.2, 0.05])
+                else:
+                    cax0 = fig.add_axes([0.15, 0.1, 0.7, 0.05])
+    
                 cb1 = mpl.colorbar.ColorbarBase(cax0, cmap=cmap,
                                     norm=norm, orientation='horizontal',
                                     boundaries = np.arange(mn_-0.5, mx_+1.5, 1.))
@@ -433,6 +636,38 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
                 cb1.set_ticks([mn_, tmp2, mx_+1]) 
                 cb1.set_ticklabels([mn_, tmp2, mx_+1])
                 cb1.set_label('Counts')
+
+                ##################################################################
+                ########### Add colorbar for the main color plot #################
+                ##################################################################
+                if add_ang_mag_subplots:
+
+                    cax1 = fig.add_axes([0.4, 0.1, 0.2, 0.05])
+                    cax2 = fig.add_axes([0.7, 0.1, 0.2, 0.05])
+                
+                    norm = mpl.colors.Normalize(vmin=mna_/np.pi*180, vmax=mxa_/np.pi*180)
+                    cb2 = mpl.colorbar.ColorbarBase(cax1, cmap=cmap,
+                                        norm=norm, orientation='horizontal')
+                    cb2.set_label('dAngle')
+                    angs = np.array([mna_, np.mean([mna_, mxa_]), mxa_])/np.pi*180
+                    angs[0] += 2
+                    angs[-1] -= 2
+                    cb2.set_ticks(angs.astype(int))
+                    cb2.set_ticklabels(angs.astype(int))
+
+
+                    norm = mpl.colors.Normalize(vmin=mnr_, vmax=mxr_)
+                    cb3 = mpl.colorbar.ColorbarBase(cax2, cmap=cmap,
+                                        norm=norm, orientation='horizontal')
+                    cb3.set_label('dMag')
+                    rads = np.array([mnr_, np.mean([mnr_, mxr_]), mxr_])
+                    tmp_dr = 1/20.*(mxr_ - mnr_)
+                    rads[0] += tmp_dr 
+                    rads[-1] -= tmp_dr
+                    rads = np.round(100.*rads).astype(int) 
+                    rads = rads/100.
+                    cb3.set_ticks(rads)
+                    cb3.set_ticklabels(rads)
 
                 ### Save this ? 
                 if save:
@@ -462,3 +697,59 @@ def assess_corr_dir(disc_dir, disc_pred_dir, mn_dir, mn_pred_dir):
 
         return true_cp == act_cp
 
+def get_pts_in_sector(m, a, mag_bound, npts=100):
+
+    ### Add the start / end ###
+    tmp = np.hstack(([0], mag_bound, [mag_bound[2] + 2]))
+
+    ### Get the 2 radii
+    r1 = tmp[m]
+    r2 = tmp[m+1]
+    dr = r2 - r1; 
+
+    ### Angles 
+    tmp2 = np.linspace(-np.pi/8., (2*np.pi) - np.pi/8., 9)
+    a1 = tmp2[a]
+    a2 = tmp2[a+1]
+    da = a2 - a1; 
+
+    ### Randomly sample b/w 
+    rad_pts = np.random.rand(npts, )*dr + r1; 
+    ang_pts = np.random.rand(npts, )*da + a1; 
+
+    x1 = rad_pts*np.cos(ang_pts)
+    y1 = rad_pts*np.sin(ang_pts)
+
+    return x1, y1
+
+def get_diffs(pred_mn_next_action, segment_mn):
+
+    nm = np.linalg.norm(segment_mn)
+    nm2 = np.linalg.norm(pred_mn_next_action)
+
+    dM = nm2 - nm # Positiv if nm2 > nm, neg if nm2 < nm; 
+    dA = np.arccos(np.dot(pred_mn_next_action / nm2, segment_mn / nm))
+
+    return dA, dM
+
+def _test_get_diffs():
+    for i in range(1000):
+        a1 = np.random.rand()*2*np.pi
+        a2 = np.random.rand()*2*np.pi
+        dAr = np.abs(a2-a1)
+        if dAr > np.pi: 
+            dAr = 2*np.pi - dAr
+
+        r1 = np.random.rand()*5
+        r2 = np.random.rand()*5
+        dRr = r1 - r2
+
+        v1 = r1*np.array([np.cos(a1), np.sin(a1)])
+        v2 = r2*np.array([np.cos(a2), np.sin(a2)])
+
+        dA, dM = get_diffs(v1, v2)
+        assert(np.allclose(dA, dAr))
+        assert(np.allclose(dM, dRr))
+    
+    
+    
