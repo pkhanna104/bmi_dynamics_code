@@ -1,5 +1,5 @@
 import analysis_config
-from online_analysis import util_fcns
+from online_analysis import util_fcns, generate_models_utils
 from matplotlib import cm
 import copy, pickle
 import matplotlib as mpl
@@ -841,7 +841,7 @@ def plot_dAngle_dMag_xcond(command_bins=None, push=None, bin_num=None, mag_bound
 
                         reg_dict['d_dA'].append(r2a(d_dA))
                         reg_dict['pred_d_dA'].append(r2a(d_pdA))
-                        
+
                         reg_dict['d_dM'].append(d_dM)
                         reg_dict['pred_d_dM'].append(d_pdM)
 
@@ -891,9 +891,10 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
         dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
 
     elif model_type == 'cond':
-        ### COndition specific models; 
+        ### Condition specific models; 
         dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec.pkl' %(model_set_number), 'rb'))
-        raise Exception('not yet implemetned')
+        ndays = analysis_config.data_params[animal+'_ndays']
+        dat_reconst = generate_models_utils.reconst_spks_from_cond_spec_model(dat, dyn_model, ndays)
 
     if dyn_model == 'hist_1pos_0psh_0spksm_1_spksp_0':
         prefix = 'day%d_minobs_%d_%d'%(day, minobs, minobs2)
@@ -909,6 +910,9 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
         pred_spks = dat[day, dyn_model][:, :, model_type]
     elif model_type == -1:
         pred_spks = dat[day, dyn_model]
+    elif model_type == 'cond':
+        pred_spks = dat_reconst[day, dyn_model]
+
 
     pred_push = np.dot(K[[3, 5], :], pred_spks.T).T
     bin_num = dat[day, 'bin_num']

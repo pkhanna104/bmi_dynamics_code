@@ -698,6 +698,37 @@ def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, include_action_lags=False,
         nm_str = nm_str + s + '+'
     return nms, nm_str[:-1]
 
+#### Reconstruct condition specific predictions
+def reconst_spks_from_cond_spec_model(data, model_nm, ndays):
+    ### Goal is to get out pred_spks
+    reconst = {}
+
+    for day in range(ndays):
+        true_spks = data[day, 'spks']
+        
+        ix_container = []
+        pred_container = []; 
+
+        day_dat = data[day, model_nm]
+
+        for tsk in range(2):
+            for trg in range(10):
+                if tuple((tsk*10 + trg, 'ix')) in day_dat.keys():
+                    ix_ = np.hstack(( day_dat[tsk*10 + trg, 'ix']))
+                    pred_ = np.vstack((day_dat[tsk*10 + trg, 'pred']))
+                    assert(len(ix_) == pred_.shape[0])
+                    ix_container.append(ix_)
+                    pred_container.append(pred_)
+
+        ix_container = np.hstack((ix_container))
+        assert(len(np.unique(ix_container)) == true_spks.shape[0])
+        assert(len(ix_container) == true_spks.shape[0])
+        assert(np.allclose(np.sort(ix_container), np.arange(true_spks.shape[0])))
+
+        pred_spks = np.zeros_like(true_spks)
+        pred_spks[ix_container, :] = np.vstack((pred_container))
+        reconst[day, model_nm] = pred_spks.copy()
+    return reconst
 
 ####### MODEL ADDING ########
 ######### Call from generate_models.sweep_ridge_alpha #########
@@ -785,7 +816,6 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
 
     return h5file, model_v, predictions
 
- 
 def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
     KG_pot = None, fit_task_specific_model_test_task_spec = False, testY = None):
     
