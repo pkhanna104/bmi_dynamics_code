@@ -1,14 +1,15 @@
 import analysis_config
 from online_analysis import util_fcns
 from matplotlib import cm
-import copy
+import copy, pickle
 import matplotlib as mpl
 import numpy as np 
 import matplotlib.pyplot as plt
+import scipy.stats
 
-def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 3,
+def plot_pred(command_bins=None, push=None, trg=None, tsk=None, bin_num=None, mag_bound=None, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 3,
              arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, pred_push = None, scale_rad = 2.,
-             add_ang_mag_subplots = False): 
+             add_ang_mag_subplots = False, **kwargs): 
     
     ### Get the mean angle / magnitudes ###
     mag_bound = scale_rad*np.hstack((mag_bound))
@@ -371,9 +372,9 @@ def plot_pred(command_bins, push, trg, tsk, bin_num, mag_bound, targ0 = 0., targ
             if save:
                 fig.savefig(save_dir+'/'+prefix+'_'+title_string+'.png')
 
-def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 = 20,
+def plot_pred_across_full_day(command_bins=None, push=None, bin_num=None, mag_bound=None, min_obs2 = 20,
              arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, 
-             pred_push = None, scale_rad = 2., add_ang_mag_subplots = False): 
+             pred_push = None, scale_rad = 2., add_ang_mag_subplots = False, **kwargs): 
     '''
     command_bins -- discretized commands over all bins 
     push -- continuous pushses
@@ -672,6 +673,150 @@ def plot_pred_across_full_day(command_bins, push, bin_num, mag_bound, min_obs2 =
                 ### Save this ? 
                 if save:
                     fig.savefig(save_dir+'/'+prefix+'_'+title_string+'.png')
+
+def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, mag_bound=None, trg=None, 
+    tsk=None, pred_push=None, min_obs = 15, **kwargs):
+    '''
+    This is a method to plot real change in angle/mag from current bin to next bin for cases where 
+    there are at least 15 observations of each
+    '''
+    
+    f, ax = plt.subplots(ncols = 2, figsize = (8, 4))
+    
+    reg_dict = dict(dA = [], pred_dA = [], dM = [], pred_dM = [])
+
+    for m in range(4):
+        for a in range(8):
+            ix = np.nonzero(np.logical_and(command_bins[:, 0] == m, command_bins[:, 1] == a))[0]
+
+            if len(ix) >= min_obs:
+                ixp1 = ix + 1; 
+                ixp1 = ixp1[ixp1 < len(command_bins)]
+                ixp1 = ixp1[bin_num[ixp1] > np.min(bin_num)]
+
+                for mp in range(4):
+                    for ap in range(8):
+                        ix2 = np.nonzero(np.logical_and(command_bins[ixp1, 0] == mp, command_bins[ixp1, 1] == ap))[0]
+                        ix_tp1 = ixp1[ix2]
+
+                        if len(ix_tp1) >= min_obs:
+
+                            ### Then compute the mean vectors; 
+                            segment_mn = np.mean(push[ix, :], axis=0)
+                            next_segment_mn = np.mean(push[ix_tp1, :], axis=0)
+                            pred_next_segment_mn = np.mean(pred_push[ix_tp1, :], axis=0)
+
+                            ### Get angle / magnitude diffs; 
+                            ### Angle is unsigned; 
+                            dA, dM = get_diffs(next_segment_mn, segment_mn)
+
+                            ### Sign the angle; 
+                            ### As convention, we'll call CW (-) and CCW (+)
+                            cp = np.sign(np.cross(segment_mn, next_segment_mn))
+                            dA = cp*dA
+
+                            ### Now get the predicted value; 
+                            pred_dA, pred_dM = get_diffs(pred_next_segment_mn, segment_mn)
+                            pred_cp = np.sign(np.cross(segment_mn, pred_next_segment_mn))
+
+                            #### Pred_dA should alredy be >= 0; 
+                            pred_dA = pred_cp*np.abs(pred_dA)
+
+                            ax[0].plot(dA/np.pi*180, pred_dA/np.pi*180, 'k.')
+                            ax[1].plot(dM, pred_dM, 'k.')
+
+                            reg_dict['dA'].append(dA/np.pi*180)
+                            reg_dict['pred_dA'].append(pred_dA/np.pi*180)
+                            reg_dict['dM'].append(dM)
+                            reg_dict['pred_dM'].append(pred_dM)
+
+    reg_dict = util_fcns.hstack_keys(reg_dict)
+
+    ax[0].plot([-150, 150], [-150, 150], 'k-')
+    ax[1].plot([-3, 1], [-3, 1], 'k-')
+
+    slp,intc,rv,pv,stedrr = scipy.stats.linregress(reg_dict['dA'], reg_dict['pred_dA'])
+    r2 = util_fcns.get_R2(reg_dict['dA'], reg_dict['pred_dA'])
+    ax[0].set_title('Slp: %.2f, Rval: %.2f, R2-err: %.2f' %(slp, rv, r2))
+    xtmp = np.linspace(-150, 150, 10)
+    ytmp = slp*xtmp + intc
+    ax[0].plot(xtmp, ytmp, 'r--')
+    ax[0].set_xlabel('True Angle Change (deg)')
+    ax[0].set_ylabel('Pred Angle Change (deg)')
+
+    slp,intc,rv,pv,stedrr = scipy.stats.linregress(reg_dict['dM'], reg_dict['pred_dM'])
+    r2 = util_fcns.get_R2(reg_dict['dM'], reg_dict['pred_dM'])
+    ax[1].set_title('Slp: %.2f, Rval: %.2f, R2-err: %.2f' %(slp, rv, r2))
+    xtmp = np.linspace(-3, 1, 10)
+    ytmp = slp*xtmp + intc
+    ax[1].plot(xtmp, ytmp, 'r--')
+    ax[1].set_xlabel('True Mag Change')
+    ax[1].set_ylabel('Pred Mag Change')
+    f.tight_layout()
+ 
+############ Preproc #######
+def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 10, minobs2 = 3):
+    if animal == 'grom':
+        F, K = util_fcns.get_grom_decoder(day)
+    else:
+        raise Exception('not yet implemetned for jeevs')
+
+    ### Open the model type ####
+    if model_type in [0, 1, 2]:
+        ### Task spec vs. general 
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
+    
+    elif model_type == -1: 
+        ### Full model 
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
+
+    elif model_type == 'cond':
+        ### COndition specific models; 
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec.pkl' %(model_set_number), 'rb'))
+        raise Exception('not yet implemetned')
+
+    if dyn_model == 'hist_1pos_0psh_0spksm_1_spksp_0':
+        prefix = 'day%d_minobs_%d_%d'%(day, minobs, minobs2)
+        
+    elif dyn_model == 'hist_1pos_0psh_0spksm_1_spksp_1':
+        prefix = 'pred_w_hist_and_fut_day%d_minobs_%d_%d'%(day, minobs, minobs2)
+    
+    else:
+        raise Excpetion('no other models yet')
+
+    spks = dat[day, 'spks']
+    if model_type in [0, 1, 2]:
+        pred_spks = dat[day, dyn_model][:, :, model_type]
+    elif model_type == -1:
+        pred_spks = dat[day, dyn_model]
+
+    pred_push = np.dot(K[[3, 5], :], pred_spks.T).T
+    bin_num = dat[day, 'bin_num']
+    tsk = dat[day, 'task']
+    pos = dat[day, 'pos']
+    vel = dat[day, 'vel']
+    trg = dat[day, 'trg']
+    push = dat[day, 'np']
+
+    assert(pred_push.shape == push.shape)
+    assert(len(tsk) == len(trg) == len(pos) == len(vel) == len(push) == len(bin_num))
+    
+    ### Print the overall R2 of the push; 
+    R2 = util_fcns.get_R2(push, pred_push)
+    print('R2 of action %.2f' %(R2))
+
+    R2 = util_fcns.get_R2(spks, pred_spks)
+    print('R2 of neural %.2f' %(R2))
+    
+    ### Segment up the pushes into discrete bins ###
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day, vel_ix = [0,1], ndiv=8)[0]
+    
+    data = dict(spks = spks, pred_spks = pred_spks, pred_push = pred_push, bin_num = bin_num, tsk = tsk, pos = pos, vel = vel, trg = trg, push = push,
+        mag_bound = mag_boundaries[animal, day], command_bins = command_bins, prefix = prefix)
+    return data 
+
+############ UTILS ###########
 
 def assess_corr_dir(disc_dir, disc_pred_dir, mn_dir, mn_pred_dir):
     m, a = disc_dir
