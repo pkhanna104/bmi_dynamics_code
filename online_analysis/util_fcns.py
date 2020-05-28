@@ -150,6 +150,11 @@ def get_angles():
     plt.plot(rang, ang)
     plt.plot(rang, ang_bins)
 
+def hstack_keys(d):
+    for k in d.keys():
+        d[k] = np.hstack((d[k]))
+    return d
+    
 #### Extract Data ###
 def get_grom_decoder(day_ix):
     co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
