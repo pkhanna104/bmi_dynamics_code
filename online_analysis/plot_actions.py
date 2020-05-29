@@ -935,17 +935,20 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     else:
         raise Exception('no other model types yet')
 
-    ####### Get out only potent #######
     if only_potent:
-        print('Re-computing pred_spks using only potent part of data')
-        #pred_spks = generate_models_utils.reconst_spks_only_potent_predictors(dat, model_type, dyn_model, day, K)
+        prefix = prefix + '_pred_w_pot'
 
-    else:
-        if model_type in [0, 1, 2]:
+    ####### Get out only potent #######
+    if model_type in [0, 1, 2]:
+        if only_potent:
+            pred_spks = dat[day, dyn_model, 'pot'][:, :, model_type]
+        else:
             pred_spks = dat[day, dyn_model][:, :, model_type]
-        elif model_type == -1:
-            pred_spks = dat[day, dyn_model]
-        elif model_type == 'cond':
+    
+    elif model_type == 'cond':
+        if only_potent:
+            pred_spks = dat_reconst[day, dyn_model, 'pot']
+        else:
             pred_spks = dat_reconst[day, dyn_model]
 
     #### True spks #####

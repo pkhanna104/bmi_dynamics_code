@@ -334,6 +334,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         model_data[i_d, mod, 'null'] = defaultdict(list)
                         model_data[i_d, mod, 'pot'] = defaultdict(list)
                     
+                    elif fit_task_spec_and_general:
+                        nT, nn = sub_spikes.shape 
+                        model_data[i_d, mod, 'null'] = np.zeros((nT, nn, 3))
+                        model_data[i_d, mod, 'pot'] = np.zeros((nT, nn, 3))    
                     else:
                         ### if just use null / potent parts of predictions and propogate those guys
                         model_data[i_d, mod, 'null'] = np.zeros_like(sub_spikes)
@@ -461,12 +465,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             assert np.allclose(np.sum(np.abs(np.dot(KG, X_null.T))), 0)
 
                             pred_null = np.mat(X_null)*np.mat(model_.coef_).T + intc_null[np.newaxis, :]
-                            tmp_pred_null = model_.predict(X_null)
-                            assert(np.allclose(pred_null, tmp_pred_null))
-
                             pred_pot = np.mat(X_pot)*np.mat(model_.coef_).T + intc_pot[np.newaxis, :]
-                            tmp_pred_pot = model_.predict(X_pot)
-                            assert(np.allclose(pred_pot, tmp_pred_pot))
+                            
                             assert np.allclose(pred_Y, pred_null + pred_pot)
 
                             ### This just propogates the identity; 
@@ -478,7 +478,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 ### Save the null / potent predictions 
                                 model_data[i_d, model_nm, 'null'][type_of_model_index, 'pred'].append(pred_null)
                                 model_data[i_d, model_nm, 'pot'][type_of_model_index, 'pred'].append(pred_pot)
-                                
+                            
+                            elif fit_task_spec_and_general:
+                                model_data[i_d, model_nm, 'null'][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_null))
+                                model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_pot))
+                            
                             else:
                                 model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
                                 model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()

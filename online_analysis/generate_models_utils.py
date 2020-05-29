@@ -707,9 +707,14 @@ def reconst_spks_from_cond_spec_model(data, model_nm, ndays):
         true_spks = data[day, 'spks']
         
         ix_container = []
-        pred_container = []; 
+        pred_container = [];
+
+        pot_container = [];
+        nul_container = []; 
 
         day_dat = data[day, model_nm]
+        day_dat_null = data[day, model_nm, 'null']
+        day_dat_pot = data[day, model_nm, 'pot']
 
         for tsk in range(2):
             for trg in range(10):
@@ -717,17 +722,43 @@ def reconst_spks_from_cond_spec_model(data, model_nm, ndays):
                     ix_ = np.hstack(( day_dat[tsk*10 + trg, 'ix']))
                     pred_ = np.vstack((day_dat[tsk*10 + trg, 'pred']))
                     assert(len(ix_) == pred_.shape[0])
+
+                    pot_ix_ = np.hstack(( day_dat_pot[tsk*10 + trg, 'ix']))
+                    pot_ = np.vstack((day_dat_pot[tsk*10 + trg, 'pred']))
+                    
+                    nul_ix_ = np.hstack(( day_dat_null[tsk*10 + trg, 'ix']))
+                    nul_ = np.vstack((day_dat_null[tsk*10 + trg, 'pred']))
+                    
+                    assert(np.allclose(ix_, pot_ix_))
+                    assert(np.allclose(ix_, nul_ix_))
+
                     ix_container.append(ix_)
                     pred_container.append(pred_)
+                    pot_container.append(pot_)
+                    nul_container.append(nul_)
 
         ix_container = np.hstack((ix_container))
         assert(len(np.unique(ix_container)) == true_spks.shape[0])
         assert(len(ix_container) == true_spks.shape[0])
         assert(np.allclose(np.sort(ix_container), np.arange(true_spks.shape[0])))
 
+        pred_container = np.vstack((pred_container))
+        pot_container = np.vstack((pot_container))
+        nul_container = np.vstack((nul_container))
+        assert(pred_container.shape == pot_container.shape == nul_container.shape)
+
         pred_spks = np.zeros_like(true_spks)
-        pred_spks[ix_container, :] = np.vstack((pred_container))
+        pred_pot_spks = np.zeros_like(true_spks)
+        pred_nul_spks = np.zeros_like(true_spks)
+        
+        pred_spks[ix_container, :] = pred_container.copy()
+        pred_pot_spks[ix_container, :] = pot_container.copy()
+        pred_nul_spks[ix_container, :] = nul_container.copy()
+
         reconst[day, model_nm] = pred_spks.copy()
+        reconst[day, model_nm, 'pot'] = pred_pot_spks.copy()
+        reconst[day, model_nm, 'null'] = pred_nul_spks.copy()
+
     return reconst
 
 ####### MODEL ADDING ########
