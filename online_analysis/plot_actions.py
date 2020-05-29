@@ -675,7 +675,7 @@ def plot_pred_across_full_day(command_bins=None, push=None, bin_num=None, mag_bo
                     fig.savefig(save_dir+'/'+prefix+'_'+title_string+'.png')
 
 def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, mag_bound=None, trg=None, 
-    tsk=None, pred_push=None, min_obs = 15, **kwargs):
+    tsk=None, pred_push=None, min_obs = 15, save=False, save_dir = None, prefix=None, **kwargs):
     '''
     This is a method to plot real change in angle/mag from current bin to next bin for cases where 
     there are at least 15 observations of each
@@ -743,6 +743,7 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
     ax[0].plot(xtmp, ytmp, 'r--')
     ax[0].set_xlabel('True Angle Change (deg)')
     ax[0].set_ylabel('Pred Angle Change (deg)')
+    ang_stats = [slp, rv, r2]
 
     slp,intc,rv,pv,stedrr = scipy.stats.linregress(reg_dict['dM'], reg_dict['pred_dM'])
     r2 = util_fcns.get_R2(reg_dict['dM'], reg_dict['pred_dM'])
@@ -753,9 +754,14 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
     ax[1].set_xlabel('True Mag Change')
     ax[1].set_ylabel('Pred Mag Change')
     f.tight_layout()
+    mag_stats = [slp, rv, r2]
  
+    if save:
+        f.savefig(save_dir + prefix+'.png')
+    return ang_stats, mag_stats
+
 def plot_dAngle_dMag_xcond(command_bins=None, push=None, bin_num=None, mag_bound=None, trg=None, 
-    tsk=None, pred_push=None, min_obs = 15, **kwargs):
+    tsk=None, pred_push=None, min_obs = 15, save=False, save_dir = None, prefix = None, **kwargs):
     '''
     method to take command bins for a specific task/target where there are more than min_obs
     then take the next action and predicted next action
@@ -862,6 +868,7 @@ def plot_dAngle_dMag_xcond(command_bins=None, push=None, bin_num=None, mag_bound
     xtmp = np.linspace(-150, 150, 10)
     ytmp = slp*xtmp + intc
     ax[0].plot(xtmp, ytmp, 'b--')
+    ang_stats = [slp, rv, r2] 
 
     slp,intc,rv,pv,stedrr = scipy.stats.linregress(reg_dict['d_dM'], reg_dict['pred_d_dM'])
     r2 = util_fcns.get_R2(reg_dict['d_dM'], reg_dict['pred_d_dM'])
@@ -870,12 +877,28 @@ def plot_dAngle_dMag_xcond(command_bins=None, push=None, bin_num=None, mag_bound
     ytmp = slp*xtmp + intc
     ax[1].plot(xtmp, ytmp, 'b--')
     f.tight_layout()
+    mag_stats = [slp, rv, r2]
+    if save:
+        f.savefig(save_dir + prefix+'.png')
+
+    return ang_stats, mag_stats
 
 def r2a(rad):
     return rad/np.pi*180.
 
 ############ Preproc #######
-def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 10, minobs2 = 3):
+def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 10, minobs2 = 3,
+    only_potent = False):
+    ''' 
+    method for preprocessing/extracting data from tuning model files before doing all the scatter plots 
+    model_set_number and dyn_model dictate which model is used; 
+    model_type: general (2) or condition specific ('cond') are options; 
+    minobs/minobs2 are used to set prefix; 
+    only_potent is used to indicate that only potent neural data should be used to make predictions 
+        at the next time step; this involves using the same model, but preprocessing the data used to predict 
+        in order to keep only the potent parts; 
+    '''
+
     if animal == 'grom':
         F, K = util_fcns.get_grom_decoder(day)
     else:
@@ -897,23 +920,38 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
         dat_reconst = generate_models_utils.reconst_spks_from_cond_spec_model(dat, dyn_model, ndays)
 
     if dyn_model == 'hist_1pos_0psh_0spksm_1_spksp_0':
-        prefix = 'day%d_minobs_%d_%d'%(day, minobs, minobs2)
+        prefix = 'day%d_minobs_%d_%d_modelset%d'%(day, minobs, minobs2, model_set_number)
         
     elif dyn_model == 'hist_1pos_0psh_0spksm_1_spksp_1':
-        prefix = 'pred_w_hist_and_fut_day%d_minobs_%d_%d'%(day, minobs, minobs2)
+        prefix = 'pred_w_hist_and_fut_day%d_minobs_%d_%d_modelset%d'%(day, minobs, minobs2, model_set_number)
     
     else:
         raise Excpetion('no other models yet')
 
-    spks = dat[day, 'spks']
-    if model_type in [0, 1, 2]:
-        pred_spks = dat[day, dyn_model][:, :, model_type]
-    elif model_type == -1:
-        pred_spks = dat[day, dyn_model]
+    if model_type == 2:
+        prefix = prefix + '_gen'
     elif model_type == 'cond':
-        pred_spks = dat_reconst[day, dyn_model]
+        prefix = prefix + '_cond'
+    else:
+        raise Exception('no other model types yet')
 
+    ####### Get out only potent #######
+    if only_potent:
+        print('Re-computing pred_spks using only potent part of data')
+        #pred_spks = generate_models_utils.reconst_spks_only_potent_predictors(dat, model_type, dyn_model, day, K)
 
+    else:
+        if model_type in [0, 1, 2]:
+            pred_spks = dat[day, dyn_model][:, :, model_type]
+        elif model_type == -1:
+            pred_spks = dat[day, dyn_model]
+        elif model_type == 'cond':
+            pred_spks = dat_reconst[day, dyn_model]
+
+    #### True spks #####
+    spks = dat[day, 'spks']
+
+    ### Rest of stuff ####
     pred_push = np.dot(K[[3, 5], :], pred_spks.T).T
     bin_num = dat[day, 'bin_num']
     tsk = dat[day, 'task']

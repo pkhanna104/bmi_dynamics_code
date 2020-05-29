@@ -330,9 +330,14 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     model_data[i_d, mod] = np.zeros_like(sub_spikes) 
 
                 if include_null_pot:
-                    ### if just use null / potent parts of predictions and propogate those guys
-                    model_data[i_d, mod, 'null'] = np.zeros_like(sub_spikes)
-                    model_data[i_d, mod, 'pot'] = np.zeros_like(sub_spikes)
+                    if fit_condition_spec_no_general:
+                        model_data[i_d, mod, 'null'] = defaultdict(list)
+                        model_data[i_d, mod, 'pot'] = defaultdict(list)
+                    
+                    else:
+                        ### if just use null / potent parts of predictions and propogate those guys
+                        model_data[i_d, mod, 'null'] = np.zeros_like(sub_spikes)
+                        model_data[i_d, mod, 'pot'] = np.zeros_like(sub_spikes)
 
                 elif model_set_number == 2:
                     ##### 
@@ -428,10 +433,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
                            
                         ### Save model -- for use later.
-                        print('Adding model') 
+                        print('Adding model and test_indices') 
                         model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
+                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
                         
-
                         #### Add / null potent? 
                         if include_null_pot:
 
@@ -456,14 +461,27 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             assert np.allclose(np.sum(np.abs(np.dot(KG, X_null.T))), 0)
 
                             pred_null = np.mat(X_null)*np.mat(model_.coef_).T + intc_null[np.newaxis, :]
-                            pred_pot = np.mat(X_pot)*np.mat(model_.coef_).T + intc_pot[np.newaxis, :]
+                            tmp_pred_null = model_.predict(X_null)
+                            assert(np.allclose(pred_null, tmp_pred_null))
 
+                            pred_pot = np.mat(X_pot)*np.mat(model_.coef_).T + intc_pot[np.newaxis, :]
+                            tmp_pred_pot = model_.predict(X_pot)
+                            assert(np.allclose(pred_pot, tmp_pred_pot))
                             assert np.allclose(pred_Y, pred_null + pred_pot)
 
                             ### This just propogates the identity; 
                             # model_data[i_d, giant_model_name][test_ix[i_fold], :] = X.copy()
-                            model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
-                            model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
+                            if fit_condition_spec_no_general:
+                                model_data[i_d, model_nm, 'null'][type_of_model_index, 'ix'].append(test_ix[i_fold])
+                                model_data[i_d, model_nm, 'pot'][type_of_model_index, 'ix'].append(test_ix[i_fold])
+
+                                ### Save the null / potent predictions 
+                                model_data[i_d, model_nm, 'null'][type_of_model_index, 'pred'].append(pred_null)
+                                model_data[i_d, model_nm, 'pot'][type_of_model_index, 'pred'].append(pred_pot)
+                                
+                            else:
+                                model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
+                                model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
                             
     h5file.close()
     print 'H5 File Done: ', hdf_filename
@@ -872,7 +890,7 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
         model_names = ['hist_1pos_1psh_0spks_0_spksp_0'] ### Only state; 
 
     elif model_set_number == 7:
-        model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_1spksm_1_spksp_0']
+        model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_1_spksp_1']
 
     elif model_set_number == 8:
         model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_1psh_0spksm_0_spksp_0', 'hist_1pos_3psh_0spksm_0_spksp_0']

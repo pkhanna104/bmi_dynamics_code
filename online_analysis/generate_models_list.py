@@ -88,7 +88,7 @@ def get_model_var_list(model_set_number):
 
     elif model_set_number == 7:
         model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity; 
-        #model_var_list.append([np.array([-1]), 'hist_1pos_0psh_1spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity & action; 
+        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_1', 0, 1, 1]) ### only previous neural activity & action; 
         predict_key = 'spks'
         history_bins_max = 1; 
         # Not sure about htis ###
