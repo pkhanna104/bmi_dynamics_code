@@ -240,7 +240,7 @@ def _bin_spike_counts(ixs, spike_counts, spk_counts_dt, binsize, pre_go):
         if ix0 > pre_go_bins:
             binedges = np.arange(ix0-pre_go_bins, ix1+n_per_bin, n_per_bin)
             X = np.zeros((len(binedges)-1, spike_counts.shape[0]))
-            Xub = spike_counts[:, ix0:ix1]
+            Xub = spike_counts[:, ix0-pre_go_bins:ix1]
             for b, bn in enumerate(binedges[:-1]):
                 X[b, :] = np.sum(spike_counts[:, bn:binedges[b+1]], 1)
         else:
@@ -261,7 +261,7 @@ def _bin_cursor_kin(ixs, cursor_kin, binsize, pre_go = 0.):
     for i, (ix0, ix1) in enumerate(ixs):
         binedges = np.arange(ix0-pre_go_bins, ix1+n_per_bin, n_per_bin)
         X = np.zeros((len(binedges)-1, pos_vel.shape[1]))
-        Xub = pos_vel[ix0:ix1, :]
+        Xub = pos_vel[ix0 - pre_go_bins:ix1, :]
         for b, bn in enumerate(binedges[:-1]):
             X[b, :] = np.sum(pos_vel[bn:binedges[b+1], :], 0)
         bin_ck.append(X)
@@ -301,7 +301,7 @@ def _bin_neural_push(ixs, filename, binsize, start_index_overall, pre_go = 0.):
         binedges = np.arange(ix0 - start_index_overall - pre_go_bins, 
             ix1+n_per_bin - start_index_overall, n_per_bin)
         X = np.zeros((len(binedges)-1, neuralpush_spec.shape[0]))
-        Xub = neuralpush_spec[:, ix0:ix1]
+        Xub = neuralpush_spec[:, ix0 - pre_go_bins:ix1]
         for b, bn in enumerate(binedges[:-1]):
             ''' Get mean within 100 ms bins'''
             X[b, :] = np.sum(neuralpush_spec[:, bn:binedges[b+1]], 1)
