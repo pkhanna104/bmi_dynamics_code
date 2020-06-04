@@ -634,13 +634,16 @@ def plot_r2_bar_model_1(min_obs = 15,
                                 'hist_1pos_1psh_1spksm_0_spksp_0',
                                 'hist_1pos_2psh_1spksm_0_spksp_0', 
                                 'hist_1pos_3psh_1spksm_0_spksp_0', 
-                                'hist_1pos_3psh_1spksm_1_spksp_0']
+                                'hist_1pos_3psh_1spksm_1_spksp_0',
+                                'hist_1pos_0psh_1spksm_1_spksp_0']
+
             models_to_compare = np.array([0, 4, 5])
             models_colors = [[255., 0., 0.], 
                              [101, 44, 144],
                              [101, 44, 144],
                              [101, 44, 144],
                              [101, 44, 144],
+                             [39, 169, 225],
                              [39, 169, 225]]
             xlab = [
             '$a_{t}$',
@@ -648,7 +651,8 @@ def plot_r2_bar_model_1(min_obs = 15,
             '$a_{t}, p_{t-1}, v_{t-1}$',
             '$a_{t}, p_{t-1}, v_{t-1}, tg$',
             '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk$',
-            '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk, y_{t-1}$']
+            '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk, y_{t-1}$',
+            '$a_{t}, y_{t-1}$']
 
         elif model_set_number == 3: 
             models_to_include = [#'prespos_0psh_0spksm_1_spksp_0',
@@ -683,7 +687,7 @@ def plot_r2_bar_model_1(min_obs = 15,
         model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d.pkl'%model_set_number, 'rb'))
             
         #### Setup the plot ####
-        f, ax = plt.subplots(figsize=(4, 4))
+        f, ax = plt.subplots(figsize=(4, 6))
         
         ##### Data holder for either mean of individual neurons or population R2 ####
         ### Will be normalized by baseline if that setting is selected ######
@@ -747,10 +751,7 @@ def plot_r2_bar_model_1(min_obs = 15,
             ##### Plot this single day #####
             tmp = []; 
             for i_mod in range(len(models_to_include)):
-                if perc_increase:
-                    tmp.append(R2S[i_mod, i_d])
-                else:
-                    tmp.append(np.nanmean(np.hstack((R2S[i_mod, i_d]))))
+                tmp.append(R2S[i_mod, i_d])
 
             #### Line plot of R2 w increasing models #####
             ax.plot(np.arange(M), tmp, '-', color='gray', linewidth = 1.)
@@ -774,10 +775,10 @@ def plot_r2_bar_model_1(min_obs = 15,
         for i_mod in range(M):
             ax.bar(i_mod, tmp[i_mod], color = models_colors[i_mod], edgecolor='k', linewidth = 1., )
             ax.errorbar(i_mod, tmp[i_mod], yerr=tmp_e[i_mod], marker='|', color='k')        
-        ax.set_ylabel('%s R2, neur, perc_increase R2 %s'%(pop_str, perc_increase), fontsize=8)
+        ax.set_ylabel('%s R2, neur, perc_increase R2 %s'%(pop_str, perc_increase))
 
         ax.set_xticks(np.arange(M))
-        ax.set_xticklabels(xlab, rotation=45, fontsize=6)
+        ax.set_xticklabels(xlab, rotation=45)#, fontsize=6)
 
         f.tight_layout()
         f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
@@ -1074,7 +1075,7 @@ def plot_real_vs_pred(model_set_number = 1, min_obs = 15, cov = True):
 
         axbar.set_xticks(np.arange(len(models_to_include)))
         models_to_include_labs_tex = ['$' + m + '$' for m in models_to_include_labs]
-        axbar.set_xticklabels(models_to_include_labs_tex, rotation = 45, fontsize=10)
+        axbar.set_xticklabels(models_to_include_labs_tex, rotation = 45)#, fontsize=10)
         fbar.tight_layout()
         #fbar.savefig('/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/monk_%s_r2_comparison_mean_diffs_cov%s.svg' %(animal, str(cov)))
         
@@ -1653,13 +1654,15 @@ def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True,
 ### Generalization of Neural dynamics across tasks #####
 ### Generalization of neural dynamics -- population R2 ### -- figure 6(?)
 def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = False,
-    plot_by_day = False):
+    plot_by_day = False, sep_R2_by_tsk = False, match_task_spec_n = False):
     
     ''' 
     not presently sure if including action means "current action" or previous action 
         -- remember that including action forced the model to represent potent action accurately. 
 
-    updates 5/18/20 -- made it so that also computed R2 on each day, not for each task separately 
+    updates 5/18/20 -- made it so that also computed R2 on each day, not for each task separately
+    updates 6/3/20 -- added "match_task_spec_n" so that it selects for models where the same amt 
+        of data is used for each task spec. model  
     '''
     ########### FIGS ##########
     # fco, axco = plt.subplots(ncols = 2, nrows = 2, figsize = (4, 4))
@@ -1691,8 +1694,13 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         colors = ['b','r','k']
         alphas = [1.,1.,1.]
 
-        ###### Weird model name ......######
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
+        ###### Using the task specific models and the general models ######
+        ###### Here, these models aren't directly comparable because diff tasks can use diff amounts of data for training; ####
+        if match_task_spec_n:
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
+
+        else:
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
 
         if ndays_none:
             if animal == 'grom':
@@ -1765,7 +1773,6 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                     KG = np.squeeze(np.array(KG))
 
                 ### convert this to discrete commands
-
                 for i_m, mod in enumerate(models_to_include):
 
                     ### for different task 
@@ -1783,11 +1790,11 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                         x_pred_acts.append(np.dot(KG, data_mod[:, :, other_task].T).T)
                         gen_pred_acts.append(np.dot(KG, data_mod[:, :, 2].T).T)
 
-                    ### Iterate through the 3 possibilities; 
+                    ### Iterate through the 3 model possibilities; 
                     for trg_ix, (tsk_col, tsk_alph) in enumerate(zip(colors, alphas)):
 
                         ### Data fit on models from trg_ix -- shouldn't be any nans; 
-                        R2 = util_fcns.get_R2(truth, data_mod[:, :, trg_ix], pop = True)#, ignore_nans = True)
+                        R2 = util_fcns.get_R2(truth, data_mod[:, :, trg_ix], pop = True) #, ignore_nans = True)
 
                         ### Data from task i_t, fit on trg_ix, on day: 
                         R2s_plot_spks[i_t, trg_ix, i_d] = R2; 
@@ -1797,6 +1804,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                         else:
                             xaxis = i_d + 9*trg_ix 
 
+                        ### Data from task i_t, fit on trg_ix, on day: 
                         ax[i_t, 0].bar(xaxis, R2, color=tsk_col)
                         ax[i_t, 0].set_title('R2 Neural Activity, \n %s' %mod)
                         
@@ -1840,12 +1848,15 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
             px_comb[i_d, 1] = util_fcns.get_R2(true_acts, x_pred_acts) 
             pall_comb[i_d, 1] = util_fcns.get_R2(true_acts, gen_pred_acts) 
 
+        ### Entries here are day x task (of data)
         PWI = [pwi[:, :, 0].reshape(-1), pwi[:, :, 1].reshape(-1), ]
         PX = [px[:, :, 0].reshape(-1), px[:, :, 1].reshape(-1) ]
         PALL = [pall[:, :, 0].reshape(-1), pall[:, :, 1].reshape(-1)]
 
         #### Plot figure ####
         tis = ['Neural', 'Push']
+
+        ### Z is neural vs. action #####
         for z in range(2):
             pwii = PWI[z]
             pxi = PX[z]
@@ -1872,8 +1883,15 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                 # axco[z, i_a].plot([0, .4], [R2s_plot_spks[0, 0, i_d], R2s_plot_spks[0, 1, i_d]], 'k-', linewidth = 1.)
                 # axob[z, i_a].plot([0, .4], [R2s_plot_spks[1, 1, i_d], R2s_plot_spks[1, 0, i_d]], 'k-', linewidth = 1.)
 
+                ### For CO vs. OBS data
                 for x in range(2):
-                    axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'k-', linewidth = 1.)
+
+                    #### PWII/PXI/PALLI are all NDAYS x 2 --> [day0_0, day0_1, day1_0, day1_1, ...]
+                    ### here 
+                    if x == 0:
+                        axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'k-', linewidth = 1.)
+                    elif x == 1:
+                        axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'b-', linewidth = 1.)
                     #axbth[z, i_a].plot([0, .4,], [pwii[2*i_d + x], pxi[2*i_d + x]], 'k-', linewidth = 1.)
 
                     DAYs.append(i_d)
@@ -1893,6 +1911,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
             axbth[z, i_a].set_ylabel('R2')
             axbth[z, i_a].set_xticks([0., .4, .8])
             axbth[z, i_a].set_xticklabels(['Within', 'Across', 'Both'])
+        
         ### stats: 
         print 'Neural, subj %s, w vs x' %(animal)
         w_vs_x = np.hstack(( np.hstack((RW)), np.hstack((RX)) ))

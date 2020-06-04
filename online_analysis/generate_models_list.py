@@ -25,8 +25,13 @@ def get_model_var_list(model_set_number):
         model_var_list.append([np.array([-1]),    'hist_1pos_2psh_1spksm_0_spksp_0',    2, 0, 0])     ### t=-1, action and prev state + target
         model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_0_spksp_0',    3, 0, 0])     ### t=-1, action and prev state + target + task
         model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_1_spksp_0',    3, 1, 0])     ### t=-1, action and prev state + target + task plus neural dynamics
-        model_var_list.append([np.array([-1]),    'hist_1pos_0psh_1spksm_1_spksp_0',    0, 1, 0])
         
+        model_var_list.append([np.array([-1]),    'hist_1pos_0psh_1spksm_1_spksp_0',    0, 1, 0])
+        model_var_list.append([np.array([-1]),    'hist_1pos_-1psh_1spksm_1_spksp_0',  -1, 1, 0])     ### t=-1, action and position only
+        model_var_list.append([np.array([-1]),    'hist_1pos_1psh_1spksm_1_spksp_0',    1, 1, 0])     ### t=-1, action and prev state
+        model_var_list.append([np.array([-1]),    'hist_1pos_2psh_1spksm_1_spksp_0',    2, 1, 0])     ### t=-1, action and prev state + target
+        model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_1_spksp_0',    3, 1, 0])     ### t=-1, action and prev state + target + task
+
         # model_var_list.append([np.arange(-history_bins_max, history_bins_max+1), 'hist_fut_4pos_1psh_1spksm_0_spksp_0', 1, 0, 0]) ### t=-4,4, action and state
         # model_var_list.append([np.arange(-history_bins_max, history_bins_max+1), 'hist_fut_4pos_1psh_1spksm_1_spksp_0', 1, 1, 0]) ### t=-4,4, action and state, y_{t-1}
         # model_var_list.append([np.arange(-history_bins_max, history_bins_max+1), 'hist_fut_4pos_1psh_1spksm_1_spksp_1', 1, 1, 1]) ### t=-4,4, action and state, y_{t-1}, y_{t+1}

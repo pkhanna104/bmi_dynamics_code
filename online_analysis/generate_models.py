@@ -492,16 +492,24 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     h5file.close()
     print 'H5 File Done: ', hdf_filename
 
+    if match_task_spec_n:
+        sff = '_match_tsk_N'
+    else:
+        sff = ''
+
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
         pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
     else:
         if fit_task_specific_model_test_task_spec:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec.pkl' %model_set_number, 'wb'))
+        
         elif fit_task_spec_and_general:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %model_set_number, 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s.pkl' %(model_set_number, sff), 'wb'))
+        
         elif fit_condition_spec_no_general:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec.pkl' %model_set_number, 'wb'))
+        
         else:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'wb'))
 
@@ -867,7 +875,12 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                             'hist_1pos_2psh_1spksm_0_spksp_0', 
                             'hist_1pos_3psh_1spksm_0_spksp_0', 
                             'hist_1pos_3psh_1spksm_1_spksp_0',
-                            'hist_1pos_0psh_1spksm_1_spksp_0']
+                            'hist_1pos_0psh_1spksm_1_spksp_0',
+                            'hist_1pos_-1psh_1spksm_1_spksp_0',
+                            'hist_1pos_1psh_1spksm_1_spksp_0',
+                            'hist_1pos_2psh_1spksm_1_spksp_0',
+                            'hist_1pos_3psh_1spksm_1_spksp_0']
+
     elif model_set_number in [2, 3]:
         # model_names = ['hist_1pos_0psh_1spksm_0_spksp_0', 'hist_1pos_0psh_1spksm_1_spksp_0', 'hist_4pos_0psh_1spksm_0_spksp_0', 'hist_4pos_0psh_1spksm_1_spksp_0',
         # 'hist_4pos_0psh_1spksm_4_spksp_0', 'prespos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_1_spksp_0']
