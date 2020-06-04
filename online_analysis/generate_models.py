@@ -176,6 +176,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
     fit_task_specific_model_test_task_spec = False,
     fit_task_spec_and_general = False,
+    match_task_spec_n = False,
     fit_condition_spec_no_general = False):
     
     ### Deprecated variables 
@@ -356,7 +357,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
         #### Get training / testing sets split up --- test on 80% one task, test on 20% same tasks 20% other task
         if fit_task_spec_and_general:
-            test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp)
+            test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp,
+                match_task_spec_n = match_task_spec_n)
         
         elif fit_condition_spec_no_general:
             test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_condition_spec(n_folds, data_temp)
@@ -864,7 +866,8 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                             'hist_1pos_1psh_1spksm_0_spksp_0',
                             'hist_1pos_2psh_1spksm_0_spksp_0', 
                             'hist_1pos_3psh_1spksm_0_spksp_0', 
-                            'hist_1pos_3psh_1spksm_1_spksp_0']
+                            'hist_1pos_3psh_1spksm_1_spksp_0',
+                            'hist_1pos_0psh_1spksm_1_spksp_0']
     elif model_set_number in [2, 3]:
         # model_names = ['hist_1pos_0psh_1spksm_0_spksp_0', 'hist_1pos_0psh_1spksm_1_spksp_0', 'hist_4pos_0psh_1spksm_0_spksp_0', 'hist_4pos_0psh_1spksm_1_spksp_0',
         # 'hist_4pos_0psh_1spksm_4_spksp_0', 'prespos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_1_spksp_0']
