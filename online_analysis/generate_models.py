@@ -3,6 +3,8 @@
 from analysis_config import config 
 import analysis_config
 import generate_models_utils, generate_models_list, util_fcns
+import resim_ppf
+from resim_ppf import file_key, ppf_pa
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -879,7 +881,7 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                             'hist_1pos_-1psh_1spksm_1_spksp_0',
                             'hist_1pos_1psh_1spksm_1_spksp_0',
                             'hist_1pos_2psh_1spksm_1_spksp_0',
-                            'hist_1pos_3psh_1spksm_1_spksp_0']
+                            ]
 
     elif model_set_number in [2, 3]:
         # model_names = ['hist_1pos_0psh_1spksm_0_spksp_0', 'hist_1pos_0psh_1spksm_1_spksp_0', 'hist_4pos_0psh_1spksm_0_spksp_0', 'hist_4pos_0psh_1spksm_1_spksp_0',
@@ -1030,7 +1032,7 @@ def generate_KG_decoder_jeev():
     filelist = file_key.task_filelist
     days = len(filelist)
     binsize_ms = 5.
-    important_neuron_ix = dict()
+    #important_neuron_ix = dict()
 
     for day in range(days):
 
@@ -1077,7 +1079,7 @@ def generate_KG_decoder_jeev():
         vy = np.sum(np.array(cursor_KG_all[:, 1] - cursor_KG_all_reconst[1, :])**2)
         R2_best = 1 - ((vx + vy)/np.sum(cursor_KG_all_demean**2))
         print 'KG est: shape: ', KG.shape, ', R2: ', R2_best
-
+        import pdb; pdb.set_trace()
         KG_approx[day] = KG.copy();
         KG_approx[day, 'R2'] = R2_best;
 
