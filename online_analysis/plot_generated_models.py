@@ -635,7 +635,11 @@ def plot_r2_bar_model_1(min_obs = 15,
                                 'hist_1pos_2psh_1spksm_0_spksp_0', 
                                 'hist_1pos_3psh_1spksm_0_spksp_0', 
                                 'hist_1pos_3psh_1spksm_1_spksp_0',
-                                'hist_1pos_0psh_1spksm_1_spksp_0']
+                                'hist_1pos_0psh_1spksm_1_spksp_0',
+                                
+                                'hist_1pos_-1psh_1spksm_1_spksp_0', 
+                                'hist_1pos_1psh_1spksm_1_spksp_0',
+                                'hist_1pos_2psh_1spksm_1_spksp_0']
 
             models_to_compare = np.array([0, 4, 5])
             models_colors = [[255., 0., 0.], 
@@ -643,6 +647,9 @@ def plot_r2_bar_model_1(min_obs = 15,
                              [101, 44, 144],
                              [101, 44, 144],
                              [101, 44, 144],
+                             [39, 169, 225],
+                             [39, 169, 225],
+                             [39, 169, 225],
                              [39, 169, 225],
                              [39, 169, 225]]
             xlab = [
@@ -652,7 +659,10 @@ def plot_r2_bar_model_1(min_obs = 15,
             '$a_{t}, p_{t-1}, v_{t-1}, tg$',
             '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk$',
             '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk, y_{t-1}$',
-            '$a_{t}, y_{t-1}$']
+            '$a_{t}, y_{t-1}$',
+            '$a_{t}, y_{t-1}, p_{t-1}$',
+            '$a_{t}, y_{t-1}, p_{t-1}, v_{t-1}$',
+            '$a_{t}, y_{t-1}, p_{t-1}, v_{t-1}, tg$']
 
         elif model_set_number == 3: 
             models_to_include = [#'prespos_0psh_0spksm_1_spksp_0',
