@@ -6,7 +6,7 @@
 
 import pickle, os
 
-import co_obs_tuning_matrices, subspace_overlap, analysis_config
+import co_obs_tuning_matrices, analysis_config, util_fcns
 from resim_ppf import file_key as fk
 
 import numpy as np
@@ -441,17 +441,17 @@ def mean_diff_cov(animal='jeev', min_observations = 15, only_important_neurons =
                 cov1_1 = np.mat(np.cov(bs1[ix1_1].T))
                 
                 ### Get the covariance overlaps within / across: 
-                win0 = subspace_overlap.get_overlap(None, None, 
+                win0 = util_fcns.get_overlap(None, None, 
                     first_UUT=cov0_0, second_UUT=cov0_1, main=main_subspace_ov)
 
-                win1 = subspace_overlap.get_overlap(None, None, 
+                win1 = util_fcns.get_overlap(None, None, 
                     first_UUT=cov1_0, second_UUT=cov1_1, main=main_subspace_ov)
                 
                 ### Randomly choose which cross-task to do: 
-                x0 = subspace_overlap.get_overlap(None, None, 
+                x0 = util_fcns.get_overlap(None, None, 
                     first_UUT=cov0_0, second_UUT=cov1_1, main=main_subspace_ov)
                 
-                x1 = subspace_overlap.get_overlap(None, None, 
+                x1 = util_fcns.get_overlap(None, None, 
                     first_UUT=cov0_1, second_UUT=cov1_0, main=main_subspace_ov)
 
                 cov_ov_win.append(win0)
