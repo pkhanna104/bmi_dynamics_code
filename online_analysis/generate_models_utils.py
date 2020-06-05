@@ -399,7 +399,6 @@ def get_spike_kinematics(animal, day, order, history_bins, **kwargs):
 
     return data, data_temp, sub_spk0_temp_all, sub_spk_temp_all, sub_push_all
 
-
 ### Confirmation that extracted data looks right ###
 def plot_data_temp(data_temp, animal, use_bg = False):
     
@@ -466,7 +465,6 @@ def plot_data_temp(data_temp, animal, use_bg = False):
                 ax.set_xticks([])
                 ax.set_yticks([])
 
-
 ##### Training / testing sets ######
 def get_training_testings(n_folds, data_temp):
     
@@ -508,7 +506,8 @@ def get_training_testings(n_folds, data_temp):
         assert len(tmp) == len(data_temp)
     return test_ix, train_ix 
 
-def get_training_testings_generalization(n_folds, data_temp, match_task_spec_n = False):
+def get_training_testings_generalization(n_folds, data_temp, 
+    match_task_spec_n = False):
     ''' same as above, but now doing this for train CO, train OBS, train both 
         input: 
             match_task_spec_n --> whether to make sure the data used to train the task spec 
@@ -598,11 +597,17 @@ def get_training_testings_generalization(n_folds, data_temp, match_task_spec_n =
         test_ix[i_f + 2*n_folds] = []
         train_ix[i_f + 2*n_folds] = []; 
 
+        ### Match this -- 
+        if match_task_spec_n:
+            Ncomb_train_gen = int(0.5*Ncomb_train)
+        else:
+            Ncomb_train_gen = Ncomb_train
+
         ### Task -- pull test/train points 
         for tsk in range(2):
 
             #### Total amount of testing data 
-            Ncomb_test_tsk = N[tsk] - Ncomb_train
+            Ncomb_test_tsk = N[tsk] - Ncomb_train_gen
 
             #### How big are the offsets for this to work? 
             if int(fold_perc*N[tsk]) + Ncomb_test_tsk < N[tsk]:
