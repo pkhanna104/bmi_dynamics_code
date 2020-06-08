@@ -808,13 +808,13 @@ def reconst_spks_from_cond_spec_model(data, model_nm, ndays):
 
 def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=None, 
     fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, 
-    KG_pot = None, fit_task_specific_model_test_task_spec = False):
+    KG_pot = None, fit_task_specific_model_test_task_spec = False, fit_intercept = True):
 
     ##### Ridge Models ########
     if type(model_v) is sklearn.linear_model.ridge.Ridge or type(model_v[0]) is sklearn.linear_model.ridge.Ridge:
         # CLF/RIDGE models: 
         model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
-            fit_task_specific_model_test_task_spec)
+            fit_task_specific_model_test_task_spec, fit_intercept = fit_intercept)
         
         if type(model_v) is list:
             nneurons = model_v[0].nneurons
@@ -888,7 +888,7 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
     return h5file, model_v, predictions
 
 def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
-    KG_pot = None, fit_task_specific_model_test_task_spec = False, testY = None):
+    KG_pot = None, fit_task_specific_model_test_task_spec = False, testY = None, fit_intercept = True):
     
     # Called from h5_add_model: 
     # model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
@@ -916,8 +916,12 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
         X1 = X[ix1, :]; Y1 = Y[ix1, :]; 
 
         #### Get prediction -- why not use the predict method? #####
-        pred0 = np.mat(X0)*np.mat(model[0].coef_).T + model[0].intercept_[np.newaxis, :]
-        pred1 = np.mat(X1)*np.mat(model[1].coef_).T + model[1].intercept_[np.newaxis, :]
+        if fit_intercept:
+            pred0 = np.mat(X0)*np.mat(model[0].coef_).T + model[0].intercept_[np.newaxis, :]
+            pred1 = np.mat(X1)*np.mat(model[1].coef_).T + model[1].intercept_[np.newaxis, :]
+        else:
+            pred0 = np.mat(X0)*np.mat(model[0].coef_).T 
+            pred1 = np.mat(X1)*np.mat(model[1].coef_).T
 
         pred = pred0; 
         model1 = model[1]; 
@@ -938,7 +942,11 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
         X = np.dot(KG_pot, X.T).T
         print 'only potent predictor'
 
-    pred = np.mat(X)*np.mat(model.coef_).T + model.intercept_[np.newaxis, :]
+    if fit_intercept:
+        pred = np.mat(X)*np.mat(model.coef_).T + model.intercept_[np.newaxis, :]
+    else:
+        pred = np.mat(X)*np.mat(model.coef_).T
+        
     pred_ = model.predict(X); 
     assert(np.all(pred == pred_))
 
