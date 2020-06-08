@@ -605,7 +605,8 @@ def disc_plot(n_disc):
 #### Fig 4 ----- bar plots of diff models ####
 def plot_r2_bar_model_1(min_obs = 15, 
     ndays = None, pt_2 = False, r2_pop = True, 
-    perc_increase = True, model_set_number = 1):
+    perc_increase = True, model_set_number = 1,
+    task_spec_ix = None):
     
     '''
     inputs: min_obs -- number of obs need to count as worthy of comparison; 
@@ -694,8 +695,12 @@ def plot_r2_bar_model_1(min_obs = 15,
             pop_str = 'Indiv'        
 
         ### Go through each neuron and plot mean true vs. predicted (i.e R2) for a given command  / target combo: 
-        model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d.pkl'%model_set_number, 'rb'))
-            
+        if task_spec_ix is None:
+            model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d.pkl'%model_set_number, 'rb'))
+        
+        else:
+            model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl'%model_set_number, 'rb'))
+        
         #### Setup the plot ####
         f, ax = plt.subplots(figsize=(4, 6))
         
@@ -727,13 +732,20 @@ def plot_r2_bar_model_1(min_obs = 15,
             ###### Get the baseline ####
             if perc_increase: 
                 #### Predicted data ? 
-                pdata = model_dict[i_d, models_to_include[0]]
+                if task_spec_ix is None:
+                    pdata = model_dict[i_d, models_to_include[0]]
+                else:
+                    pdata = model_dict[i_d, models_to_include[0]][:, :, task_spec_ix]
+
                 R2_baseline = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
 
             for i_mod, mod in enumerate(models_to_include):
                 
                 ###### Predicted data, cross validated ####
-                pdata = model_dict[i_d, mod]
+                if task_spec_ix is None:
+                    pdata = model_dict[i_d, mod]
+                else:
+                    pdata = model_dict[i_d, mod][:, :, task_spec_ix]
 
                 ### Get population R2 ### 
                 R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
@@ -791,7 +803,10 @@ def plot_r2_bar_model_1(min_obs = 15,
         ax.set_xticklabels(xlab, rotation=45)#, fontsize=6)
 
         f.tight_layout()
-        f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
+        if task_spec_ix is None:
+            f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
+        else:
+            f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d_tsk_spec_%d.svg'%(pop_str, perc_increase, model_set_number, task_spec_ix))
         
         ##### Print stats ####
         if model_set_number == 1:
@@ -859,7 +874,10 @@ def plot_r2_bar_model_1(min_obs = 15,
 
                                     for i_m, model in enumerate(models_to_include):
 
-                                        y_pred = model_dict[i_d, model]
+                                        if task_spec_ix is None:
+                                            y_pred = model_dict[i_d, model]
+                                        else:
+                                            y_pred = model_dict[i_d, model][:, :, task_spec_ix]
 
                                         ### Get R2 of this observation: 
                                         spk_true = np.mean(y_true[ix0, :], axis=0)
@@ -913,7 +931,10 @@ def plot_r2_bar_model_1(min_obs = 15,
 
 
                 if model == 'hist_1pos_0psh_0spksm_1_spksp_0':
-                    y_pred = model_dict[i_d, model]
+                    if task_spec_ix is None:
+                        y_pred = model_dict[i_d, model]
+                    else:
+                        y_pred = model_dict[i_d, model][:, :, task_spec_ix]
                     y_true = model_dict[i_d, key]; 
 
                     SSR = np.sum((y_pred - y_true)**2, axis=0)
@@ -1664,7 +1685,8 @@ def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True,
 ### Generalization of Neural dynamics across tasks #####
 ### Generalization of neural dynamics -- population R2 ### -- figure 6(?)
 def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = False,
-    plot_by_day = False, sep_R2_by_tsk = False, match_task_spec_n = False):
+    plot_by_day = False, sep_R2_by_tsk = False, match_task_spec_n = False, 
+    fit_intercept = True):
     
     ''' 
     not presently sure if including action means "current action" or previous action 
@@ -1707,11 +1729,16 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         ###### Using the task specific models and the general models ######
         ###### Here, these models aren't directly comparable because diff tasks can use diff amounts of data for training; ####
         if match_task_spec_n:
-            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
-
+            if fit_intercept:
+                dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
+            else:
+                dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_no_intc.pkl' %(model_set_number), 'rb'))
         else:
-            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
-
+            if fit_intercept:
+                dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
+            else:
+                dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_fit_intc.pkl' %(model_set_number), 'rb'))
+        
         if ndays_none:
             if animal == 'grom':
                 ndays_all = np.arange(9);
@@ -2373,6 +2400,54 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
         ax.set_xticklabels(xl, rotation=45)
         f.tight_layout()
 
+#### Eigenvalue decomposition 
+def eigvalue_plot(dt = 0.1):
+
+    dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    n_folds = 5; 
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        ###### Using the task specific models and the general models ######
+        ##### Get the one with data matched #######
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(7), 'rb'))
+
+        ##### for each day and task -- 
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+            f, ax = plt.subplots(ncols = 3, figsize = (10, 4))
+
+            ### For each day, plot the eigenvalues ####
+            for i_f in range(n_folds):
+
+                ### CO / OBS / GEN ####
+                for i_m in range(3):
+
+                    #### Get the model 
+                    model = dat[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
+
+
+                    #pred0 = np.mat(X0)*np.mat(model[0].coef_).T + model[0].intercept_[np.newaxis, :]
+                    
+                    #### Get the A matrix; 
+                    A = np.mat(model.coef_)
+                    N = A.shape[0]
+
+                    ### Add intercept to the A matrix 
+                    A = np.vstack((A, np.zeros((1, N))))
+                    intc = model.intercept_[:, np.newaxis]
+                    intc = np.vstack((intc, [1]))
+                    A = np.hstack((A, intc))
+
+                    ### eigenvalues; 
+                    ev, evect = np.linalg.eig(A)
+
+                    ### get frequency; 
+                    angs = np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
+                    hz = np.abs(angs)/(2*np.pi*dt)
+                    decay = -1./np.log(np.abs(ev))*dt # Time decay constant in ms
+                    ax[i_m].plot(decay, hz, 'k.')
+                    ax[i_m].set_xlim([0., .2])
+                    ax[i_m].set_ylim([-.01, 4.9])
 
 
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
