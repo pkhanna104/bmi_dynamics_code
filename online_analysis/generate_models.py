@@ -17,7 +17,8 @@ from sklearn.linear_model import Ridge
 import scipy
 
 ######### STEP 1 -- Get alpha value #########
-def sweep_alpha_all(run_alphas=True, model_set_number = 3):
+def sweep_alpha_all(run_alphas=True, model_set_number = 3,
+    fit_intercept = True):
 
     max_alphas = dict(grom=[], jeev=[])
 
@@ -32,20 +33,27 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3):
 
     for animal in ['jeev','grom']:
         if run_alphas:
-            h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, ndays = ndays[animal])
+            h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, 
+                ndays = ndays[animal], fit_intercept = fit_intercept)
         else:
+            raise Exception('deprecated')
             if animal == 'grom':
                 h5_name = config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number
             elif animal == 'jeev':
                 h5_name = config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d.h5' %model_set_number
 
-        max_alpha = plot_sweep_alpha(animal, alphas=alphas, model_set_number=model_set_number, ndays=ndays[animal])
+        max_alpha = plot_sweep_alpha(animal, alphas=alphas, model_set_number=model_set_number, ndays=ndays[animal],
+            fit_intercept = fit_intercept)
         max_alphas[animal].append(max_alpha)
 
-    pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'wb'))
+    if fit_intercept:
+        pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'wb'))
+    else:
+        pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'wb'))
     print('Done with max_alphas_ridge')
 
-def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, model_set_number = 1, ndays=None):
+def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
+    model_set_number = 1, ndays=None, fit_intercept = True):
 
     '''
     Summary: 
@@ -57,7 +65,11 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
     model_var_list, predict_key, include_action_lags, _ = generate_models_list.get_model_var_list(model_set_number)
 
     x = datetime.datetime.now()
-    hdf_filename = animal + '_sweep_alpha_days_models_set%d.h5' %model_set_number
+
+    if fit_intercept:
+        hdf_filename = animal + '_sweep_alpha_days_models_set%d.h5' %model_set_number
+    else:
+        hdf_filename = animal + '_sweep_alpha_days_models_set%d_no_intc.h5' %model_set_number
 
     pref = config[animal + '_pref']
     hdf_filename = pref + hdf_filename
@@ -148,7 +160,8 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
                 for ia, alpha in enumerate(alphas):
 
                     ### Model ###
-                    model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha)
+                    model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha,
+                        fit_intercept = fit_intercept)
                     str_alpha = str(alpha)
                     str_alpha = str_alpha.replace('.','_')
                     name = model_nm + '_alpha_' + str_alpha
@@ -158,7 +171,8 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
                     ##### model name 
                     ##### data_temp_dict_test 
                     h5file, model_, _ = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=name, 
-                        test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key)
+                        test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key, 
+                        fit_intercept = fit_intercept)
 
     h5file.close()
     print 'H5 File Done: ', hdf_filename
@@ -175,6 +189,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     ndays = None,
     include_null_pot = False,
     only_potent_predictor = False,
+    fit_intercept = True,
 
     fit_task_specific_model_test_task_spec = False,
     fit_task_spec_and_general = False,
@@ -233,15 +248,23 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
     else:
         if fit_task_specific_model_test_task_spec:
-            hdf_filename = pref + animal + hdf_filename + '_model_set%d_task_spec.h5' %model_set_number
+            hdf_filename = pref + animal + hdf_filename + '_model_set%d_task_spec' %model_set_number
         else:
-            hdf_filename = pref + animal + hdf_filename + '_model_set%d.h5' %model_set_number
+            hdf_filename = pref + animal + hdf_filename + '_model_set%d' %model_set_number
+
+        if fit_intercept:
+            hdf_filename = hdf_filename + '.h5'
+        else:
+            hdf_filename = hdf_filename + '_no_intc.h5'
 
     ### Place to save models: 
     model_data = dict(); 
 
     ### Get the ridge dict: 
-    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+    if fit_intercept:
+        ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+    else:
+        ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'rb')); 
 
     for obj in gc.get_objects():   # Browse through ALL objects
         if isinstance(obj, tables.File):   # Just HDF5 files
@@ -407,7 +430,9 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         alpha_spec = ridge_dict[animal][0][i_d, model_nm]
                         model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
                             only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
-                            fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec)
+                            fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
+                            fit_intercept = fit_intercept)
+
                         save_model = True
                     else:
                         raise Exception('Need to figure out teh stirng business again -- removed for clarity')
@@ -418,7 +443,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
                             test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
                             only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth,
-                            fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec)
+                            fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
+                            fit_intercept = fit_intercept)
 
                         ### Save models, make predictions ####
                         ### Need to figure out which spikes are where:
@@ -499,25 +525,30 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     else:
         sff = ''
 
+    if fit_intercept:
+        sff2 = ''
+    else:
+        sff2 = '_no_intc'
+
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
         pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
     else:
         if fit_task_specific_model_test_task_spec:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec.pkl' %model_set_number, 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec%s.pkl' %(model_set_number, sff2), 'wb'))
         
         elif fit_task_spec_and_general:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s.pkl' %(model_set_number, sff), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s%s.pkl' %(model_set_number, sff, sff2), 'wb'))
         
         elif fit_condition_spec_no_general:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec.pkl' %model_set_number, 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec%s.pkl' %(model_set_number, sff2), 'wb'))
         
         else:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s.pkl' %(model_set_number, sff2), 'wb'))
 
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
-    model = 'hist_1pos_0psh_0spksm_1_spksp_0', n_folds = 5):
+    model = 'hist_1pos_0psh_0spksm_1_spksp_0', n_folds = 5, fit_intercept = True):
     '''
     method to open up a model fit above, compute the residules, and then fit the residules to state encoding? 
         -- need to make sure all the correct variables are in the dictionary; 
@@ -655,7 +686,8 @@ def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 
                     else:
                     
                         alpha_spec = 0; 
-                        model_ = fit_ridge(data_temp_rez[predict_key][train_ix[i_fold], :], data_temp.iloc[train_ix[i_fold]], variables, alpha=alpha_spec)
+                        model_ = fit_ridge(data_temp_rez[predict_key][train_ix[i_fold], :], data_temp.iloc[train_ix[i_fold]], variables, 
+                            alpha=alpha_spec, fit_intercept = fit_intercept)
                         
                         ### Plot predictions 
                         model_, predY = generate_models_utils.sklearn_mod_to_ols(model_, data_temp.iloc[test_ix[i_fold]], 
@@ -706,13 +738,14 @@ def panda_to_dict(D):
 def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
     test_data=None, test_data2=None, train_data2=None,
     only_potent_predictor = False, KG_pot = None, 
-    fit_task_specific_model_test_task_spec = False):
+    fit_task_specific_model_test_task_spec = False,
+    fit_intercept = True):
 
     ''' fit Ridge regression using alpha = ridge parameter
         only_potent_predictor --> multiply KG_pot -- which I think should be N x N by data;  '''
 
     ### Initialize model 
-    model_2 = Ridge(alpha=alpha)
+    model_2 = Ridge(alpha=alpha, fit_intercept=fit_intercept)
 
     ### Aggregate the variable name
     x = []
@@ -866,7 +899,8 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
         variables_list.append(np.unique(variables))
     return variables_list
 
-def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, r2_ind_or_pop = 'pop'):
+def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, 
+    r2_ind_or_pop = 'pop', fit_intercept = True):
 
     if model_set_number == 1:
         # model_names = ['prespos_0psh_1spksm_0_spksp_0', 'prespos_1psh_1spksm_0_spksp_0', 'hist_fut_4pos_1psh_1spksm_0_spksp_0',
@@ -923,12 +957,20 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                        'hist_1pos_0psh_0spksm_1_spksp_1', 'hist_1pos_0psh_0spksm_2_spksp_2']
 
     if animal == 'grom':
-        hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number)
+        if fit_intercept:
+            hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number)
+        else:
+            hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d_no_intc.h5' %model_set_number)
+        
         if ndays is None:
             ndays = 9; 
     
     elif animal == 'jeev':
-        hdf = tables.openFile(analysis_config.config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d.h5' %model_set_number)
+        if fit_intercept:
+            hdf = tables.openFile(analysis_config.config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d.h5' %model_set_number)
+        else:
+            hdf = tables.openFile(analysis_config.config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d_no_intc.h5' %model_set_number)
+        
         if ndays is None:
             ndays = 4; 
 
