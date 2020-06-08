@@ -685,6 +685,10 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
     
     reg_dict = dict(dA = [], pred_dA = [], dM = [], pred_dM = [])
 
+    #### Percent Correct ####
+    perc_corr = dict(true = [0, 0], cw = [0, 0], ccw = [0, 0])
+    perc_corr['mag'] = [0, 0]
+
     for m in range(4):
         for a in range(8):
             ix = np.nonzero(np.logical_and(command_bins[:, 0] == m, command_bins[:, 1] == a))[0]
@@ -693,6 +697,8 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
                 ixp1 = ix + 1; 
                 ixp1 = ixp1[ixp1 < len(command_bins)]
                 ixp1 = ixp1[bin_num[ixp1] > np.min(bin_num)]
+
+                mag_dict = dict(id=[])
 
                 for mp in range(4):
                     for ap in range(8):
@@ -705,6 +711,10 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
                             segment_mn = np.mean(push[ix, :], axis=0)
                             next_segment_mn = np.mean(push[ix_tp1, :], axis=0)
                             pred_next_segment_mn = np.mean(pred_push[ix_tp1, :], axis=0)
+
+                            ### Store this; 
+                            mag_dict[mp, ap] = np.linalg.norm(pred_next_segment_mn)
+                            mag_dict['id'].append([mp, ap])
 
                             ### Get angle / magnitude diffs; 
                             ### Angle is unsigned; 
@@ -729,6 +739,61 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
                             reg_dict['pred_dA'].append(pred_dA/np.pi*180)
                             reg_dict['dM'].append(dM)
                             reg_dict['pred_dM'].append(pred_dM)
+
+                            ### Figure out if we should assess precent correct; 
+                            corr_dir = assess_corr_dir([m, a], [mp, ap], segment_mn, pred_next_segment_mn)
+
+                            if corr_dir is None:
+                                pass
+                            elif corr_dir == True: 
+                                perc_corr['true'][0] += 1
+                                perc_corr['true'][1] += 1
+                            elif corr_dir == False:
+                                perc_corr['true'][1] += 1
+
+                            ### Now want to see chance level perc correct if next action was always CW or always CCW
+                            if corr_dir is not None:
+
+                                ### Is this division CW or CCW: 
+                                ## cp is the sign, CW / CCW; 
+                                if cp == -1: 
+                                    perc_corr['cw'][0] += 1
+                                elif cp == 1:
+                                    perc_corr['ccw'][0] += 1
+
+                                perc_corr['cw'][1] += 1
+                                perc_corr['ccw'][1] += 1 
+                    
+                ### Ok now done with all these 
+                if len(mag_dict['id']) > 1:
+                    tmp_ids = np.vstack((mag_dict['id'])) 
+
+                    for tmp_a in range(8):
+                        ix_a = np.nonzero(tmp_ids[:, 1] == tmp_a)[0]
+
+                        ### If more than 1 of this angle; 
+                        if len(ix_a) > 1:
+                            tmp_n = len(ix_a)
+
+                            ### Comparisons; 
+                            for i_t0 in range(tmp_n):
+                                tmp_mg0 = tmp_ids[ix_a[i_t0], 0]
+                                tmp_norm0 = mag_dict[tmp_mg0, tmp_a]
+
+                                for i_t1 in range(i_t0+1, tmp_n):
+                                    tmp_mg1 = tmp_ids[ix_a[i_t1], 0]
+                                    assert(tmp_mg1 != tmp_mg0)
+                                    tmp_norm1 = mag_dict[tmp_mg1, tmp_a]
+
+                                    ### One comparison ###
+                                    perc_corr['mag'][1] += 1
+
+                                    dtmp = float(np.sign(tmp_mg1 - tmp_mg0))
+                                    dnorm = float(np.sign(tmp_norm1 - tmp_norm0))
+                                    
+                                    if dtmp == dnorm:
+                                        perc_corr['mag'][0] += 1
+
 
     reg_dict = util_fcns.hstack_keys(reg_dict)
 
@@ -758,7 +823,7 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
  
     if save:
         f.savefig(save_dir + prefix+'.png')
-    return ang_stats, mag_stats
+    return ang_stats, mag_stats, perc_corr, [f, ax]
 
 def plot_dAngle_dMag_xcond(command_bins=None, push=None, bin_num=None, mag_bound=None, trg=None, 
     tsk=None, pred_push=None, min_obs = 15, save=False, save_dir = None, prefix = None, **kwargs):
@@ -900,9 +965,9 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     '''
 
     if animal == 'grom':
-        F, K = util_fcns.get_grom_decoder(day)
+        _, K = util_fcns.get_grom_decoder(day)
     else:
-        raise Exception('not yet implemetned for jeevs')
+        K = util_fcns.get_jeev_decoder(day)
 
     ### Open the model type ####
     if model_type in [0, 1, 2]:
@@ -955,7 +1020,11 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     spks = dat[day, 'spks']
 
     ### Rest of stuff ####
-    pred_push = np.dot(K[[3, 5], :], pred_spks.T).T
+    if animal == 'grom':
+        pred_push = np.dot(K[[3, 5], :], pred_spks.T).T
+    elif animal == 'jeev':
+        pred_push = np.dot(K, pred_spks.T).T
+
     bin_num = dat[day, 'bin_num']
     tsk = dat[day, 'task']
     pos = dat[day, 'pos']
@@ -979,6 +1048,7 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     
     data = dict(spks = spks, pred_spks = pred_spks, pred_push = pred_push, bin_num = bin_num, tsk = tsk, pos = pos, vel = vel, trg = trg, push = push,
         mag_bound = mag_boundaries[animal, day], command_bins = command_bins, prefix = prefix)
+
     return data 
 
 ############ UTILS ###########
