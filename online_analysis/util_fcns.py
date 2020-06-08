@@ -168,6 +168,14 @@ def get_grom_decoder(day_ix):
     F, KG = decoder.filt.get_sskf()
     return F, KG
 
+def get_jeev_decoder(day_ix):
+    kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'))
+    KG = kgs[day_ix]
+    KG_potent = KG.copy(); #$[[3, 5], :]; # 2 x N
+    return np.squeeze(np.array(KG_potent))
+
+
+
 #### Linear mixed effect modeling: 
 def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
     data = pd.DataFrame(dict(Days=Days, Grp=Grp, Metric=Metric))
