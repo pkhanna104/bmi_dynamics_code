@@ -9,6 +9,7 @@ import os
 import pickle
 import sys
 import copy
+import pandas as pd
 
 def verbose_print(input, verbose_bool=1):
 	if verbose_bool:
@@ -20,6 +21,24 @@ def mean_var_std_sem(data_vec):
 	'std':np.std(data_vec), 
 	'sem':sio_stat.sem(data_vec)}
 	return result
+
+def make_df_idx(index_df, task_idx, tc, target, trial, pre, num_data):
+	"""
+	makes a dataframe containing indexing information, typically for a trial of data
+	(task, tc, target, trial, bin (index wtihin the trial))
+	input:
+	pre - how many "prefix" samples are in the data
+	num_data - number of samples
+	"""
+	label = ['task', 'tc', 'target', 'trial', 'bin']
+	m_task = np.ones(num_data)*task_idx
+	m_tc = np.ones(num_data)*tc
+	m_target = np.ones(num_data)*target
+	m_trial = np.ones(num_data)*trial
+	m_bin = np.arange(num_data)-pre
+	m_idx = np.stack((m_task, m_tc, m_target, m_trial, m_bin), axis=1) #num_data X 5
+	df_idx = pd.DataFrame(m_idx, index=index_df, columns=label)
+	return df_idx	
 
 def def_target_over_trials(data, task_codes):
 	target_over_trials = {}
