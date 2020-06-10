@@ -174,8 +174,6 @@ def get_jeev_decoder(day_ix):
     KG_potent = KG.copy(); #$[[3, 5], :]; # 2 x N
     return np.squeeze(np.array(KG_potent))
 
-
-
 #### Linear mixed effect modeling: 
 def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
     data = pd.DataFrame(dict(Days=Days, Grp=Grp, Metric=Metric))
@@ -279,3 +277,60 @@ def plot_mean_and_sem(x , array, ax, color='b', array_axis=1,label='0',
     if log_y:
         ax.set_yscale('log')
     return x, ax
+
+### Run PCA ###
+def PCA(X, nPCs, mean_subtract = True):
+    '''
+    X is a T x N data matrix; 
+    '''
+    assert(X.shape[0] > X.shape[1])
+    ### assumes X is time x dimensions
+
+    if mean_subtract:
+        x_mn = np.mean(X, axis=0)
+        assert(len(x_mn) == X.shape[1])
+        X = X - x_mn[np.newaxis, :]
+    else:
+        x_mn = np.zeros((X.shape[1], ))
+
+    covX = np.cov(X.T)
+    assert(covX.shape[0] == covX.shape[1] == X.shape[1])
+
+    ### Now do eig value decomp; 
+    ev, vect = np.linalg.eig(covX)
+
+    ### Chekc that acutally eigenvalues / vectors; 
+    chk_ev_vect(ev, vect, covX)
+
+    ### Ok now order them; 
+    ix_sort = np.argsort(ev)
+    evsort = ev[ix_sort[::-1]]
+    assert(np.max(evsort) == evsort[0])
+    vectsort = vect[:, ix_sort[::-1]]
+
+    ### Check again; 
+    chk_ev_vect(evsort, vectsort, covX)
+
+    ### now find num PCs needed: 
+    cumsum = np.cumsum(evsort)/np.sum(evsort)
+
+    ### Transform data; 
+    ### n x k PCs
+    proj_mat = vectsort[:, :nPCs]
+
+    ### k PCs x n  DOT n x T --> k x T (trans) --> T x k; 
+    transf_data = np.dot(proj_mat.T, X.T).T
+    assert(transf_data.shape[0] == X.shape[0])
+    assert(transf_data.shape[1] == nPCs)
+
+    pc_model = dict(proj_mat = proj_mat, x_mn = x_mn)
+
+    return transf_data, pc_model, evsort
+
+### Double check that each eigenvlaue / vecotr is correct: 
+def chk_ev_vect(ev2, vect2, covX2):
+    for i in range(len(ev2)):
+        evi = ev2[i]
+        vct = vect2[:, i]
+        ## Do out the multiplication
+        assert(np.allclose(np.dot(covX2, vct[:, np.newaxis]), evi*vct[:, np.newaxis]))
