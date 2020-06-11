@@ -198,6 +198,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
     full_shuffle = False,
     within_bin_shuffle = False, 
+    shuff_id = 0,
     add_model_to_datafile = False):
     
     ### Deprecated variables 
@@ -259,10 +260,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
 
         if full_shuffle:
-            hdf_filename = hdf_filename + '_full_shuff'
+            hdf_filename = hdf_filename + '_full_shuff%d' %shuff_id
+        
         elif within_bin_shuffle:
-            hdf_filename = hdf_filename + '_within_bin_shuff'
-
+            hdf_filename = hdf_filename + '_within_bin_shuff%d' %shuff_id
 
         if fit_intercept:
             hdf_filename = hdf_filename + '.h5'
@@ -546,6 +547,14 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     else:
         sff2 = '_no_intc'
 
+    if full_shuffle:
+        sff3 = '_full_shuff%d' %shuff_id
+    
+    elif within_bin_shuffle:
+        sff3 = '_within_bin_shuff%d' %shuff_id
+    else:
+        sff3 = ''
+
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
         pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
@@ -554,13 +563,13 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec%s.pkl' %(model_set_number, sff2), 'wb'))
         
         elif fit_task_spec_and_general:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s%s.pkl' %(model_set_number, sff, sff2), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s%s%s.pkl' %(model_set_number, sff, sff2, sff3), 'wb'))
         
         elif fit_condition_spec_no_general:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec%s.pkl' %(model_set_number, sff2), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec%s%s.pkl' %(model_set_number, sff2, sff3), 'wb'))
         
         else:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s.pkl' %(model_set_number, sff2), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s.pkl' %(model_set_number, sff2, sff3), 'wb'))
 
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
