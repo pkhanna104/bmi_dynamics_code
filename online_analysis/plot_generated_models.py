@@ -950,82 +950,141 @@ def plot_r2_bar_model_1(min_obs = 15,
             #f1.tight_layout()
 
 ### Bar R2 and correlation plots -- figure 4;
-def plot_real_vs_pred(model_set_number = 1, min_obs = 15, cov = True):
+def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False, 
+    use_mFR_option = 'cond_spec'):
+
+
+    '''
+    updates -- 6/10/20 -- plotting task specific plot, using slimmer model 2, adding plot for dHz vs. baseline
+
+    use_mFR_option -- 
+        -- pooled: for both x/y axis used pooled mFR: mFR | day 
+        -- command_spec: for both x/y axis used command mFR: mFR | day, command
+        -- command_axis_spec: for x axis used mFR | day, command, yaxis used pred mFR | day, command
+
+    '''
     
     mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
 
     models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
-                         'hist_1pos_3psh_1spksm_0_spksp_0', 
-                         'hist_1pos_3psh_1spksm_1_spksp_0']
+                         'hist_1pos_3psh_1spksm_0_spksp_0', ### Full state 
+                         'hist_1pos_3psh_1spksm_1_spksp_0'] ### Full state + y_t-1
 
     models_to_include_labs = ['y_t | a_t', 
                               'y_t | a_t, s_{t-1}, s_tFinal, tsk', 
-                              'y_t | a_t, s_{t-1}, y_{t-1}']
+                              'y_t | a_t, s_{t-1},..., y_{t-1}']
 
 
     for ia, animal in enumerate(['grom','jeev']):
-        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+
+        ### Load the model ####
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %model_set_number, 'rb'))
+        
+        ### Number of days #####
         ndays = analysis_config.data_params[animal + '_ndays']
 
+        ### Keep track fo diffs and sig diffs #####
         diffs = dict(); 
         sig_diffs = dict(); 
 
-        MOD = []; DAY = []; VAL = []; 
+        ### For keeping track of stats ####
+        MOD = []; DAY = []; VAL = []; VAL2 = []
 
         pred_diffs = dict(); 
         pred_sig_diffs = dict(); 
 
-        R2 = dict(); NN = dict(); 
+        R2 = dict(); R22 = dict(); NN = dict(); 
+        z_fr = dict(); pred_z_fr = dict(); mn_fr = {}
 
-        fbar, axbar = plt.subplots(figsize=(3, 4))
-        #fall, axall = plt.subplots(ncols = len(models_to_include), nrows = ndays, figsize=(10, 10))
+
+        fall, axall = plt.subplots(ncols = len(models_to_include), nrows = ndays, figsize=(len(models_to_include)*3, ndays*3))
+        fall2, axall2 = plt.subplots(ncols = len(models_to_include), nrows = ndays, figsize=(len(models_to_include)*3, ndays*3))
 
         for i_m, model in enumerate(models_to_include):
-
-            ### For each model, setup in teh diffs 
-            diffs[model] = []
-            sig_diffs[model] = []
-            pred_diffs[model] = []
-            pred_sig_diffs[model] = []
-
             for i_d in range(ndays):
                 
                 R2[model, i_d] = []; 
+                R22[model, i_d] = []
+
                 ### Get the spiking data
                 spks = model_dict[i_d, 'spks']
-                pred = model_dict[i_d, model]
+
+                ### General dynamics; 
+                pred = model_dict[i_d, model][:, :, 2]
 
                 ### Get the task parameters
                 tsk  = model_dict[i_d, 'task']
                 targ = model_dict[i_d, 'trg']
                 push = model_dict[i_d, 'np']
                 
-                ### Setup the dicitonaries to be 
+                assert(spks.shape[0] == pred.shape[0] == len(tsk) == len(targ) == push.shape[0])
+                assert(push.shape[1] == 2)
+
+                ### Setup the dicitonaries for stats to be tracked ####
                 diffs[model, i_d] = []
                 sig_diffs[model, i_d] = []
                 pred_diffs[model, i_d] = []
                 pred_sig_diffs[model, i_d] = []
 
+                #### Setup the dictionaries for stats to be tracked ####
+                z_fr[model, i_d] = []
+                pred_z_fr[model, i_d] = []
+
                 ### Get the discretized commands
                 commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                assert(commands_disc.shape == push.shape)
+
+                mFR_pool = np.mean(spks, axis=0)
 
                 ### Now go through combos and plot 
                 for mag_i in range(4):
                     for ang_i in range(8):
-                        for targi in range(8):
+                        
+                        ix = np.nonzero(np.logical_and(commands_disc[:, 0] == mag_i, commands_disc[:, 1] == ang_i))[0]
+
+                        ### mFR for a given command ###
+                        command_mn_fr = np.mean(spks[ix, :], axis=0)
+                        pred_command_mn_fr = np.mean(pred[ix, :], axis=0)
+
+                        if use_mFR_option == 'pooled':
+                            x_mfr = mFR_pool.copy()
+                            y_mfr = mFR_pool.copy()
+                        elif use_mFR_option == 'command_spec':
+                            x_mfr = command_mn_fr.copy()
+                            y_mfr = command_mn_fr.copy()
+                        elif use_mFR_option == 'command_axis_spec':
+                            x_mfr = command_mn_fr.copy()
+                            y_mfr = pred_command_mn_fr.copy()
+
+                        for targi in np.unique(targ):
                             ### Get co / task 
                             ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
                             ix_co = np.nonzero(ix_co == True)[0]
 
+                            assert(np.all(commands_disc[ix_co, 0] == mag_i))
+                            assert(np.all(commands_disc[ix_co, 1] == ang_i))
+                            assert(np.all(tsk[ix_co] == 0))
+                            assert(np.all(targ[ix_co] == targi))
+
                             if len(ix_co) >= min_obs:
-                                
+                                #### Keep the mean CO condition specific command
+                                z_fr[model, i_d].append(np.mean(spks[ix_co, :], axis=0) - x_mfr)
+                                pred_z_fr[model, i_d].append(np.mean(pred[ix_co, :], axis=0) - y_mfr)
+                                                                
                                 ### Get info second task: 
-                                for targi2 in range(8):
-                                    ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi2)
+                                for targi2 in np.unique(targ):
+                                    ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
                                     ix_ob = np.nonzero(ix_ob == True)[0]
 
-                                    if len(ix_ob) >= min_obs:
+                                    assert(np.all(commands_disc[ix_ob, 0] == mag_i))
+                                    assert(np.all(commands_disc[ix_ob, 1] == ang_i))
+                                    assert(np.all(tsk[ix_ob] == 1))
+                                    assert(np.all(targ[ix_ob] == targi2))
 
+                                    if len(ix_ob) >= min_obs:
+                                        z_fr[model, i_d].append(np.mean(spks[ix_ob, :], axis=0) - x_mfr)
+                                        pred_z_fr[model, i_d].append(np.mean(pred[ix_ob, :], axis=0) - y_mfr)
+                                
                                         assert(len(ix_co) >= min_obs)
                                         assert(len(ix_ob) >= min_obs)
                                         #print 'adding: mag_i: %d, ang_i: %d, targi: %d, targi2: %d' %(mag_i, ang_i, targi, targi2)
@@ -1037,7 +1096,6 @@ def plot_real_vs_pred(model_set_number = 1, min_obs = 15, cov = True):
                                             diffs[model, i_d].append(np.mean(spks[ix_co, :], axis=0) - np.mean(spks[ix_ob, :], axis=0))    
                                             pred_diffs[model, i_d].append(np.mean(pred[ix_co, :], axis=0) - np.mean(pred[ix_ob, :], axis=0))
 
-
             ### Now scatter plot all data over all days: 
             #f, ax = plt.subplots(nrows = 1, ncols = 2, figsize=(8, 4))
 
@@ -1045,10 +1103,19 @@ def plot_real_vs_pred(model_set_number = 1, min_obs = 15, cov = True):
             for i_d in range(ndays):
 
                 ### T x N
-                x = np.vstack((diffs[model, i_d]))
-                y = np.vstack((pred_diffs[model, i_d]))
-                
-                #axall[i_d, i_m].plot(x, y, '.', markersize=2.)
+                x = np.vstack((diffs[model, i_d]))*10
+                y = np.vstack((pred_diffs[model, i_d]))*10
+
+                #### For the diffs, want to reshape everything into a single long array 
+                x = x.reshape(-1)
+                y = y.reshape(-1)
+
+                axall[i_d, i_m].plot(x, y, 'k.', markersize=2.)
+                axall[i_d, i_m].set_xlim([-40, 40])
+                axall[i_d, i_m].set_ylim([-40, 40])
+                axall[i_d, i_m].set_ylabel('Pred Mn Diff | Command')
+                axall[i_d, i_m].set_xlabel('Mn Diff | Command')
+
                 ### get variance explained -- here, each point is a neuron / command / day / targ1 / targ 2 difference
                 ### the mean for SST is the neuron specific avg. true difference. 
                 VAF = util_fcns.get_R2(x, y, pop = True)
@@ -1057,59 +1124,86 @@ def plot_real_vs_pred(model_set_number = 1, min_obs = 15, cov = True):
                 #VAF = 1 - np.sum((x-y)**2)/np.sum((x-np.mean(x))**2)
 
                 R2[model, i_d].append(VAF);
-                #axall[i_d, i_m].set_title(VAF, fontsize=6)
+                axall[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s' %(i_d,VAF, '$'+models_to_include_labs[i_m]+'$'), fontsize=14)
 
                 MOD.append(i_m)
                 DAY.append(i_d)
                 VAL.append(VAF)
 
+                x2 = np.vstack(( z_fr[model, i_d]))*10
+                y2 = np.vstack(( pred_z_fr[model, i_d]))*10
+                ### Here, not reshaping, want to keep the mean FR | command, condition comparable to mFR for neuron overall; 
+                
+                axall2[i_d, i_m].plot(x2, y2, 'k.', markersize=2.)
+                axall2[i_d, i_m].set_xlim([-40,40])
+                axall2[i_d, i_m].set_ylim([-40,40])
+                axall2[i_d, i_m].set_ylabel('Pred Mn | Cond, Command')
+                axall2[i_d, i_m].set_xlabel('Mn FR | Cond, Command')
+                
+                VAF2 = util_fcns.get_R2(x2, y2, pop = True)
+                VAL2.append(VAF2)
+                R22[model, i_d].append(VAF2)
+                axall2[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s \n %s' %(i_d,VAF2, '$'+models_to_include_labs[i_m]+'$', use_mFR_option), fontsize=14)
+
         fall.tight_layout()
+        fall.savefig(analysis_config.config['fig_dir2'] + 'diff_scatters_%s_R2_unrolled.png' %(animal))
+
+        fall2.tight_layout()
+        fall2.savefig(analysis_config.config['fig_dir2'] + 'cond_spec_scatters_%s_mFR_%s.png' %(animal, use_mFR_option))
+
         MOD = np.hstack((MOD))
         DAY = np.hstack((DAY))
         VAL = np.hstack((VAL))
+        VAL2 = np.hstack((VAL2))
 
-        ### Plot indices ###
-        ix0 = np.nonzero(MOD < 2)[0]
-        ix1 = np.nonzero(MOD > 0)[0]
+        for iv, (val, r2_caps, nm) in enumerate(zip([VAL, VAL2], [R2, R22], ['diffs', 'mFR_cond_command'])):
+            #### R2 bar plot ####
+            fbar, axbar = plt.subplots(figsize=(3, 4))
+            
+            ### Plot indices ###
+            ix0 = np.nonzero(MOD < 2)[0]
+            ix1 = np.nonzero(MOD > 0)[0]
 
-        pv0, slp0 = util_fcns.run_LME(DAY[ix0], MOD[ix0], VAL[ix0])
-        pv1, slp1 = util_fcns.run_LME(DAY[ix1], MOD[ix1], VAL[ix1])
+            pv0, slp0 = util_fcns.run_LME(DAY[ix0], MOD[ix0], val[ix0])
+            pv1, slp1 = util_fcns.run_LME(DAY[ix1], MOD[ix1], val[ix1])
 
-        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix0])), pv0, slp0, len(ix0)))
-        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix1])), pv1, slp1, len(ix1)))
+            print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix0])), pv0, slp0, len(ix0)))
+            print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix1])), pv1, slp1, len(ix1)))
 
-        ### Plot as bar plot ###
-        all_data = {}
-        for i_m, model in enumerate(models_to_include):
-            all_data[model] = []; 
+            ### Plot as bar plot ###
+            all_data = {}
+            for i_m, model in enumerate(models_to_include):
+                all_data[model] = []; 
 
-        for i_d in range(ndays):
-            tmp = []; 
+            for i_d in range(ndays):
+                tmp = []; 
+
+                for i_m, model in enumerate(models_to_include):
+                    r2 = np.hstack((r2_caps[model, i_d]))
+                    #r2[np.isinf(r2)] = np.nan
+                    tmp.append(np.mean(r2))
+                    all_data[model].append(r2)
+                axbar.plot(np.arange(len(models_to_include)), tmp, '-', color='gray')
+
+
+            #### Model colors ###
+            model_cols = [[255, 0, 0], [101, 44, 144], [39, 169, 225],]
+            model_cols = [np.array(m)/255. for m in model_cols]
 
             for i_m, model in enumerate(models_to_include):
-                r2 = np.hstack((R2[model, i_d]))
-                r2[np.isinf(r2)] = np.nan
-                tmp.append(np.nanmean(r2))
-                all_data[model].append(r2)
-            axbar.plot(np.arange(len(models_to_include)), tmp, '-', color='gray')
+                tmp2 = np.hstack((all_data[model]))
+                #tmp2 = tmp2[~np.isnan(tmp2)]
+                axbar.bar(i_m, np.mean(tmp2), color = model_cols[i_m], edgecolor='k', linewidth=2.)
+                axbar.errorbar(i_m, np.mean(tmp2), yerr=np.std(tmp2)/np.sqrt(len(tmp2)), color = 'k', marker='|')
 
-
-        #### Model colors ###
-        model_cols = [[255, 0, 0], [101, 44, 144], [39, 169, 225],]
-        model_cols = [np.array(m)/255. for m in model_cols]
-
-        for i_m, model in enumerate(models_to_include):
-            tmp2 = np.hstack((all_data[model]))
-            tmp2 = tmp2[~np.isnan(tmp2)]
-            axbar.bar(i_m, np.mean(tmp2), color = model_cols[i_m], edgecolor='k', linewidth=2.)
-            axbar.errorbar(i_m, np.mean(tmp2), yerr=np.std(tmp2)/np.sqrt(len(tmp2)), color = 'k', marker='|')
-
-        axbar.set_xticks(np.arange(len(models_to_include)))
-        models_to_include_labs_tex = ['$' + m + '$' for m in models_to_include_labs]
-        axbar.set_xticklabels(models_to_include_labs_tex, rotation = 45)#, fontsize=10)
-        fbar.tight_layout()
-        #fbar.savefig('/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/monk_%s_r2_comparison_mean_diffs_cov%s.svg' %(animal, str(cov)))
-        
+            axbar.set_xticks(np.arange(len(models_to_include)))
+            models_to_include_labs_tex = ['$' + m + '$' for m in models_to_include_labs]
+            axbar.set_xticklabels(models_to_include_labs_tex, rotation = 45)#, fontsize=10)
+            fbar.tight_layout()
+            if iv == 0:
+                fbar.savefig(analysis_config.config['fig_dir2']+'monk_%s_r2_comparison_%s.png' %(animal, nm))
+            else:
+                fbar.savefig(analysis_config.config['fig_dir2'] + 'monk_%s_r2_comparison_%s_mFR%s.png' %(animal, nm, use_mFR_option))    
 ### Fig 5 #### 
 ### Mean diffs of action at next time step ###
 def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):

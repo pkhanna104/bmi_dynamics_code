@@ -5409,7 +5409,7 @@ def plot_real_vs_pred(model_set_number = 1, min_obs = 15, cov = True):
                                 
                                 ### Get info second task: 
                                 for targi2 in range(8):
-                                    ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi2)
+                                    ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
                                     ix_ob = np.nonzero(ix_ob == True)[0]
 
                                     if len(ix_ob) >= min_obs:
