@@ -152,7 +152,6 @@ def PC_proj_plot(animal, day, model_set_number = 7, min_obs = 30, min_obs2 = 20,
                             ### Ok how do we add A*x_t plot to this; take all the times where this command occurs; 
                             pred_spks_tmp = pred_spks[ix, :]
                 
-
 def get_distribution(ix_all, command_bins, spks, pred_spks, bin_num, targ, task, sub_trans_list, m, a):
     '''
     for each task / target, get a command bin with enough representation, 
