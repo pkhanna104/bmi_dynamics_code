@@ -38,20 +38,16 @@ def get_model_var_list(model_set_number):
         include_action_lags = False; ### Only ever want action at t = 0; 
         history_bins_max = 1; 
 
-    # elif model_set_number == 2:
-    #     ### Lags, name, include state?, include y_{t-1}, include y_{t+1} ###
-    #     #nclude_state, include_past_yt, include_fut_yt
-
-    #     ### Also want only neural, only history of neural, and a_t plus history of neural. 
-    #     model_var_list.append([np.array([0]),                 'prespos_0psh_0spksm_1_spksp_0',         0, 1, 0])     #### Model 1: a_{t+1} | y_{t+1} --> should be 100%
-    #     model_var_list.append([np.array([-1]),                'hist_1pos_0psh_0spksm_1_spksp_0',       0, 1, 0])     #### Model 1: a_{t+1} | y_{t}
-    #     model_var_list.append([np.array([-1]),                'hist_1pos_0psh_1spksm_0_spksp_0',       0, 0, 0])     #### Model 1: a_{t+1} | a_t
-    #     model_var_list.append([np.array([-1]),                'hist_1pos_0psh_1spksm_1_spksp_0',       1, 0, 0])     #### Model 2: a_{t+1} | a_t, y_t
-    #     model_var_list.append([np.array([-4, -3, -2, -1]),    'hist_4pos_0psh_1spksm_0_spksp_0',       0, 0, 0])     #### Model 3: a_{t+1} | a_t, a_{t-1},...
-    #     model_var_list.append([np.array([-4, -3, -2, -1]),    'hist_4pos_0psh_1spksm_1_spksp_0',       0, 1, 0])     #### Model 4: a_{t+1} | a_t, a_{t-1},..., y_t; 
-    #     model_var_list.append([np.array([-4, -3, -2, -1]),    'hist_4pos_0psh_1spksm_4_spksp_0',       0, 4, 0])     #### Model 5: a_{t+1} | a_t, a_{t-1},..., y_t, y_{t-1},...;
-    #     predict_key = 'psh'
-    #     history_bins_max = 4; 
+    elif model_set_number == 2:
+        ### Lags, name, include state?, include y_{t-1}, include y_{t+1} ###
+        #nclude_state, include_past_yt, include_fut_yt
+        model_var_list.append([np.array([0]),     'prespos_0psh_1spksm_0_spksp_0',      0, 0, 0])     ### t=0, only action
+        model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_0_spksp_0',    3, 0, 0])     ### t=-1, action and prev state + target + task
+        model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_1_spksp_0',    3, 1, 0])     ### t=-1, action and prev state + target + task plus neural dynamics
+        
+        predict_key = 'spks'
+        include_action_lags = False; ### Only ever want action at t = 0; 
+        history_bins_max = 1; 
 
     elif model_set_number == 3:
         ### Model predicting spikes with a) current spikes b) previous spikes, c) previous actions 
@@ -94,7 +90,7 @@ def get_model_var_list(model_set_number):
 
     elif model_set_number == 7:
         model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity; 
-        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_1', 0, 1, 1]) ### only previous neural activity & action; 
+        #model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_1', 0, 1, 1]) ### only previous neural activity & action; 
         predict_key = 'spks'
         history_bins_max = 1; 
         # Not sure about htis ###
