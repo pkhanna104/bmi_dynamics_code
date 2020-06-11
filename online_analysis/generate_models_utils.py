@@ -1,5 +1,6 @@
 #### Utils for model generation ######
 import analysis_config
+import util_fcns
 import prelim_analysis as pa 
 from resim_ppf import ppf_pa
 
@@ -329,7 +330,6 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     position = np.vstack((pos))
     task_index = np.hstack((tsk))
     push = np.vstack((push))
-
 
     #################################
     ######## Model Options ##########
@@ -826,15 +826,15 @@ def full_shuffling(bin_spk, ix_mod, trial_ix):
     bin_stack = np.vstack(([b for ib,b in enumerate(bin_spks) if ib in ix_mod]))
 
     trls_ix = np.hstack(([t for it,t in enumerate(trial_ix) if t in ix_mod]))
-    assert(bin_spks.shape[0] == len(trls_ix))
+    assert(bin_stack.shape[0] == len(trls_ix))
 
     shuff_ix = np.random.permutation(len(trls_ix))
     tmp_shuff = bin_stack[shuff_ix, :]
 
-    assert(np.all_close(np.sum(bin_stack, axis=0) == np.sum(tmp_shuff, axis=0)))
+    assert(np.allclose(np.sum(bin_stack, axis=0), np.sum(tmp_shuff, axis=0)))
 
     for trl in ix_mod:
-        ix_i = np.nonzero(trls_ix == i)[0]
+        ix_i = np.nonzero(trls_ix == trl)[0]
         bin_spks[trl] = tmp_shuff[ix_i, :]
 
     return bin_spks
@@ -855,7 +855,7 @@ def within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
     command_bins = util_fcns.commands2bins([dec_stack], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]
 
     trls_ix = np.hstack(([t for it,t in enumerate(trial_ix) if t in ix_mod]))
-    assert(bin_spks.shape[0] == len(trls_ix) == command_bins.shape[0])
+    assert(bin_stack.shape[0] == len(trls_ix) == command_bins.shape[0])
 
     shuff_ix = np.zeros((len(trls_ix), ))
 
@@ -870,10 +870,12 @@ def within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
 
                 ### Shuffle within bin; 
                 bin_stack_shuff[ix[ixi_sh], :] = bin_stack[ix, :]
-
+    
+    assert(np.allclose(np.sum(bin_stack, axis=0), np.sum(bin_stack_shuff, axis=0)))
+    
     #### Reassign ####
     for trl in ix_mod:
-        ix_i = np.nonzero(trls_ix == i)[0]
+        ix_i = np.nonzero(trls_ix == trl)[0]
         bin_spks[trl] = bin_stack_shuff[ix_i, :]
 
     return bin_spks
