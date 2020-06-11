@@ -28,11 +28,19 @@ class Model_Table(tables.IsDescription):
     day_ix = tables.Float64Col(shape=(1,))
 
 #### Methods to get data needed for spike models ####
-def get_spike_kinematics(animal, day, order, history_bins, **kwargs):
+def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False, 
+    within_bin_shuffle = False, **kwargs):
+    
     if 'trial_ix' in kwargs:
         trial_ix = kwargs['trial_ix']
     else:
         trial_ix = None
+
+    if within_bin_shuffle:
+        if 'day_ix' not in kwargs.keys():
+            raise Exception('Need to include day ix to get mag boundaries for shuffling wihtin bin')
+        else:
+            day_ix = kwargs['day_ix']
 
     spks = []
     vel = []
@@ -226,6 +234,13 @@ def get_spike_kinematics(animal, day, order, history_bins, **kwargs):
             ### Remove trials that are -1: 
             ### Keep these trials ####
             ix_mod = np.array([iii for iii in ix_mod if iii not in rm_trls])
+
+            ########## Shuffling #######
+            if full_shuffle:
+                bin_spk = full_shuffling(bin_spk, ix_mod, trial_ix_all)
+
+            elif within_bin_shuffle:
+                bin_spk = within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix_all, animal, day_ix)
 
             # Add to list: 
             ### Stack up the binned spikes; 
@@ -800,6 +815,69 @@ def reconst_spks_from_cond_spec_model(data, model_nm, ndays):
         reconst[day, model_nm, 'null'] = pred_nul_spks.copy()
 
     return reconst
+
+
+###########################################
+############### Shuffling #################
+###########################################
+def full_shuffling(bin_spk, ix_mod, trial_ix):
+    bin_spks = copy.deepcopy(bin_spk)
+
+    bin_stack = np.vstack(([b for ib,b in enumerate(bin_spks) if ib in ix_mod]))
+
+    trls_ix = np.hstack(([t for it,t in enumerate(trial_ix) if t in ix_mod]))
+    assert(bin_spks.shape[0] == len(trls_ix))
+
+    shuff_ix = np.random.permutation(len(trls_ix))
+    tmp_shuff = bin_stack[shuff_ix, :]
+
+    assert(np.all_close(np.sum(bin_stack, axis=0) == np.sum(tmp_shuff, axis=0)))
+
+    for trl in ix_mod:
+        ix_i = np.nonzero(trls_ix == i)[0]
+        bin_spks[trl] = tmp_shuff[ix_i, :]
+
+    return bin_spks
+
+def within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
+    animal, day_ix):
+
+    bin_spks = copy.deepcopy(bin_spk)
+
+    #### Vstack together ######
+    bin_stack = np.vstack(([b for ib,b in enumerate(bin_spks) if ib in ix_mod]))
+    bin_stack_shuff = np.zeros_like(bin_stack)
+
+    dec_stack = np.vstack(([d for it,d in enumerate(decoder_all) if it in ix_mod]))
+
+    #### Mag boundaries #######
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    command_bins = util_fcns.commands2bins([dec_stack], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]
+
+    trls_ix = np.hstack(([t for it,t in enumerate(trial_ix) if t in ix_mod]))
+    assert(bin_spks.shape[0] == len(trls_ix) == command_bins.shape[0])
+
+    shuff_ix = np.zeros((len(trls_ix), ))
+
+    for i_m in range(4):
+        for i_a in range(8):
+
+            ### Get indices ######
+            ix = np.nonzero(np.logical_and(command_bins[:, 0] == i_m, command_bins[:, 1] == i_a))[0]
+
+            if len(ix) > 0:
+                ixi_sh = np.random.permutation(len(ix))
+
+                ### Shuffle within bin; 
+                bin_stack_shuff[ix[ixi_sh], :] = bin_stack[ix, :]
+
+    #### Reassign ####
+    for trl in ix_mod:
+        ix_i = np.nonzero(trls_ix == i)[0]
+        bin_spks[trl] = bin_stack_shuff[ix_i, :]
+
+    return bin_spks
+
 
 ####### MODEL ADDING ########
 ######### Call from generate_models.sweep_ridge_alpha #########

@@ -115,7 +115,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
         ###### data_temp / sub_pikes / sub_spk_temp_all / sub_push_all --> all spks / actions 
         ##### but samples only using history_bins:nT-history_bins within trial 
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
-            day, order_dict[i_d], history_bins_max)
+            day, order_dict[i_d], history_bins_max, day_ix = i_d)
 
         #### Assertion to match length #####
         assert(len(data_temp) == len(sub_spikes) == len(sub_spk_temp_all) == len(sub_push_all))
@@ -194,7 +194,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     fit_task_specific_model_test_task_spec = False,
     fit_task_spec_and_general = False,
     match_task_spec_n = False,
-    fit_condition_spec_no_general = False):
+    fit_condition_spec_no_general = False, 
+
+    full_shuffle = False,
+    within_bin_shuffle = False, 
+    add_model_to_datafile = False):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -209,6 +213,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     Modified 9/16/19 to add model return on top of this; 
     Modiefied 9/17/19 to use specialized alphas for each model, and change notation to specify y_{t-1} and/or y_{t+1}
     Modified 5/7/20 to use "generate models list" to determine model parameters instead of looping throuhg ;
+    Modified 6/10/20 to include "add model to datafile" as an optional thing; think this is teh thing messing up loading sometimes; 
 
     Input param: hdf_filename: name to save params to 
     Input param: animal: 'grom' or jeev'
@@ -252,10 +257,18 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         else:
             hdf_filename = pref + animal + hdf_filename + '_model_set%d' %model_set_number
 
+
+        if full_shuffle:
+            hdf_filename = hdf_filename + '_full_shuff'
+        elif within_bin_shuffle:
+            hdf_filename = hdf_filename + '_within_bin_shuff'
+
+
         if fit_intercept:
             hdf_filename = hdf_filename + '.h5'
         else:
             hdf_filename = hdf_filename + '_no_intc.h5'
+
 
     ### Place to save models: 
     model_data = dict(); 
@@ -303,7 +316,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         
         # Get spike data from data fcn
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
-            order_dict[i_d], history_bins_max)
+            order_dict[i_d], history_bins_max, full_shuffle = full_shuffle, within_bin_shuffle = within_bin_shuffle,
+            day_ix = i_d)
 
         models_to_include = []
         for m in model_var_list:
@@ -369,9 +383,9 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         model_data[i_d, mod, 'null'] = np.zeros_like(sub_spikes)
                         model_data[i_d, mod, 'pot'] = np.zeros_like(sub_spikes)
 
-                elif model_set_number == 2:
-                    ##### 
-                    model_data[i_d, mod] = np.zeros_like(np.squeeze(np.array(sub_push_all)))
+                # elif model_set_number == 2:
+                #     ##### 
+                #     model_data[i_d, mod] = np.zeros_like(np.squeeze(np.array(sub_push_all)))
 
         if norm_neur:
             print 'normalizing neurons!'
@@ -467,9 +481,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
                            
                         ### Save model -- for use later.
-                        print('Adding model and test_indices') 
-                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
-                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
+                        
+                        if add_model_to_datafile:
+                            print('Adding model and test_indices') 
+                            model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
+                            model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
                         
                         #### Add / null potent? 
                         if include_null_pot:
@@ -628,7 +644,7 @@ def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 
         rez_dict[i_d]['res', 'cond'] = true_spks - cond_spec.copy()
         
         _, data_temp, _, _, _ = generate_models_utils.get_spike_kinematics(animal,
-            day, order_dict[i_d], 1)
+            day, order_dict[i_d], 1, day_ix = i_d)
 
         data_temp = util_fcns.add_targ_locs(data_temp, animal)
 
@@ -920,7 +936,7 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
     elif model_set_number in [2, 3]:
         # model_names = ['hist_1pos_0psh_1spksm_0_spksp_0', 'hist_1pos_0psh_1spksm_1_spksp_0', 'hist_4pos_0psh_1spksm_0_spksp_0', 'hist_4pos_0psh_1spksm_1_spksp_0',
         # 'hist_4pos_0psh_1spksm_4_spksp_0', 'prespos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_1_spksp_0']
-        model_names = ['prespos_0psh_0spksm_1_spksp_0','hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_1spksm_0_spksp_0']
+        model_names = ['prespos_0psh_1spksm_0_spksp_0','hist_1pos_3psh_1spksm_0_spksp_0', 'hist_1pos_3psh_1spksm_1_spksp_0']
 
     elif model_set_number in [4]:
         model_names = ['prespos_0psh_1spksm_0_spksp_0', 
