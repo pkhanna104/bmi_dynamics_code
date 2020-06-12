@@ -15,6 +15,11 @@ def verbose_print(input, verbose_bool=1):
 	if verbose_bool:
 		print(input)
 
+def invert_dic(dic):
+	#Note: will only work if the dictionary is one-to-one, is invertible.  
+	dic_inverse = {v: k for k, v in dic.items()}
+	return dic_inverse
+
 def mean_var_std_sem(data_vec):
 	result = {'mean':np.mean(data_vec), 
 	'var':np.var(data_vec), 
