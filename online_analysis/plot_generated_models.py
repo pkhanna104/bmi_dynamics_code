@@ -6,7 +6,7 @@ seaborn.set(font='Arial',context='talk',font_scale=1., style='white')
 import numpy as np 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
-import pickle 
+import pickle, copy, os
 
 import analysis_config, util_fcns
 import generate_models, generate_models_list
@@ -675,6 +675,11 @@ def plot_r2_bar_model_1(min_obs = 15,
                     '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk$',
                     '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk, y_{t-1}$',]
 
+            models_colors = [[255., 0., 0.], 
+                             [101, 44, 144],
+                             [39, 169, 225]]
+
+
         elif model_set_number == 3: 
             models_to_include = [#'prespos_0psh_0spksm_1_spksp_0',
                                  #'prespos_0psh_0spksm_1_spksp_0potent',
@@ -714,9 +719,22 @@ def plot_r2_bar_model_1(min_obs = 15,
         
             if len(include_shuffs) > 0:
                 shuffs = []
-                for i in include_shuffs:
-                    tmp = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl'%model_set_number, 'rb'))
-                    shuffs.append(tmp)
+                pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
+                pre2 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_'%model_set_number
+
+                if os.path.exists('%swithin_bin_shuff%d.pkl'%(pre1, 0)):
+                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre1, 0), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
+                else:
+                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre2, 0), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
+
+                if os.path.exists('%sfull_shuff%d.pkl'%(pre1, 0)):
+                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre1, 0), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
+                else:
+                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre2, 0), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
 
         #### Setup the plot ####
         f, ax = plt.subplots(figsize=(4, 6))
@@ -748,6 +766,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 
             ###### Get the baseline ####
             if perc_increase: 
+                
                 #### Predicted data ? 
                 if task_spec_ix is None:
                     pdata = model_dict[i_d, models_to_include[0]]
@@ -756,6 +775,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 
                 R2_baseline = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
 
+            mdz = []
             for i_mod, mod in enumerate(models_to_include):
                 
                 ###### Predicted data, cross validated ####
@@ -777,6 +797,7 @@ def plot_r2_bar_model_1(min_obs = 15,
                         R2_stats.append((R2 - R2_baseline)/R2_baseline)
                     else:
                         R2_stats.append(R2)
+                    
                     # Remove NaNs 
                     D.append(np.zeros_like(R2) + i_d)
                     Mod.append(np.zeros_like(R2) + i_mod)
@@ -786,18 +807,36 @@ def plot_r2_bar_model_1(min_obs = 15,
                     R2S[i_mod, i_d] = (R2 - R2_baseline)/R2_baseline
                 else:
                     R2S[i_mod, i_d] = R2; 
+                mdz.append(i_mod)
+
+                #### Add shuffles ####
+                if len(include_shuffs) > 0:
+                    for i_s, shuf in enumerate(shuffs):
+                        pdata = shuf[i_d, mod][:, :, task_spec_ix]
+                        R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
+
+                        if perc_increase:
+                            R2_stats.append((R2 - R2_baseline)/R2_baseline)
+                        else:
+                            R2_stats.append(R2)
+
+                        D.append(np.zeros_like(R2) + i_d)
+                        Mod.append(np.zeros_like(R2) + i_mod + (i_s+1)*.2)
+                        R2S[i_mod + (i_s+1)*.2, i_d] = R2
+                        mdz.append(i_mod + (i_s+1)*.2)
 
             ##### Plot this single day #####
             tmp = []; 
-            for i_mod in range(len(models_to_include)):
+            for i_mod in mdz:
                 tmp.append(R2S[i_mod, i_d])
 
             #### Line plot of R2 w increasing models #####
-            ax.plot(np.arange(M), tmp, '-', color='gray', linewidth = 1.)
+            ax.plot(mdz, tmp, '-', color='gray', linewidth = 1.)
+
 
         #### Plots total mean ###
         tmp = []; tmp_e = []; 
-        for i_mod in range(M):
+        for i_mod in mdz:
             tmp2 = []; 
             for i_d in range(ndays[animal]):
                 tmp2.append(R2S[i_mod, i_d])
@@ -810,20 +849,30 @@ def plot_r2_bar_model_1(min_obs = 15,
             ## s.e.m
             tmp_e.append(np.std(tmp2)/np.sqrt(len(tmp2)))
 
+        if len(include_shuffs) > 0:
+            width = .2
+        else:
+            width = 1.
+
         ### Overal mean 
-        for i_mod in range(M):
-            ax.bar(i_mod, tmp[i_mod], color = models_colors[i_mod], edgecolor='k', linewidth = 1., )
-            ax.errorbar(i_mod, tmp[i_mod], yerr=tmp_e[i_mod], marker='|', color='k')        
+        for i_m, i_mod in enumerate(mdz):
+            if int(i_mod) == i_mod:
+                color = models_colors[int(i_mod)]
+            else:
+                color = 'gray'
+                
+            ax.bar(i_mod, tmp[i_m], color = color, edgecolor='k', linewidth = 1., width = width, alpha = 0.5)
+            ax.errorbar(i_mod, tmp[i_m], yerr=tmp_e[i_m], marker='|', color='k')        
         ax.set_ylabel('%s R2, neur, perc_increase R2 %s'%(pop_str, perc_increase))
 
         ax.set_xticks(np.arange(M))
         ax.set_xticklabels(xlab, rotation=45)#, fontsize=6)
 
         f.tight_layout()
-        if task_spec_ix is None:
-            f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
-        else:
-            f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d_tsk_spec_%d.svg'%(pop_str, perc_increase, model_set_number, task_spec_ix))
+        # if task_spec_ix is None:
+        #     f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
+        # else:
+        #     f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d_tsk_spec_%d.svg'%(pop_str, perc_increase, model_set_number, task_spec_ix))
         
         ##### Print stats ####
         if model_set_number == 1:
@@ -831,7 +880,9 @@ def plot_r2_bar_model_1(min_obs = 15,
             ix = ~np.isnan(R2_stats)
 
             if len(ix) < len(R2_stats):
-                import pdb; pdb.set_trace()
+                print('ERRORR')
+                raise Exception
+                # import pdb; pdb.set_trace()
 
             ### Get non-nans: 
             R2_stats = R2_stats[ix]
