@@ -142,9 +142,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
 
             ### Get number of neruons you expect ####
             nneur = sub_spk_temp_all.shape[2]
-
             variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
-            #import pdb; pdb.set_trace()
             
             ### For each variable in the model: 
             for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
@@ -152,7 +150,6 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
                 ### Unpack model_var_list; 
                 _, model_nm, _, _, _ = model_var_list_i; 
 
-                #import pdb; pdb.set_trace()
                 ####### HERE ######
                 #############################
                 ### Model with parameters ###
@@ -315,10 +312,16 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     ##### For each day ####
     for i_d, day in enumerate(input_type):
         
+        print('##############################')
+        print('########## DAY %d ##########' %(i_d) )
+        print('##############################')
+        
         # Get spike data from data fcn
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
             order_dict[i_d], history_bins_max, full_shuffle = full_shuffle, within_bin_shuffle = within_bin_shuffle,
             day_ix = i_d)
+        
+        print('R2 again, %.2f' %generate_models_utils.quick_reg(sub_spikes, sub_push_all[:, :, 0]))
 
         models_to_include = []
         for m in model_var_list:
@@ -427,6 +430,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                 data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
                 data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
 
+                print('R2 train ix: %.2f' %(generate_models_utils.quick_reg(data_temp_dict['spks'], data_temp_dict['psh'])))
+
                 nneur = sub_spk_temp_all.shape[2]
 
                 variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
@@ -439,7 +444,6 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
                     ## Store the params; 
                     model_data[model_nm, 'variables'] = variables
-                    #import pdb; pdb.set_trace()
 
                     if ridge:
                         alpha_spec = ridge_dict[animal][0][i_d, model_nm]
@@ -472,7 +476,12 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         
                         elif fit_task_spec_and_general:
                             model_data[i_d, model_nm][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
-                        
+                            
+                            if model_nm == 'prespos_0psh_1spksm_0_spksp_0':
+                                r2tmp = util_fcns.get_R2(data_temp_dict_test['spks'], np.squeeze(np.array(pred_Y)))
+                                print('R2 from model: %.4f' %(r2tmp))
+
+
                         elif fit_condition_spec_no_general:
                             ### List the indices and the prediction and the fold: 
                             model_data[i_d, model_nm][type_of_model_index, 'ix'].append(test_ix[i_fold])
@@ -487,7 +496,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             print('Adding model and test_indices') 
                             model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
                             model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
-                        
+                            
                         #### Add / null potent? 
                         if include_null_pot:
 
@@ -927,60 +936,11 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
 def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, 
     r2_ind_or_pop = 'pop', fit_intercept = True):
 
-    if model_set_number == 1:
-        # model_names = ['prespos_0psh_1spksm_0_spksp_0', 'prespos_1psh_1spksm_0_spksp_0', 'hist_fut_4pos_1psh_1spksm_0_spksp_0',
-        # 'hist_fut_4pos_1psh_1spksm_1_spksp_0','hist_fut_4pos_1psh_1spksm_1_spksp_1']
-        model_names = ['prespos_0psh_1spksm_0_spksp_0', 
-                            'hist_1pos_-1psh_1spksm_0_spksp_0', 
-                            'hist_1pos_1psh_1spksm_0_spksp_0',
-                            'hist_1pos_2psh_1spksm_0_spksp_0', 
-                            'hist_1pos_3psh_1spksm_0_spksp_0', 
-                            'hist_1pos_3psh_1spksm_1_spksp_0',
-                            'hist_1pos_0psh_1spksm_1_spksp_0',
-                            'hist_1pos_-1psh_1spksm_1_spksp_0',
-                            'hist_1pos_1psh_1spksm_1_spksp_0',
-                            'hist_1pos_2psh_1spksm_1_spksp_0',
-                            ]
+    ##### Removed the list of model_var_list ######
+    model_var_list, _, _, _ = generate_models_list.get_model_var_list(model_set_number)
+    model_names = [i[1] for i in model_var_list]
 
-    elif model_set_number in [2, 3]:
-        # model_names = ['hist_1pos_0psh_1spksm_0_spksp_0', 'hist_1pos_0psh_1spksm_1_spksp_0', 'hist_4pos_0psh_1spksm_0_spksp_0', 'hist_4pos_0psh_1spksm_1_spksp_0',
-        # 'hist_4pos_0psh_1spksm_4_spksp_0', 'prespos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_1_spksp_0']
-        model_names = ['prespos_0psh_1spksm_0_spksp_0','hist_1pos_3psh_1spksm_0_spksp_0', 'hist_1pos_3psh_1spksm_1_spksp_0']
-
-    elif model_set_number in [4]:
-        model_names = ['prespos_0psh_1spksm_0_spksp_0', 
-                       'prespos_0psh_1spksm_1_spksp_0',
-
-                       'prespos_1psh_1spksm_0_spksp_0', 
-                       'prespos_1psh_1spksm_1_spksp_0',
-                       
-                       'hist_1pos_1psh_1spksm_0_spksp_0', 
-                       'hist_1pos_1psh_1spksm_1_spksp_0', 
-                       
-                       'hist_2pos_1psh_1spksm_0_spksp_0', 
-                       'hist_2pos_1psh_1spksm_1_spksp_0']
-
-    elif model_set_number in [5]:
-        model_names = ['hist_1pos_1psh_0spks_0_spksp_0',
-                       'hist_1pos_0psh_1spks_1_spksp_0',
-                       'hist_1pos_0psh_0spks_1_spksp_0',
-                       'hist_1pos_1psh_0spks_1_spksp_0',
-                       'hist_1pos_1psh_1spks_1_spksp_0']
-
-    elif model_set_number in [6]:
-        model_names = ['hist_1pos_1psh_0spks_0_spksp_0'] ### Only state; 
-
-    elif model_set_number == 7:
-        model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_1_spksp_1']
-
-    elif model_set_number == 8:
-        model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_1psh_0spksm_0_spksp_0', 'hist_1pos_3psh_0spksm_0_spksp_0']
-    
-    elif model_set_number == 10:
-        model_names = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_0psh_0spksm_0_spksp_1',
-                       'hist_1pos_0psh_0spksm_2_spksp_0', 'hist_1pos_0psh_0spksm_0_spksp_2', 
-                       'hist_1pos_0psh_0spksm_1_spksp_1', 'hist_1pos_0psh_0spksm_2_spksp_2']
-
+    ##### Plotted 
     if animal == 'grom':
         if fit_intercept:
             hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number)
