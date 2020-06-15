@@ -606,7 +606,7 @@ def disc_plot(n_disc):
 def plot_r2_bar_model_1(min_obs = 15, 
     ndays = None, pt_2 = False, r2_pop = True, 
     perc_increase = True, model_set_number = 1,
-    task_spec_ix = None, include_shuffs = []):
+    task_spec_ix = None, include_shuffs = None):
     
     '''
     inputs: min_obs -- number of obs need to count as worthy of comparison; 
@@ -615,6 +615,7 @@ def plot_r2_bar_model_1(min_obs = 15,
     pt_2 more plots -- not totally sure what they are;  
     r2_pop -- assume its population vs. indivdual 
     model_set_number -- which models to plot from which set; 
+    include_shuffs -- Number of shuffles to include (will search for range(include_shuffs)). Right now code is just programmed to get index "0"
     '''
 
     ### For stats each neuron is an observation ##
@@ -627,7 +628,7 @@ def plot_r2_bar_model_1(min_obs = 15,
     else:
         ndays = dict(grom=ndays, jeev=ndays)
 
-    for ia, (animal, yr) in enumerate(zip(['grom', 'jeev'], ['2016', '2013'])):
+    for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
         
         if model_set_number == 1:
             models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
@@ -668,17 +669,19 @@ def plot_r2_bar_model_1(min_obs = 15,
         elif model_set_number == 2:
             models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
                                  'hist_1pos_3psh_1spksm_0_spksp_0', 
-                                 'hist_1pos_3psh_1spksm_1_spksp_0',]
+                                 'hist_1pos_3psh_1spksm_1_spksp_0',
+                                 'hist_1pos_0psh_1spksm_1_spksp_0']
             
-            models_to_compare = np.array([0, 1, 2])
+            models_to_compare = []#np.array([0, 1, 2, 3])
             xlab = ['$a_{t}$',             
                     '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk$',
-                    '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk, y_{t-1}$',]
+                    '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk, y_{t-1}$',
+                    '$a_{t}, y_{t-1}$']
 
             models_colors = [[255., 0., 0.], 
                              [101, 44, 144],
+                             [39, 169, 225],
                              [39, 169, 225]]
-
 
         elif model_set_number == 3: 
             models_to_include = [#'prespos_0psh_0spksm_1_spksp_0',
@@ -702,7 +705,7 @@ def plot_r2_bar_model_1(min_obs = 15,
         models_colors = [np.array(m)/256. for m in models_colors]
 
         ##### fold ? ######
-        fold = ['maroon', 'orangered', 'goldenrod', 'teal', 'blue']
+        #fold = ['maroon', 'orangered', 'goldenrod', 'teal', 'blue']
         
         if r2_pop:
             pop_str = 'Population'
@@ -715,26 +718,45 @@ def plot_r2_bar_model_1(min_obs = 15,
         
         #### Only for task specific ####
         else:
-            model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl'%model_set_number, 'rb'))
-        
-            if len(include_shuffs) > 0:
-                shuffs = []
-                pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
-                pre2 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_'%model_set_number
+            if os.path.exists(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number):
+                print('Option 1')
+                model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number, 'rb'))
+            else:
+                print('Option 2')
+                model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl'%model_set_number, 'rb'))
+            
+        if include_shuffs is not None:
+            shuffs = []
+            pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
+            pre2 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_'%model_set_number
+            pre3 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_'%model_set_number
 
-                if os.path.exists('%swithin_bin_shuff%d.pkl'%(pre1, 0)):
-                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre1, 0), 'rb'))
+            for shuf_ix in range(include_shuffs):
+                if os.path.exists('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix)):
+                    print('Shuff option 1')
+                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
+
+                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
+
+                elif os.apth.exists('%swithin_bin_shuff%d.pkl'%(pre2, shuf_ix)):
+                    print('Shuff option 2')
+                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre2, shuf_ix), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
+
+                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre2, shuf_ix), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
+
+                elif os.apth.exists('%swithin_bin_shuff%d.pkl'%(pre3, shuf_ix)):
+                    print('Shuff option 3')
+                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre3, shuf_ix), 'rb'))
+                    shuffs.append(copy.deepcopy(tmp))
+
+                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre3, shuf_ix), 'rb'))
                     shuffs.append(copy.deepcopy(tmp))
                 else:
-                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre2, 0), 'rb'))
-                    shuffs.append(copy.deepcopy(tmp))
-
-                if os.path.exists('%sfull_shuff%d.pkl'%(pre1, 0)):
-                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre1, 0), 'rb'))
-                    shuffs.append(copy.deepcopy(tmp))
-                else:
-                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre2, 0), 'rb'))
-                    shuffs.append(copy.deepcopy(tmp))
+                    raise Exception('No shuffles of index %d identified! '%(shuf_ix))
 
         #### Setup the plot ####
         f, ax = plt.subplots(figsize=(4, 6))
@@ -761,7 +783,7 @@ def plot_r2_bar_model_1(min_obs = 15,
                 KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_jeev(i_d)
 
             ###### True data #####
-            tdata = model_dict[i_d, 'spks']
+
             R2s = dict()
 
             ###### Get the baseline ####
@@ -771,14 +793,18 @@ def plot_r2_bar_model_1(min_obs = 15,
                 if task_spec_ix is None:
                     pdata = model_dict[i_d, models_to_include[0]]
                 else:
+                    print('General task spec baseline, model: %s, %d' %(models_to_include[0], task_spec_ix))
                     pdata = model_dict[i_d, models_to_include[0]][:, :, task_spec_ix]
 
+                tdata = model_dict[i_d, 'spks']
                 R2_baseline = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
+                print('R2 baseline; %.4f' %(R2_baseline))
 
-            mdz = []
+            mdz = [] ### This is to keep track of the future x-axis of shuffles plotted; 
             for i_mod, mod in enumerate(models_to_include):
                 
                 ###### Predicted data, cross validated ####
+                tdata = model_dict[i_d, 'spks']
                 if task_spec_ix is None:
                     pdata = model_dict[i_d, mod]
                 else:
@@ -810,25 +836,31 @@ def plot_r2_bar_model_1(min_obs = 15,
                 mdz.append(i_mod)
 
                 #### Add shuffles ####
-                if len(include_shuffs) > 0:
+                if include_shuffs is not None:
+                    assert(task_spec_ix is not None)
+                    ### For each shuffle: 
+                    width = 1./float(2 + len(shuffs))
+
                     for i_s, shuf in enumerate(shuffs):
+                        tdata = shuf[i_d, 'spks']
                         pdata = shuf[i_d, mod][:, :, task_spec_ix]
                         R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
 
                         if perc_increase:
                             R2_stats.append((R2 - R2_baseline)/R2_baseline)
+                            R2S[i_mod + (i_s+1)*width, i_d] = (R2 - R2_baseline)/R2_baseline
                         else:
                             R2_stats.append(R2)
+                            R2S[i_mod + (i_s+1)*width, i_d] = R2
 
                         D.append(np.zeros_like(R2) + i_d)
-                        Mod.append(np.zeros_like(R2) + i_mod + (i_s+1)*.2)
-                        R2S[i_mod + (i_s+1)*.2, i_d] = R2
-                        mdz.append(i_mod + (i_s+1)*.2)
+                        Mod.append(np.zeros_like(R2) + i_mod + (i_s+1)*width)
+                        mdz.append(i_mod + (i_s+1)*width)
 
             ##### Plot this single day #####
             tmp = []; 
-            for i_mod in mdz:
-                tmp.append(R2S[i_mod, i_d])
+            for i_mod2 in mdz:
+                tmp.append(R2S[i_mod2, i_d])
 
             #### Line plot of R2 w increasing models #####
             ax.plot(mdz, tmp, '-', color='gray', linewidth = 1.)
@@ -836,12 +868,12 @@ def plot_r2_bar_model_1(min_obs = 15,
 
         #### Plots total mean ###
         tmp = []; tmp_e = []; 
-        for i_mod in mdz:
+        for i_mod3 in mdz:
             tmp2 = []; 
             for i_d in range(ndays[animal]):
-                tmp2.append(R2S[i_mod, i_d])
+                tmp2.append(R2S[i_mod3, i_d])
             tmp2 = np.hstack((tmp2))
-            tmp2 = tmp2[~np.isnan(tmp2)]
+            #tmp2 = tmp2[~np.isnan(tmp2)]
 
             ## mean 
             tmp.append(np.mean(tmp2))
@@ -849,9 +881,7 @@ def plot_r2_bar_model_1(min_obs = 15,
             ## s.e.m
             tmp_e.append(np.std(tmp2)/np.sqrt(len(tmp2)))
 
-        if len(include_shuffs) > 0:
-            width = .2
-        else:
+        if include_shuffs is None:
             width = 1.
 
         ### Overal mean 
@@ -1019,8 +1049,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 
 ### Bar R2 and correlation plots -- figure 4;
 def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False, 
-    use_mFR_option = 'cond_spec'):
-
+    use_mFR_option = 'cond_spec', include_shuffs = None):
 
     '''
     updates -- 6/10/20 -- plotting task specific plot, using slimmer model 2, adding plot for dHz vs. baseline
@@ -1037,11 +1066,13 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
 
     models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
                          'hist_1pos_3psh_1spksm_0_spksp_0', ### Full state 
-                         'hist_1pos_3psh_1spksm_1_spksp_0'] ### Full state + y_t-1
+                         'hist_1pos_3psh_1spksm_1_spksp_0',### Full state + y_t-1
+                         'hist_1pos_0psh_1spksm_1_spksp_0'] ### a_t + y_t-1
 
     models_to_include_labs = ['y_t | a_t', 
                               'y_t | a_t, s_{t-1}, s_tFinal, tsk', 
-                              'y_t | a_t, s_{t-1},..., y_{t-1}']
+                              'y_t | a_t, s_{t-1},..., y_{t-1}',
+                              'y_t | a_t, y_{t-1}']
 
 
     for ia, animal in enumerate(['grom','jeev']):
@@ -1064,7 +1095,6 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
 
         R2 = dict(); R22 = dict(); NN = dict(); 
         z_fr = dict(); pred_z_fr = dict(); mn_fr = {}
-
 
         fall, axall = plt.subplots(ncols = len(models_to_include), nrows = ndays, figsize=(len(models_to_include)*3, ndays*3))
         fall2, axall2 = plt.subplots(ncols = len(models_to_include), nrows = ndays, figsize=(len(models_to_include)*3, ndays*3))
