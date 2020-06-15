@@ -191,12 +191,13 @@ def get_jeev_trials_from_task_data(filename, include_pos = False, include_vel = 
         targ_i_all = fk.targ_ix_to_loc_obs(np.array(targ_IX))
 
     # Decoder velocity outputs from AD 39/40 
-    try:
-        decoder_all, decoder_all_ub = _bin_neural_push(ixs, filename, binsize, start_index_overall, pre_go)
-        unbinned['neural_push'] = decoder_all_ub
-    except:
-        decoder_all = 0
-        unbinned['neural_push'] = 0
+    #try:
+    decoder_all, decoder_all_ub = _bin_neural_push(ixs, filename, binsize, start_index_overall, pre_go)
+    unbinned['neural_push'] = decoder_all_ub
+    # #except:
+    #     import pdb; pdb.set_trace()
+    #     decoder_all = 0
+    #     unbinned['neural_push'] = 0
     unbinned['ixs'] = ixs
     unbinned['start_index_overall'] = start_index_overall
     
