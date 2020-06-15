@@ -26,7 +26,7 @@ def get_model_var_list(model_set_number):
         model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_0_spksp_0',    3, 0, 0])     ### t=-1, action and prev state + target + task
         model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_1_spksp_0',    3, 1, 0])     ### t=-1, action and prev state + target + task plus neural dynamics
         
-        model_var_list.append([np.array([-1]),    'hist_1pos_0psh_1spksm_1_spksp_0',    0, 1, 0])
+        model_var_list.append([np.array([-1]),    'hist_1pos_0psh_1spksm_1_spksp_0',    0, 1, 0])     ### t=-1, action and y_{t-1}
         model_var_list.append([np.array([-1]),    'hist_1pos_-1psh_1spksm_1_spksp_0',  -1, 1, 0])     ### t=-1, action and position only
         model_var_list.append([np.array([-1]),    'hist_1pos_1psh_1spksm_1_spksp_0',    1, 1, 0])     ### t=-1, action and prev state
         model_var_list.append([np.array([-1]),    'hist_1pos_2psh_1spksm_1_spksp_0',    2, 1, 0])     ### t=-1, action and prev state + target
@@ -44,7 +44,7 @@ def get_model_var_list(model_set_number):
         model_var_list.append([np.array([0]),     'prespos_0psh_1spksm_0_spksp_0',      0, 0, 0])     ### t=0, only action
         model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_0_spksp_0',    3, 0, 0])     ### t=-1, action and prev state + target + task
         model_var_list.append([np.array([-1]),    'hist_1pos_3psh_1spksm_1_spksp_0',    3, 1, 0])     ### t=-1, action and prev state + target + task plus neural dynamics
-        
+        model_var_list.append([np.array([-1]),    'hist_1pos_0psh_1spksm_1_spksp_0',    0, 1, 0])
         predict_key = 'spks'
         include_action_lags = False; ### Only ever want action at t = 0; 
         history_bins_max = 1; 

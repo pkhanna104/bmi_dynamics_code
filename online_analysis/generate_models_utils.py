@@ -13,6 +13,7 @@ import tables
 import matplotlib.pyplot as plt
 
 import sklearn.linear_model
+from sklearn.linear_model import Ridge
 import scipy.stats
 from collections import defaultdict
 
@@ -37,11 +38,14 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     else:
         trial_ix = None
 
-    if within_bin_shuffle:
+    if within_bin_shuffle or full_shuffle:
         if 'day_ix' not in kwargs.keys():
             raise Exception('Need to include day ix to get mag boundaries for shuffling wihtin bin')
         else:
             day_ix = kwargs['day_ix']
+
+    if within_bin_shuffle and full_shuffle:
+        raise Exception('Cant have both shuffles! Choose one!')
 
     spks = []
     vel = []
@@ -237,12 +241,23 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             ix_mod = np.array([iii for iii in ix_mod if iii not in rm_trls])
 
             ########## Shuffling #######
+            # Before shuffling neural to action regression; 
+            print('Before shuffle R2 %.4f' %(quick_reg(bin_spk, decoder_all)))
+            print('Before shuffle sum')
+            #print(np.sum(np.vstack((bin_spk)), axis=0))
+            #print(np.sum(np.vstack((decoder_all)), axis=0))
+            
             if full_shuffle:
-                bin_spk = full_shuffling(bin_spk, ix_mod, trial_ix_all)
+                bin_spk, decoder_all = full_shuffling(bin_spk, decoder_all, ix_mod, trial_ix_all, animal, day_ix)
 
             elif within_bin_shuffle:
-                bin_spk = within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix_all, animal, day_ix)
-
+                bin_spk, decoder_all = within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix_all, animal, day_ix)
+            # After shuffling neural to action regression; 
+            print('After shuffle R2 %.4f' %(quick_reg(bin_spk, decoder_all)))
+            print('After shuffle sum')
+            #print(np.sum(np.vstack((bin_spk)), axis=0))
+            #print(np.sum(np.vstack((decoder_all)), axis=0))
+            
             # Add to list: 
             ### Stack up the binned spikes; 
             spks.append(np.vstack(([bin_spk[x] for x in ix_mod])))
@@ -273,8 +288,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
                     ### Modified 9/16/19 -- adding lags to push
                     pusho = np.zeros_like(velo)
+                    
                     ### EOM
-
                     task = np.zeros((nt-(2*history_bins), ))+i_t
 
                     ### So this needs to 
@@ -816,39 +831,89 @@ def reconst_spks_from_cond_spec_model(data, model_nm, ndays):
 
     return reconst
 
+def quick_reg(bin_spk, decoder_all):
+    BS = np.vstack((bin_spk))
+    DA = np.vstack((decoder_all))
+    if DA.shape[1] == 7:
+        DA = DA[:, [3, 5]]
+    elif DA.shape[1] == 2:
+        pass
+    else:
+        import pdb; pdb.set_trace()
+        raise Exception
+
+    clf = Ridge(alpha=0.)
+    clf.fit(DA, BS);
+    est = clf.predict(DA)
+    return util_fcns.get_R2(BS, est) 
+
 
 ###########################################
 ############### Shuffling #################
 ###########################################
-def full_shuffling(bin_spk, ix_mod, trial_ix):
+def full_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
+    animal, day_ix):
+    '''
+    update -- 6/12/20 -- also shuffled action with the neural activity; 
+    '''
+
     bin_spks = copy.deepcopy(bin_spk)
+    dec_all = copy.deepcopy(decoder_all)
 
     bin_stack = np.vstack(([b for ib,b in enumerate(bin_spks) if ib in ix_mod]))
+    dec_stack = np.vstack(([d for i_d,d in enumerate(decoder_all) if i_d in ix_mod]))
 
     trls_ix = np.hstack(([t for it,t in enumerate(trial_ix) if t in ix_mod]))
-    assert(bin_stack.shape[0] == len(trls_ix))
 
+    assert(bin_stack.shape[0] == len(trls_ix))
+    assert(bin_stack.shape[0] == dec_stack.shape[0])
     shuff_ix = np.random.permutation(len(trls_ix))
+    
+    #### 
     tmp_shuff = bin_stack[shuff_ix, :]
+    tmp_dec_shuff = dec_stack[shuff_ix, :]
 
     assert(np.allclose(np.sum(bin_stack, axis=0), np.sum(tmp_shuff, axis=0)))
+    assert(np.allclose(np.sum(dec_stack, axis=0), np.sum(tmp_dec_shuff, axis=0)))
+
+    #### Get KG ###
+    if animal == 'grom':
+        _, KG = util_fcns.get_grom_decoder(day_ix)
+        
+    elif animal == 'jeev':
+        KG_imp = util_fcns.get_jeev_decoder(day_ix)
+        KG = np.zeros((7, KG_imp.shape[1]))
+        KG[[3, 5], :] = KG_imp.copy()
 
     for trl in ix_mod:
         ix_i = np.nonzero(trls_ix == trl)[0]
         bin_spks[trl] = tmp_shuff[ix_i, :]
-
-    return bin_spks
+        dec_all[trl] = tmp_dec_shuff[ix_i, :]
+        if animal == 'grom':
+            assert(np.allclose(dec_all[trl], np.dot(KG, bin_spks[trl].T).T ))
+        elif animal == 'jeev':
+            pass
+            #print('Trl %d, R2 KG %.2f' %(trl, util_fcns.get_R2(dec_all[trl], np.dot(KG, bin_spks[trl].T).T)))
+    
+    return bin_spks, dec_all
 
 def within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
     animal, day_ix):
+    '''
+    update -- 6/12/20 -- also shuffled action with the neural activity; 
+    '''
 
     bin_spks = copy.deepcopy(bin_spk)
+    dec_all = copy.deepcopy(decoder_all)
 
     #### Vstack together ######
     bin_stack = np.vstack(([b for ib,b in enumerate(bin_spks) if ib in ix_mod]))
     bin_stack_shuff = np.zeros_like(bin_stack)
 
-    dec_stack = np.vstack(([d for it,d in enumerate(decoder_all) if it in ix_mod]))
+    dec_stack = np.vstack(([d for i_d,d in enumerate(decoder_all) if i_d in ix_mod]))
+    dec_stack_shuff = np.zeros_like(dec_stack)
+
+    assert(bin_stack.shape[0] == dec_stack.shape[0])
 
     #### Mag boundaries #######
     mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
@@ -857,7 +922,15 @@ def within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
     trls_ix = np.hstack(([t for it,t in enumerate(trial_ix) if t in ix_mod]))
     assert(bin_stack.shape[0] == len(trls_ix) == command_bins.shape[0])
 
-    shuff_ix = np.zeros((len(trls_ix), ))
+    #### Get KG ###
+    if animal == 'grom':
+        _, KG = util_fcns.get_grom_decoder(day_ix)
+        #KG = KG[[3, 5], :]
+
+    elif animal == 'jeev':
+        KG_imp = util_fcns.get_jeev_decoder(day_ix)
+        KG = np.zeros((7, KG_imp.shape[1]))
+        KG[[3, 5], :] = KG_imp.copy()
 
     for i_m in range(4):
         for i_a in range(8):
@@ -870,15 +943,24 @@ def within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
 
                 ### Shuffle within bin; 
                 bin_stack_shuff[ix[ixi_sh], :] = bin_stack[ix, :]
-    
+                dec_stack_shuff[ix[ixi_sh], :] = dec_stack[ix, :]
+                
+                if animal == 'grom':
+                    assert(np.allclose(dec_stack_shuff[ix[ixi_sh], :], np.dot(KG, bin_stack_shuff[ix[ixi_sh], :].T).T))
+
+                elif animal == 'jeev':
+                    print('R2 KG %.2f' %(util_fcns.get_R2(dec_stack_shuff[ix[ixi_sh], :], np.dot(KG, bin_stack_shuff[ix[ixi_sh], :].T).T)))
+            
     assert(np.allclose(np.sum(bin_stack, axis=0), np.sum(bin_stack_shuff, axis=0)))
+    assert(np.allclose(np.sum(dec_stack, axis=0), np.sum(dec_stack_shuff, axis=0)))
     
-    #### Reassign ####
+    #### Reassign back into trials ####
     for trl in ix_mod:
         ix_i = np.nonzero(trls_ix == trl)[0]
         bin_spks[trl] = bin_stack_shuff[ix_i, :]
+        dec_all[trl]  = dec_stack_shuff[ix_i, :]
 
-    return bin_spks
+    return bin_spks, dec_all
 
 
 ####### MODEL ADDING ########
