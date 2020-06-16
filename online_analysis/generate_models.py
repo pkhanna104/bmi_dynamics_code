@@ -18,7 +18,7 @@ import scipy
 
 ######### STEP 1 -- Get alpha value #########
 def sweep_alpha_all(run_alphas=True, model_set_number = 3,
-    fit_intercept = True):
+    fit_intercept = True, within_bin_shuffle = False):
 
     max_alphas = dict(grom=[], jeev=[])
 
@@ -34,7 +34,7 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
     for animal in ['jeev','grom']:
         if run_alphas:
             h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, 
-                ndays = ndays[animal], fit_intercept = fit_intercept)
+                ndays = ndays[animal], fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle)
         else:
             raise Exception('deprecated')
             if animal == 'grom':
@@ -43,17 +43,21 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
                 h5_name = config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d.h5' %model_set_number
 
         max_alpha = plot_sweep_alpha(animal, alphas=alphas, model_set_number=model_set_number, ndays=ndays[animal],
-            fit_intercept = fit_intercept)
+            fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle)
+        
         max_alphas[animal].append(max_alpha)
 
     if fit_intercept:
-        pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'wb'))
+        if within_bin_shuffle:
+            pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'wb'))
+        else:
+            pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'wb'))
     else:
         pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'wb'))
     print('Done with max_alphas_ridge')
 
 def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
-    model_set_number = 1, ndays=None, fit_intercept = True):
+    model_set_number = 1, ndays=None, fit_intercept = True, within_bin_shuffle = False):
 
     '''
     Summary: 
@@ -67,7 +71,10 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
     x = datetime.datetime.now()
 
     if fit_intercept:
-        hdf_filename = animal + '_sweep_alpha_days_models_set%d.h5' %model_set_number
+        if within_bin_shuffle:
+            hdf_filename = animal + '_sweep_alpha_days_models_set%d_shuff.h5' %model_set_number
+        else:
+            hdf_filename = animal + '_sweep_alpha_days_models_set%d.h5' %model_set_number
     else:
         hdf_filename = animal + '_sweep_alpha_days_models_set%d_no_intc.h5' %model_set_number
 
@@ -115,7 +122,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
         ###### data_temp / sub_pikes / sub_spk_temp_all / sub_push_all --> all spks / actions 
         ##### but samples only using history_bins:nT-history_bins within trial 
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
-            day, order_dict[i_d], history_bins_max, day_ix = i_d)
+            day, order_dict[i_d], history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle)
 
         #### Assertion to match length #####
         assert(len(data_temp) == len(sub_spikes) == len(sub_spk_temp_all) == len(sub_push_all))
@@ -273,7 +280,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
     ### Get the ridge dict: 
     if fit_intercept:
-        ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+        if full_shuffle or within_bin_shuffle:
+            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
+        else:   
+            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
     else:
         ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'rb')); 
 
@@ -934,7 +944,7 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
     return variables_list
 
 def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, 
-    r2_ind_or_pop = 'pop', fit_intercept = True):
+    r2_ind_or_pop = 'pop', fit_intercept = True, within_bin_shuffle = False):
 
     ##### Removed the list of model_var_list ######
     model_var_list, _, _, _ = generate_models_list.get_model_var_list(model_set_number)
@@ -943,7 +953,10 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
     ##### Plotted 
     if animal == 'grom':
         if fit_intercept:
-            hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number)
+            if within_bin_shuffle:
+                hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d_shuff.h5' %model_set_number)
+            else:
+                hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number)
         else:
             hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d_no_intc.h5' %model_set_number)
         
@@ -952,7 +965,10 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
     
     elif animal == 'jeev':
         if fit_intercept:
-            hdf = tables.openFile(analysis_config.config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d.h5' %model_set_number)
+            if within_bin_shuffle:
+                hdf = tables.openFile(analysis_config.config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d_shuff.h5' %model_set_number)
+            else:
+                hdf = tables.openFile(analysis_config.config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d.h5' %model_set_number)
         else:
             hdf = tables.openFile(analysis_config.config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d_no_intc.h5' %model_set_number)
         
