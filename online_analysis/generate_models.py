@@ -280,7 +280,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
     ### Get the ridge dict: 
     if fit_intercept:
-        if full_shuffle or within_bin_shuffle:
+        if within_bin_shuffle:
             ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
         else:   
             ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
@@ -328,7 +328,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         
         # Get spike data from data fcn
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
-            order_dict[i_d], history_bins_max, full_shuffle = full_shuffle, within_bin_shuffle = within_bin_shuffle,
+            order_dict[i_d], history_bins_max, within_bin_shuffle = within_bin_shuffle,
             day_ix = i_d)
         
         print('R2 again, %.2f' %generate_models_utils.quick_reg(sub_spikes, sub_push_all[:, :, 0]))
@@ -366,6 +366,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             model_data[i_d, 'vel_tm1'] = np.vstack((np.array(data_temp['velx_tm1']), np.array(data_temp['vely_tm1']))).T
             model_data[i_d, 'pos_tm1'] = np.vstack((np.array(data_temp['posx_tm1']), np.array(data_temp['posy_tm1']))).T
             model_data[i_d, 'trl'] = np.squeeze(np.array(data_temp['trl']))
+            model_data[i_d, 'day_bin_ix'] = np.squeeze(np.array(data_temp['day_bin_ix']))
+            model_data[i_d, 'day_bin_ix_shuff'] = np.squeeze(np.array(data_temp['day_bin_ix_shuff']))
             
             ### Models -- save predictions
             for mod in models_to_include:
@@ -396,10 +398,6 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         ### if just use null / potent parts of predictions and propogate those guys
                         model_data[i_d, mod, 'null'] = np.zeros_like(sub_spikes)
                         model_data[i_d, mod, 'pot'] = np.zeros_like(sub_spikes)
-
-                # elif model_set_number == 2:
-                #     ##### 
-                #     model_data[i_d, mod] = np.zeros_like(np.squeeze(np.array(sub_push_all)))
 
         if norm_neur:
             print 'normalizing neurons!'
