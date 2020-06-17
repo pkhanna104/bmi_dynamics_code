@@ -1,5 +1,5 @@
 import numpy as np
-from online_analysis import fit_LDS
+#from online_analysis import fit_LDS
 import analysis_config
 import prelim_analysis as pa
 import pickle
