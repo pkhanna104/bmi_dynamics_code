@@ -57,4 +57,4 @@ data_params['jbins'] = np.linspace(-9., 9., 40)
 ####### Useful formating #########
 ##################################
 pref_colors = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab', 
-		'teal', 'steelblue', 'midnightblue', 'darkmagenta', 'black']
+		'teal', 'steelblue', 'midnightblue', 'darkmagenta', 'black', 'gray']
