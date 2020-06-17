@@ -52,6 +52,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     push = []
     pos = []
     tsk = []
+    trl = []
+    bin_num = []
 
     ### These are the things we want to save: 
     temp_tune = {}
@@ -67,12 +69,17 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     temp_tune['trl'] = []
     temp_tune['psh'] = [] ### xy push 
     temp_tune['trl_bin_ix'] = [] ### index from onset 
+    temp_tune['day_bin_ix'] = [] ### Which bin number (from the full day) is this? 
+    temp_tune['day_bin_ix_shuff'] = []
 
     ### Not sure what these are 
     trial_ord = {}
 
     ### Trial order -- which order in the day did this thing happen? 
-    trl_rd = []
+    trl_order_ix = []; 
+    ### Get out the target indices and target position for each trial 
+    trg_trl = []; trg_trl_pos = []; 
+    trl_off = 0 
 
     ### For each task: 
     for i_t, tsk_fname in enumerate(day):
@@ -81,10 +88,9 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         tsk_trl_cnt = 0
 
         ### For each task filename 
-        for i, te_num in enumerate(tsk_fname):
+        for i_te_num, te_num in enumerate(tsk_fname):
 
-            ### Get out the target indices and target position for each trial 
-            trg_trl = []; trg_trl_pos = []; 
+
 
             ################################################
             ####### Spike and Kinematics Extraction ########
@@ -151,7 +157,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 cursor_vel = [curs[:, 2:, 0] for curs in cursor_state]
                 
                 ##### Trial order ####### 
-                trl_rd.append(order[i_t][i])     
+                #trl_rd.append(order[i_t][i])     
                 
             elif animal == 'jeev':
                 
@@ -191,7 +197,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 ######## End of TESTING ###########
                 ###################################
 
-                trl_rd.append(order[i_t][i])
+                #trl_rd.append(order[i_t][i])
                 
                 # f, ax = plt.subplots(ncols=3, nrows=3)
                 # if i_t == 0:
@@ -226,41 +232,37 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             for ix_ in ix_mod:
 
                 ### Get an index that corresponds to this trial number 
-                ix_x = np.nonzero(trial_ix_all == ix_)[0][4] # choose an index, not all indices
+                ix_x = np.nonzero(trial_ix_all == ix_)[0] # choose an index, not all indices
+
+                assert(np.all(trial_ix_all[ix_x] == ix_))
+                assert(len(trial_ix_all) == len(targ_ix))
+
+                #### Make sure all the target indices are the same 
+                assert(np.all(targ_ix[ix_x] == targ_ix[ix_x[0]]))
 
                 ### Get the target index for this trial -- if it is -1 then remove this trial 
-                if targ_ix[ix_x] < 0:
+                if targ_ix[ix_x[0]] < 0:
                     rm_trls.append(ix_)
+                    print('REMOVING A TRIAL ')
+                    #import pdb; pdb.set_trace()
 
-                ### Keep so that indexing stays consistent
-                trg_trl.append(targ_ix[ix_x]) ## #Get the right target for this trial
-                trg_trl_pos.append(targ_i_all[ix_x, :])
+                ### If we want to keep this one; #
+                else:
+                    ### Keep so that indexing stays consistent
+                    trg_trl.append(targ_ix[ix_x[0]]) ## #Get the right target for this trial
+                    trg_trl_pos.append(targ_i_all[ix_x[0], :])
+                    assert(np.all(targ_i_all[ix_x, 0] == targ_i_all[ix_x[0], 0]))
+                    assert(np.all(targ_i_all[ix_x, 1] == targ_i_all[ix_x[0], 1]))
+                    trl_order_ix.append(order[i_t][i_te_num])
 
             ### Remove trials that are -1: 
             ### Keep these trials ####
             ix_mod = np.array([iii for iii in ix_mod if iii not in rm_trls])
-
-            ########## Shuffling #######
-            # Before shuffling neural to action regression; 
-            print('Before shuffle R2 %.4f' %(quick_reg(bin_spk, decoder_all)))
-            print('Before shuffle sum')
-            #print(np.sum(np.vstack((bin_spk)), axis=0))
-            #print(np.sum(np.vstack((decoder_all)), axis=0))
-            
-            if full_shuffle:
-                bin_spk, decoder_all = full_shuffling(bin_spk, decoder_all, ix_mod, trial_ix_all, animal, day_ix)
-
-            elif within_bin_shuffle:
-                bin_spk, decoder_all = within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix_all, animal, day_ix)
-            # After shuffling neural to action regression; 
-            print('After shuffle R2 %.4f' %(quick_reg(bin_spk, decoder_all)))
-            print('After shuffle sum')
-            #print(np.sum(np.vstack((bin_spk)), axis=0))
-            #print(np.sum(np.vstack((decoder_all)), axis=0))
-            
+           
             # Add to list: 
             ### Stack up the binned spikes; 
             spks.append(np.vstack(([bin_spk[x] for x in ix_mod])))
+            bin_num.append(np.arange(bin_spk[x].shape[0]) for x in ix_mod)
             
             # We need the real velocity: 
             vel.append(np.vstack(([cursor_vel[x] for x in ix_mod])))
@@ -270,82 +272,171 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
             # Not the Kalman Gain: 
             tsk.append(np.zeros(( np.vstack(([bin_spk[x] for x in ix_mod])).shape[0], )) + i_t)
+            
+            ### Get the trial INDEX for this new formation ####
+            tmp = np.array([np.zeros(( bin_spk[x].shape[0])) + ix + trl_off for ix, x in enumerate(ix_mod)])
+            trl_off += len(ix_mod)
+            print('new trial offset %d, total trls in this blk %d' %(trl_off, len(ix_mod)))
+
+            ### Make sure there isn't trial overlapping 
+            if len(trl) > 0:
+                assert(np.min(np.hstack((tmp))) > np.max(np.hstack((trl))))
+
+            ### If passes then safely add; 
+            trl.append(np.hstack((tmp)))
+
             pos.append(np.vstack(([cursor_pos[x] for x in ix_mod])))
 
-            # Add to temporal timing model
-            for t in range(len(bin_spk)):
-                if t in ix_mod:
-                    trl = bin_spk[t]
-                    nt, nneurons = trl.shape
+    
+    ### After everything is done stack up 
+    spks = np.vstack((spks))
+    bin_num = np.hstack((bin_num))
+    vel = np.vstack((vel))
+    push = np.vstack((push))
+    tsk = np.hstack((tsk))
+    trl = np.hstack((trl))
+    pos = np.vstack((pos))
+    assert(spks.shape[0] == vel.shape[0] == push.shape[0] == tsk.shape[0] == trl.shape[0] == pos.shape[0])
+    assert(len(trg_trl) == len(np.unique(trl)) == len(trg_trl_pos) == len(trl_order_ix))
+    assert(len(np.unique(tsk) == 2))
+    assert(np.all(np.unique(trl) == np.arange(np.max(trl) + 1)))
+    
+    ########################################################
+    ##### Here we can safely add shuffles if we want #######
+    ########################################################
+    if full_shuffle:
+        shuff_ix = full_shuffling(spks, push, animal, day_ix)
 
-                    ### Modified on 9/13/19
-                    spk = np.zeros((nt-(2*history_bins), (1+(2*history_bins)), nneurons))
-                    ### EOM
-                    spk0 = np.zeros((nt - (2*history_bins), nneurons))
+    elif within_bin_shuffle:
+        shuff_ix, KG = within_bin_shuffling(spks, push, animal, day_ix)
 
-                    velo = np.zeros((nt-(2*history_bins), 2*(1+(2*history_bins))))
-                    poso = np.zeros_like(velo)
+    else:
+        shuff_ix = np.arange(spks.shape[0])
 
-                    ### Modified 9/16/19 -- adding lags to push
-                    pusho = np.zeros_like(velo)
-                    
-                    ### EOM
-                    task = np.zeros((nt-(2*history_bins), ))+i_t
+    assert(spks.shape[0] == push.shape[0] == len(shuff_ix))
+    spks = spks[shuff_ix, :]
+    push = push[shuff_ix, :]
 
-                    ### So this needs to 
-                    targ = np.zeros((nt-(2*history_bins), ))+trg_trl[t]
-                    targ_pos = np.zeros((nt - (2*history_bins), 2)) + trg_trl_pos[t]
+    if animal == 'grom':
+        assert(np.allclose(np.dot(KG, spks.T).T, push))
 
-                    ix_ = np.zeros((len(task), 2))# + t
-                    ix_[:, 0] = t + tsk_trl_cnt
-                    ix_[:, 1] = order[i_t][i] # Order
+    ########################################
+    ########################################
+    for t in np.unique(trl):
+        assert(int(t) == t)
+        t = int(t)
 
-                    XY_div = (2*history_bins)+1
+        trl_ix = np.nonzero(trl == t)[0]
 
-                    ### For each time bin that we can actually capture: 
-                    for tmi, tm in enumerate(np.arange(history_bins, nt-history_bins)):
-                        
-                        ### for the individual time bins; 
-                        for tmpi, tmpii in enumerate(np.arange(tm - history_bins, tm + history_bins + 1)):
-                            spk[tmi, tmpi, :] = trl[tmpii, :]
+        ##### Get all the trial activity ####
+        spk_trl = spks[trl_ix, :]
+        vel_trl = vel[trl_ix, :]
+        push_trl = push[trl_ix, :]
+        pos_trl = pos[trl_ix, :]
+        tsk_trl = tsk[trl_ix]
+        assert(np.all(tsk_trl[0] == tsk_trl))
 
-                        spk0[tmi, :] = trl[tm, :]
-                        velo[tmi, :XY_div] = np.squeeze(np.array(cursor_vel[t][tm-history_bins:tm+history_bins+1, 0]))
-                        velo[tmi, XY_div:] = np.squeeze(np.array(cursor_vel[t][tm-history_bins:tm+history_bins+1, 1]))
-                        
-                        poso[tmi, :XY_div] = np.squeeze(np.array(cursor_pos[t][tm-history_bins:tm+history_bins+1, 0]))
-                        poso[tmi, XY_div:] = np.squeeze(np.array(cursor_pos[t][tm-history_bins:tm+history_bins+1, 1]))
-                        
-                        pusho[tmi, :XY_div] = np.squeeze(np.array(decoder_all[t][tm-history_bins:tm+history_bins+1, 3]))
-                        pusho[tmi, XY_div:] = np.squeeze(np.array(decoder_all[t][tm-history_bins:tm+history_bins+1, 5]))
-                    
-                        
-                    temp_tune['spk0'].append(spk0)
-                    temp_tune['spks'].append(spk)
-                    temp_tune['vel'].append(velo)
-                    temp_tune['tsk'].append(task)
-                    temp_tune['pos'].append(poso)
-                    temp_tune['trl'].append(ix_)
-                    temp_tune['trg'].append(targ)
-                    temp_tune['trg_pos'].append(targ_pos)
-                    temp_tune['psh'].append(pusho)
-                    temp_tune['trl_bin_ix'].append(np.arange(history_bins, nt-history_bins))
+        nt = len(trl_ix)
+        nneurons = spks.shape[1]
 
-            tsk_trl_cnt += len(bin_spk)
+        ### Modified on 9/13/19 and 6/16/20
+        spk_temp =  np.zeros((nt-(2*history_bins),    (1+(2*history_bins)), nneurons))
+        ### EOM
+        spk_temp0 = np.zeros((nt-(2*history_bins),                          nneurons))
+
+        velo =      np.zeros((nt-(2*history_bins), 2*(1+(2*history_bins))))
+        poso = np.zeros_like(velo)
+        pusho = np.zeros_like(velo)
+        
+        ### EOM
+        task = np.zeros((nt-(2*history_bins), )) + tsk_trl[0]
+        targ = np.zeros((nt-(2*history_bins), )) + trg_trl[t]
+        targ_pos = np.zeros((nt - (2*history_bins), 2))
+        targ_pos[:, 0] = trg_trl_pos[t][0]
+        targ_pos[:, 1] = trg_trl_pos[t][1]
+
+        ix_ = np.zeros((len(task), 2))# + t
+        ix_[:, 0] = t # Full set of trials 
+        ix_[:, 1] = trl_order_ix[t] # Order
+
+        XY_div = (2*history_bins)+1
+
+        # # Add to temporal timing model
+        # for t in range(len(bin_spk)):
+        #     if t in ix_mod:
+        #         trl = bin_spk[t]
+        #         nt, nneurons = trl.shape
+
+        #         ### Modified on 9/13/19
+        #         spk = np.zeros((nt-(2*history_bins), (1+(2*history_bins)), nneurons))
+        #         ### EOM
+        #         spk0 = np.zeros((nt - (2*history_bins), nneurons))
+
+        #         velo = np.zeros((nt-(2*history_bins), 2*(1+(2*history_bins))))
+        #         poso = np.zeros_like(velo)
+
+        #         ### Modified 9/16/19 -- adding lags to push
+        #         pusho = np.zeros_like(velo)
+                
+        #         ### EOM
+        #         task = np.zeros((nt-(2*history_bins), ))+i_t
+
+        #         ### So this needs to 
+        #         targ = np.zeros((nt-(2*history_bins), ))+trg_trl[t]
+        #         targ_pos = np.zeros((nt - (2*history_bins), 2)) + trg_trl_pos[t]
+
+        #         ix_ = np.zeros((len(task), 2))# + t
+        #         ix_[:, 0] = t # Full set of trials 
+        #         ix_[:, 1] = order[i_t][i] # Order
+
+        #         XY_div = (2*history_bins)+1
+
+        ### For each time bin that we can actually capture: 
+        for tmi, tm in enumerate(np.arange(history_bins, nt-history_bins)):
+            
+            ### for the individual time bins; 
+            for tmpi, tmpii in enumerate(np.arange(tm - history_bins, tm + history_bins + 1)):
+                spk_temp[tmi, tmpi, :] = spk_trl[tmpii, :]
+
+            spk_temp0[tmi, :] = spk_trl[tm, :]
+            velo[tmi, :XY_div] = np.squeeze(np.array(vel_trl[tm-history_bins:tm+history_bins+1, 0]))
+            velo[tmi, XY_div:] = np.squeeze(np.array(vel_trl[tm-history_bins:tm+history_bins+1, 1]))
+            
+            poso[tmi, :XY_div] = np.squeeze(np.array(pos_trl[tm-history_bins:tm+history_bins+1, 0]))
+            poso[tmi, XY_div:] = np.squeeze(np.array(pos_trl[tm-history_bins:tm+history_bins+1, 1]))
+            
+            pusho[tmi, :XY_div] = np.squeeze(np.array(push_trl[tm-history_bins:tm+history_bins+1, 3]))
+            pusho[tmi, XY_div:] = np.squeeze(np.array(push_trl[tm-history_bins:tm+history_bins+1, 5]))
+        
+        temp_tune['spk0'].append(spk_temp0)
+        temp_tune['spks'].append(spk_temp)
+        temp_tune['vel'].append(velo)
+        temp_tune['tsk'].append(task)
+        temp_tune['pos'].append(poso)
+        temp_tune['trl'].append(ix_)
+        temp_tune['trg'].append(targ)
+        temp_tune['trg_pos'].append(targ_pos)
+        temp_tune['psh'].append(pusho)
+        temp_tune['trl_bin_ix'].append(np.arange(history_bins, nt-history_bins))
+        temp_tune['day_bin_ix'].append(trl_ix[np.arange(history_bins, nt-history_bins)]) ### Which bin number (from the full day) is this? 
+        temp_tune['day_bin_ix_shuff'].append(shuff_ix[trl_ix[np.arange(history_bins, nt-history_bins)]])
+        
+        #import pdb; pdb.set_trace()
     
     ################################################
     #### STACK UP EVERYTHING WITHOUT TIME SHIFTS ###
     ################################################
-    spikes = np.vstack((spks))
-    velocity = np.vstack((vel))
+    # spikes = np.vstack((spks))
+    # velocity = np.vstack((vel))
+    spikes = spks.copy()
+    velocity = vel.copy()
 
     if velocity.shape[1] == 7:
         velocity = np.array(velocity[:, [3, 5]])
     
-    position = np.vstack((pos))
-    task_index = np.hstack((tsk))
-    push = np.vstack((push))
-
+    position = pos.copy()
+    task_index = tsk.copy()
+    
     #################################
     ######## Model Options ##########
     #################################
@@ -362,6 +453,14 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     #### Current push X / Y 
     sub_push_all = np.vstack((temp_tune['psh']))[:, [i_zero, i_zero+XY_div]]
 
+    ### Double checking; #####
+    tmp_psh = []
+    for trltmp in range(len(temp_tune['trl_bin_ix'])):
+        trl_ix = np.nonzero(trl == trltmp)[0]
+        subtrlix = temp_tune['trl_bin_ix'][trltmp]
+        tmp_psh.append(push[np.ix_(trl_ix[subtrlix], [3, 5])])
+    assert(np.allclose(np.vstack((tmp_psh)), sub_push_all[:, :, 0]))
+
     #### Get all the temporally shifted data ###
     psh_temp = np.vstack((temp_tune['psh']))
     vel_temp = np.vstack((temp_tune['vel']))
@@ -373,6 +472,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     trg_pos_temp = np.vstack((temp_tune['trg_pos']))
     bin_temp = np.hstack((temp_tune['trl_bin_ix']))
     trl_temp = np.vstack((temp_tune['trl']))[:, 0]
+    day_bin_ix_temp = np.hstack((temp_tune['day_bin_ix']))
+    day_bin_ix_shuff_temp = np.hstack((temp_tune['day_bin_ix_shuff']))
 
     ### Generate acceleration #####
     accx = np.hstack((np.array([0.]), np.diff(velocity[:, 0])))
@@ -420,7 +521,9 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     tmp_dict['trg_posy'] = trg_pos_temp[:, 1]
     tmp_dict['bin_num'] = bin_temp
     tmp_dict['trl'] = trl_temp; 
-    
+    tmp_dict['day_bin_ix'] = day_bin_ix_temp
+    tmp_dict['day_bin_ix_shuff'] = day_bin_ix_shuff_temp
+
     ##################################
     ### MODEL with HISTORY +FUTURE ###
     ##################################
@@ -450,12 +553,15 @@ def plot_data_temp(data_temp, animal, use_bg = False):
     ### open target: 
     for i in range(2): 
         tsk_ix = np.nonzero(data_temp['tsk'] == i)[0]
+        print('Animal %s, tsk %d, N = %d' %(animal, i, len(tsk_ix)))
+
         targs = np.unique(data_temp['trg'][tsk_ix])
 
         for itr, tr in enumerate(targs):
             ## Get the trial numbers: 
             targ_ix = np.nonzero(data_temp['trg'][tsk_ix] == tr)[0]
             trls = np.unique(data_temp['trl'][tsk_ix[targ_ix]])
+            print('Tsk %d, Trg %d, N = %d' %(i, int(tr), len(targ_ix)))
 
             if tgs[i] == itr:
                 alpha = 1.0; LW = 2.0
@@ -527,8 +633,8 @@ def get_training_testings(n_folds, data_temp):
             test_ix[i_f].append(tst)
             train_ix[i_f].append(trn)
 
-        test_ix[i_f] = np.hstack((test_ix[i_f]))
-        train_ix[i_f] = np.hstack((train_ix[i_f]))
+        test_ix[i_f] = np.hstack((test_ix[i_f])).astype(int)
+        train_ix[i_f] = np.hstack((train_ix[i_f])).astype(int)
 
         tmp = np.unique(np.hstack((test_ix[i_f], train_ix[i_f])))
 
@@ -618,8 +724,8 @@ def get_training_testings_generalization(n_folds, data_temp,
                 ### Add all non-testing points from this task to training; 
                 trn = np.array([j for i, j in enumerate(N_pts[tsk]) if j not in tst])
 
-                train_ix[i_f + tsk*n_folds] = trn; 
-                test_ix[i_f + tsk*n_folds] = np.hstack((tst, tst2))
+                train_ix[i_f + tsk*n_folds] = trn.astype(int)
+                test_ix[i_f + tsk*n_folds] = np.hstack((tst, tst2)).astype(int)
                 type_of_model[i_f + tsk*n_folds] = tsk
 
         ### Now do the last part -- combined models with equal data from both tasks;  
@@ -646,8 +752,8 @@ def get_training_testings_generalization(n_folds, data_temp,
                 ### Just add the right amount of data from the end; 
                 test_ix[i_f + 2*n_folds].append(N_pts[tsk][-Ncomb_test_tsk:])
         
-        test_ix[i_f + 2*n_folds] = np.hstack((test_ix[i_f + 2*n_folds]))
-        train_ix[i_f + 2*n_folds] = np.array([i for i in range(Ntot) if i not in test_ix[i_f + 2*n_folds]])
+        test_ix[i_f + 2*n_folds] = np.hstack((test_ix[i_f + 2*n_folds])).astype(int)
+        train_ix[i_f + 2*n_folds] = np.array([i for i in range(Ntot) if i not in test_ix[i_f + 2*n_folds]]).astype(int)
         type_of_model[i_f + 2*n_folds] = 2
 
     return test_ix, train_ix, type_of_model.astype(int)
@@ -851,76 +957,46 @@ def quick_reg(bin_spk, decoder_all):
 ###########################################
 ############### Shuffling #################
 ###########################################
-def full_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
-    animal, day_ix):
+def full_shuffling(bin_spk, decoder_all, animal, day_ix):
     '''
     update -- 6/12/20 -- also shuffled action with the neural activity; 
+    update -- 6/16/20 -- this gets applied to data after being sorted/vstacked; Returns index only
     '''
-
-    bin_spks = copy.deepcopy(bin_spk)
-    dec_all = copy.deepcopy(decoder_all)
-
-    bin_stack = np.vstack(([b for ib,b in enumerate(bin_spks) if ib in ix_mod]))
-    dec_stack = np.vstack(([d for i_d,d in enumerate(decoder_all) if i_d in ix_mod]))
-
-    trls_ix = np.hstack(([t for it,t in enumerate(trial_ix) if t in ix_mod]))
-
-    assert(bin_stack.shape[0] == len(trls_ix))
-    assert(bin_stack.shape[0] == dec_stack.shape[0])
-    shuff_ix = np.random.permutation(len(trls_ix))
+    nT, nn = bin_spk.shape
+    assert(decoder_all.shape[0] == nT)
+    shuff_ix = np.random.permutation(nT)
+    shuff_ix = shuff_ix.astype(int)
+    #shuff_ix = within_bin_shuffling(spikes, push, animal, day_ix)
     
     #### 
-    tmp_shuff = bin_stack[shuff_ix, :]
-    tmp_dec_shuff = dec_stack[shuff_ix, :]
+    tmp_shuff = bin_spk[shuff_ix, :]
+    tmp_dec_shuff = decoder_all[shuff_ix, :]
 
-    assert(np.allclose(np.sum(bin_stack, axis=0), np.sum(tmp_shuff, axis=0)))
-    assert(np.allclose(np.sum(dec_stack, axis=0), np.sum(tmp_dec_shuff, axis=0)))
+    assert(np.allclose(np.sum(bin_spk, axis=0), np.sum(tmp_shuff, axis=0)))
+    assert(np.allclose(np.sum(decoder_all, axis=0), np.sum(tmp_dec_shuff, axis=0)))
 
     #### Get KG ###
     if animal == 'grom':
         _, KG = util_fcns.get_grom_decoder(day_ix)
-        
-    elif animal == 'jeev':
-        KG_imp = util_fcns.get_jeev_decoder(day_ix)
-        KG = np.zeros((7, KG_imp.shape[1]))
-        KG[[3, 5], :] = KG_imp.copy()
+        assert(np.allclose(tmp_dec_shuff, np.dot(KG, tmp_dec_shuff.T).T))
 
-    for trl in ix_mod:
-        ix_i = np.nonzero(trls_ix == trl)[0]
-        bin_spks[trl] = tmp_shuff[ix_i, :]
-        dec_all[trl] = tmp_dec_shuff[ix_i, :]
-        if animal == 'grom':
-            assert(np.allclose(dec_all[trl], np.dot(KG, bin_spks[trl].T).T ))
-        elif animal == 'jeev':
-            pass
-            #print('Trl %d, R2 KG %.2f' %(trl, util_fcns.get_R2(dec_all[trl], np.dot(KG, bin_spks[trl].T).T)))
-    
-    return bin_spks, dec_all
+    return shuff_ix.astype(int)
 
-def within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
-    animal, day_ix):
+def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
     '''
     update -- 6/12/20 -- also shuffled action with the neural activity; 
+    update -- 6/16/20 -- gets applied to data after combining across task, returns index only
     '''
 
-    bin_spks = copy.deepcopy(bin_spk)
-    dec_all = copy.deepcopy(decoder_all)
-
-    #### Vstack together ######
-    bin_stack = np.vstack(([b for ib,b in enumerate(bin_spks) if ib in ix_mod]))
-    bin_stack_shuff = np.zeros_like(bin_stack)
-
-    dec_stack = np.vstack(([d for i_d,d in enumerate(decoder_all) if i_d in ix_mod]))
-    dec_stack_shuff = np.zeros_like(dec_stack)
-
-    assert(bin_stack.shape[0] == dec_stack.shape[0])
+    assert(bin_spk.shape[0] == decoder_all.shape[0])
 
     #### Mag boundaries #######
     mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
-    command_bins = util_fcns.commands2bins([dec_stack], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]
+    print('using animal %s, day_ix %d for mag boundaries' %(animal, day_ix))
 
-    trls_ix = np.hstack(([t for it,t in enumerate(trial_ix) if t in ix_mod]))
-    assert(bin_stack.shape[0] == len(trls_ix) == command_bins.shape[0])
+    command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]
+
+    assert(bin_spk.shape[0] == command_bins.shape[0])
 
     #### Get KG ###
     if animal == 'grom':
@@ -932,35 +1008,35 @@ def within_bin_shuffling(bin_spk, decoder_all, ix_mod, trial_ix,
         KG = np.zeros((7, KG_imp.shape[1]))
         KG[[3, 5], :] = KG_imp.copy()
 
+    shuff_ix = np.zeros((bin_spk.shape[0])) - 1
+    big_ix = []
+
     for i_m in range(4):
         for i_a in range(8):
 
             ### Get indices ######
             ix = np.nonzero(np.logical_and(command_bins[:, 0] == i_m, command_bins[:, 1] == i_a))[0]
-
+            
             if len(ix) > 0:
+                if len(big_ix) > 0:
+                    for i in ix: assert(i not in np.hstack((big_ix)))
+
                 ixi_sh = np.random.permutation(len(ix))
 
                 ### Shuffle within bin; 
-                bin_stack_shuff[ix[ixi_sh], :] = bin_stack[ix, :]
-                dec_stack_shuff[ix[ixi_sh], :] = dec_stack[ix, :]
-                
-                if animal == 'grom':
-                    assert(np.allclose(dec_stack_shuff[ix[ixi_sh], :], np.dot(KG, bin_stack_shuff[ix[ixi_sh], :].T).T))
+                big_ix.append(ix.copy())
+                shuff_ix[ix] = ix[ixi_sh].copy()
 
-                elif animal == 'jeev':
-                    print('R2 KG %.2f' %(util_fcns.get_R2(dec_stack_shuff[ix[ixi_sh], :], np.dot(KG, bin_stack_shuff[ix[ixi_sh], :].T).T)))
-            
-    assert(np.allclose(np.sum(bin_stack, axis=0), np.sum(bin_stack_shuff, axis=0)))
-    assert(np.allclose(np.sum(dec_stack, axis=0), np.sum(dec_stack_shuff, axis=0)))
-    
-    #### Reassign back into trials ####
-    for trl in ix_mod:
-        ix_i = np.nonzero(trls_ix == trl)[0]
-        bin_spks[trl] = bin_stack_shuff[ix_i, :]
-        dec_all[trl]  = dec_stack_shuff[ix_i, :]
+    assert(np.all(shuff_ix >=0 ))
+    shuff_ix = shuff_ix.astype(int)
 
-    return bin_spks, dec_all
+    big_ix_sort = np.sort(np.hstack((big_ix)))
+    assert(np.all(big_ix_sort == np.arange(shuff_ix.shape[0])))
+
+    ### Make sure applying shuffling to command_bins doesn't change the bins; 
+    assert(np.all(command_bins == command_bins[shuff_ix, :]))
+
+    return shuff_ix, KG
 
 
 ####### MODEL ADDING ########
