@@ -22,6 +22,15 @@ from IPython import display
 import copy
 
 
+def center_angle(angle, ctr_orig, ctr_new):
+    """
+    ctr_orig: the center angle of angle data.  
+    e.g. if angle ranges from (0,2*pi) then the center is pi.  
+    if angle ranges from (-pi,pi) then the center is 0.
+    """
+    angle_center = (angle+(np.pi-ctr_orig)-ctr_new)%(2*np.pi)-(np.pi-ctr_orig)
+    return angle_center
+
 def bin_data_pt(data_pt, bins): 
     #assumes: 
     #bins is 2 x num_bins
