@@ -21,6 +21,34 @@ model 1 (fig 4)
 model 3 -- general extraction of stuff
 '''
 
+def plot_alpha_shuff_vs_og(model_set_number = 2):
+
+    ridge_dict_shuff = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
+    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+
+    mvl, _, _, _ = generate_models_list.get_model_var_list(model_set_number)
+
+    model_nms = [mvl[i][1] for i in range(len(mvl))]
+
+    ndays = dict(grom=9, jeev=4)
+
+    ### For each animal: 
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        #### Plot model names; 
+        f, ax = plt.subplots(ncols = len(model_nms), figsize = (12, 4))
+
+        for i_m, mod in enumerate(model_nms):
+
+            for i_d in range(ndays[animal]):
+                ax[i_m].bar(i_d, ridge_dict[animal][0][i_d, mod], color='k', width=.3)
+                ax[i_m].bar(i_d+.3, ridge_dict_shuff[animal][0][i_d, mod], color='b', width=.3)
+            
+            ax[i_m].set_title(mod, fontsize = 8)
+
+        ax[0].set_ylabel(animal)
+        f.tight_layout()
+   
 ##### Fig 1  ####### Null vs. Potent; #####
 def plot_real_mean_diffs_x_null_vs_potent(model_set_number = 3, min_obs = 15, cov = False):
     ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
@@ -717,18 +745,18 @@ def plot_r2_bar_model_1(min_obs = 15,
         
         #### Only for task specific ####
         else:
-            if os.path.exists(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number):
-                print('Option 1')
-                model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number, 'rb'))
-            else:
-                print('Option 2')
-                model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl'%model_set_number, 'rb'))
-            
+            # if os.path.exists(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number):
+            #     print('Option 1')
+            #     model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number, 'rb'))
+            # else:
+            print('Option 2')
+            model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_.pkl'%model_set_number, 'rb'))
+        
         if include_shuffs is not None:
             shuffs = []
-            pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
+            pre3 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
             pre2 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_'%model_set_number
-            pre3 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_'%model_set_number
+            pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d__'%model_set_number
 
             for shuf_ix in range(include_shuffs):
                 if os.path.exists('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix)):
@@ -736,24 +764,24 @@ def plot_r2_bar_model_1(min_obs = 15,
                     tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
                     shuffs.append(copy.deepcopy(tmp))
 
-                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
-                    shuffs.append(copy.deepcopy(tmp))
+                    # tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
+                    # shuffs.append(copy.deepcopy(tmp))
 
                 elif os.apth.exists('%swithin_bin_shuff%d.pkl'%(pre2, shuf_ix)):
                     print('Shuff option 2')
                     tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre2, shuf_ix), 'rb'))
                     shuffs.append(copy.deepcopy(tmp))
 
-                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre2, shuf_ix), 'rb'))
-                    shuffs.append(copy.deepcopy(tmp))
+                    # tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre2, shuf_ix), 'rb'))
+                    # shuffs.append(copy.deepcopy(tmp))
 
                 elif os.apth.exists('%swithin_bin_shuff%d.pkl'%(pre3, shuf_ix)):
                     print('Shuff option 3')
                     tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre3, shuf_ix), 'rb'))
                     shuffs.append(copy.deepcopy(tmp))
 
-                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre3, shuf_ix), 'rb'))
-                    shuffs.append(copy.deepcopy(tmp))
+                    # tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre3, shuf_ix), 'rb'))
+                    # shuffs.append(copy.deepcopy(tmp))
                 else:
                     raise Exception('No shuffles of index %d identified! '%(shuf_ix))
 
@@ -793,7 +821,7 @@ def plot_r2_bar_model_1(min_obs = 15,
                     pdata = model_dict[i_d, models_to_include[0]]
                 else:
                     print('General task spec baseline, model: %s, %d' %(models_to_include[0], task_spec_ix))
-                    pdata = model_dict[i_d, models_to_include[0]][:, :, task_spec_ix]
+                    pdata = model_dict[i_d, models_to_include[0]]#[:, :, task_spec_ix]
 
                 tdata = model_dict[i_d, 'spks']
                 R2_baseline = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
@@ -807,7 +835,7 @@ def plot_r2_bar_model_1(min_obs = 15,
                 if task_spec_ix is None:
                     pdata = model_dict[i_d, mod]
                 else:
-                    pdata = model_dict[i_d, mod][:, :, task_spec_ix]
+                    pdata = model_dict[i_d, mod]#[:, :, task_spec_ix]
 
                 ### Get population R2 ### 
                 R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
@@ -842,7 +870,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 
                     for i_s, shuf in enumerate(shuffs):
                         tdata = shuf[i_d, 'spks']
-                        pdata = shuf[i_d, mod][:, :, task_spec_ix]
+                        pdata = shuf[i_d, mod]#[:, :, task_spec_ix]
                         R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
 
                         if perc_increase:
@@ -1045,7 +1073,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 
             #f.tight_layout()
             #f1.tight_layout()
-
+ 
 ### Bar R2 and correlation plots -- figure 4;
 def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False, 
     use_mFR_option = 'cond_spec', include_shuffs = None):
@@ -1077,12 +1105,14 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
     for ia, animal in enumerate(['grom','jeev']):
 
         ### Load the model ####
-        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %model_set_number, 'rb'))
+        #model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %model_set_number, 'rb'))
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_.pkl' %model_set_number, 'rb'))
         
         if include_shuffs is not None:
             model_dicts = [model_dict]
 
-            pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
+            #pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
+            pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d__'%model_set_number
             for shuf_ix in range(include_shuffs):
 
                 if os.path.exists('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix)):
@@ -1090,13 +1120,14 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
                     model_dicts.append(copy.deepcopy(tmp))
 
-                    tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
-                    model_dicts.append(copy.deepcopy(tmp))
+                    # tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
+                    # model_dicts.append(copy.deepcopy(tmp))
 
                 else:
                     raise Exception('No shuffles of index %d identified! '%(shuf_ix))
         else:
             model_dicts = [model_dict]
+
         ### Number of days #####
         ndays = analysis_config.data_params[animal + '_ndays']
 
@@ -1119,10 +1150,23 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
         for i_m, model in enumerate(models_to_include):
             for i_d in range(ndays):
 
+                if len(model_dicts) > 1:
+                    ### Make sure task / target / command bins match for this 
+                    assert(np.all(model_dicts[0][i_d, 'task'] == model_dicts[1][i_d, 'task'] ))
+                    assert(np.all(model_dicts[0][i_d, 'trg'] == model_dicts[1][i_d, 'trg'] ))
+
+                    c0 = model_dicts[0][i_d, 'np']
+                    c1 = model_dicts[1][i_d, 'np']
+                    assert(c0.shape[1] == c1.shape[1] == 2)
+                    com0 = util_fcns.commands2bins([c0], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                    com1 = util_fcns.commands2bins([c1], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                    assert(np.all(com0 == com1))
+                    assert(not np.all(c0 == c1))
+                    assert(not np.all(model_dicts[0][i_d, 'spks'] == model_dicts[1][i_d, 'spks']))
+
                 ### For all the model dicts; 
                 for i_ds, model_dict_i in enumerate(model_dicts): 
 
-                
                     R2[model, i_d, i_ds] = []; 
                     R22[model, i_d, i_ds] = []
 
@@ -1131,7 +1175,7 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     spks = model_dict_i[i_d, 'spks']
 
                     ### General dynamics; 
-                    pred = model_dict_i[i_d, model][:, :, 2]
+                    pred = model_dict_i[i_d, model]#[:, :, 2]
 
                     ### Get the task parameters
                     tsk  = model_dict_i[i_d, 'task']
@@ -1165,80 +1209,90 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                             
                             ix = np.nonzero(np.logical_and(commands_disc[:, 0] == mag_i, commands_disc[:, 1] == ang_i))[0]
 
-                            ### mFR for a given command ###
-                            command_mn_fr = np.mean(spks[ix, :], axis=0)
-                            pred_command_mn_fr = np.mean(pred[ix, :], axis=0)
+                            if len(ix) > 0:
+                                ### mFR for a given command ###
+                                command_mn_fr = np.mean(spks[ix, :], axis=0)
+                                pred_command_mn_fr = np.mean(pred[ix, :], axis=0)
 
-                            if use_mFR_option == 'pooled':
-                                x_mfr = mFR_pool.copy()
-                                y_mfr = mFR_pool.copy()
-                            
-                            elif use_mFR_option == 'command_spec':
-                                x_mfr = command_mn_fr.copy()
-                                y_mfr = command_mn_fr.copy()
-                            
-                            elif use_mFR_option == 'command_axis_spec':
-                                x_mfr = command_mn_fr.copy()
-                                y_mfr = pred_command_mn_fr.copy()
-                            
-                            if use_mFR_option == 'ultra_pooled':
-                                x_mfr = mFR_pool.copy()
-                                y_mfr = mFR_pool.copy()                            
+                                if use_mFR_option == 'pooled':
+                                    x_mfr = mFR_pool.copy()
+                                    y_mfr = mFR_pool.copy()
+                                
+                                elif use_mFR_option == 'command_spec':
+                                    x_mfr = command_mn_fr.copy()
+                                    y_mfr = command_mn_fr.copy()
+                                
+                                elif use_mFR_option == 'command_axis_spec':
+                                    x_mfr = command_mn_fr.copy()
+                                    y_mfr = pred_command_mn_fr.copy()
+                                
+                                if use_mFR_option == 'ultra_pooled':
+                                    x_mfr = mFR_pool.copy()
+                                    y_mfr = mFR_pool.copy()                            
 
-                                ### For this option only plot the 
-                                if len(ix) > min_obs:
+                                    ### For this option only plot the 
+                                    if len(ix) > min_obs:
 
-                                    ### Add this guy 
-                                    z_fr[model, i_d, i_ds].append(np.mean(spks[ix, :], axis=0) - x_mfr)
-                                    pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix, :], axis=0) - y_mfr)
+                                        ### Add this guy only for ultra_pooled 
+                                        z_fr[model, i_d, i_ds].append(np.mean(spks[ix, :], axis=0) - x_mfr)
+                                        pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix, :], axis=0) - y_mfr)
 
-                            else:
-                                for targi in np.unique(targ):
-                                    ### Get co / task 
-                                    ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
-                                    ix_co = np.nonzero(ix_co == True)[0]
+                                else:
+                                    co_added_targ = []
+                                    obs_added_targ = []
 
-                                    assert(np.all(commands_disc[ix_co, 0] == mag_i))
-                                    assert(np.all(commands_disc[ix_co, 1] == ang_i))
-                                    assert(np.all(tsk[ix_co] == 0))
-                                    assert(np.all(targ[ix_co] == targi))
+                                    for targi in np.unique(targ):
+                                        ### Get co / task 
+                                        ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
+                                        ix_co = np.nonzero(ix_co == True)[0]
+                                        for ixtmp in ix_co: assert(ixtmp in ix)
+                                        assert(len(ix_co) <= len(ix))
+                                        assert(np.all(commands_disc[ix_co, 0] == mag_i))
+                                        assert(np.all(commands_disc[ix_co, 1] == ang_i))
+                                        assert(np.all(tsk[ix_co] == 0))
+                                        assert(np.all(targ[ix_co] == targi))
 
-                                    if len(ix_co) >= min_obs:
-                                        #### Keep the mean CO condition specific command
-                                        z_fr[model, i_d, i_ds].append(np.mean(spks[ix_co, :], axis=0) - x_mfr)
-                                        pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix_co, :], axis=0) - y_mfr)
-                                                                        
-                                        ### Get info second task: 
-                                        for targi2 in np.unique(targ):
-                                            ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
-                                            ix_ob = np.nonzero(ix_ob == True)[0]
+                                        if len(ix_co) >= min_obs:
+                                            #### Keep the mean CO condition specific command
+                                            if targi not in co_added_targ:
+                                                z_fr[model, i_d, i_ds].append(np.mean(spks[ix_co, :], axis=0) - x_mfr)
+                                                pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix_co, :], axis=0) - y_mfr)
+                                                co_added_targ.append(targi)
 
-                                            assert(np.all(commands_disc[ix_ob, 0] == mag_i))
-                                            assert(np.all(commands_disc[ix_ob, 1] == ang_i))
-                                            assert(np.all(tsk[ix_ob] == 1))
-                                            assert(np.all(targ[ix_ob] == targi2))
+                                            ### Get info second task: 
+                                            for targi2 in np.unique(targ):
+                                                ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
+                                                ix_ob = np.nonzero(ix_ob == True)[0]
+                                                
+                                                assert(np.all(ixtmp in ix for ixtmp in ix_ob))
+                                                assert(len(ix_ob) <= len(ix))
+                                                for ixtmp in ix_ob: assert(ixtmp in ix)
+                                                assert(np.all(commands_disc[ix_ob, 0] == mag_i))
+                                                assert(np.all(commands_disc[ix_ob, 1] == ang_i))
+                                                assert(np.all(tsk[ix_ob] == 1))
+                                                assert(np.all(targ[ix_ob] == targi2))
 
-                                            if len(ix_ob) >= min_obs:
-                                                z_fr[model, i_d, i_ds].append(np.mean(spks[ix_ob, :], axis=0) - x_mfr)
-                                                pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix_ob, :], axis=0) - y_mfr)
-                                        
-                                                assert(len(ix_co) >= min_obs)
-                                                assert(len(ix_ob) >= min_obs)
-                                                #print 'adding: mag_i: %d, ang_i: %d, targi: %d, targi2: %d' %(mag_i, ang_i, targi, targi2)
-                                                ### make the plot: 
-                                                if cov: 
-                                                    diffs[model, i_d, i_ds] = util_fcns.get_cov_diffs(ix_co, ix_ob, spks, diffs[model, i_d])
-                                                    pred_diffs[model, i_d, i_ds] = util_fcns.get_cov_diffs(ix_co, ix_ob, pred, pred_diffs[model, i_d])
-                                                else: 
-                                                    diffs[model, i_d, i_ds].append(np.mean(spks[ix_co, :], axis=0) - np.mean(spks[ix_ob, :], axis=0))    
-                                                    pred_diffs[model, i_d, i_ds].append(np.mean(pred[ix_co, :], axis=0) - np.mean(pred[ix_ob, :], axis=0))
+                                                if len(ix_ob) >= min_obs:
+                                                    if targi2 not in obs_added_targ:
+                                                        z_fr[model, i_d, i_ds].append(np.mean(spks[ix_ob, :], axis=0) - x_mfr)
+                                                        pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix_ob, :], axis=0) - y_mfr)
+                                                        obs_added_targ.append(targi)
+
+                                                    assert(len(ix_co) >= min_obs)
+                                                    assert(len(ix_ob) >= min_obs)
+                                                    #print 'adding: mag_i: %d, ang_i: %d, targi: %d, targi2: %d' %(mag_i, ang_i, targi, targi2)
+                                                    ### make the plot: 
+                                                    if cov: 
+                                                        diffs[model, i_d, i_ds] = util_fcns.get_cov_diffs(ix_co, ix_ob, spks, diffs[model, i_d])
+                                                        pred_diffs[model, i_d, i_ds] = util_fcns.get_cov_diffs(ix_co, ix_ob, pred, pred_diffs[model, i_d])
+                                                    else: 
+                                                        diffs[model, i_d, i_ds].append(np.mean(spks[ix_co, :], axis=0) - np.mean(spks[ix_ob, :], axis=0))    
+                                                        pred_diffs[model, i_d, i_ds].append(np.mean(pred[ix_co, :], axis=0) - np.mean(pred[ix_ob, :], axis=0))
 
             ### Now scatter plot all data over all days: 
             #f, ax = plt.subplots(nrows = 1, ncols = 2, figsize=(8, 4))
-
             ### Make R2 plots to show how much each plot accounts for variace: 
             for i_d in range(ndays):
-
                 for i_ds in range(len(model_dicts)):
 
                     MDI.append(i_ds)
@@ -1248,7 +1302,7 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     if i_ds == 0:
                         color = 'r'
                     elif i_ds == 1:
-                        color == 'b'
+                        color = 'b'
                     elif i_ds == 2:
                         color = 'k'
 
@@ -1256,6 +1310,7 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                         pass
                     else:
                         ### T x N
+
                         x = np.vstack((diffs[model, i_d, i_ds]))*10
                         y = np.vstack((pred_diffs[model, i_d, i_ds]))*10
 
@@ -1281,11 +1336,19 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                         VAL.append(VAF)
 
                     ### Always plot 
+                    ########### ONLY PLOT TRUE Z FR #########
                     x2 = np.vstack(( z_fr[model, i_d, i_ds]))*10
                     y2 = np.vstack(( pred_z_fr[model, i_d, i_ds]))*10
-                    ### Here, not reshaping, want to keep the mean FR | command, condition comparable to mFR for neuron overall; 
                     
+                    x2 = x2.reshape(-1)
+                    y2 = y2.reshape(-1)
+
+                    slp,intc,rv,pv,err = scipy.stats.linregress(x2, y2)
+                    axall2[i_d, i_m].plot([np.min(x2), np.max(x2)], slp*np.array([np.min(x2), np.max(x2)]) + intc, '--', color=color)
+
+                    ### Here, not reshaping, want to keep the mean FR | command, condition comparable to mFR for neuron overall; 
                     axall2[i_d, i_m].plot(x2, y2, color+'.', markersize=2.)
+    
                     axall2[i_d, i_m].set_xlim([-40, 40])
                     axall2[i_d, i_m].set_ylim([-40, 40])
                     axall2[i_d, i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
@@ -1319,7 +1382,7 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                 pass
             else:
                 #### R2 bar plot ####
-                fbar, axbar = plt.subplots(figsize=(3, 4))
+                fbar, axbar = plt.subplots(figsize=(8, 8))
                 
                 if include_shuffs is None:
                     ### Plot indices ###
@@ -1367,6 +1430,7 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     fbar.savefig(analysis_config.config['fig_dir2']+'monk_%s_r2_comparison_%s.png' %(animal, nm))
                 else:
                     fbar.savefig(analysis_config.config['fig_dir2'] + 'monk_%s_r2_comparison_%s_mFR%s.png' %(animal, nm, use_mFR_option))    
+
 ### Fig 5 #### 
 ### Mean diffs of action at next time step ###
 def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
@@ -2705,6 +2769,110 @@ def eigvalue_plot(dt = 0.1):
                     ax[i_m].plot(decay, hz, 'k.')
                     ax[i_m].set_xlim([0., .2])
                     ax[i_m].set_ylim([-.01, 4.9])
+
+
+### Check model dictionaries ####
+def check_models(model_dicts, day, model_nm, command_bins):
+    
+    ### Comparing model 0 (true data) to model 1 (within bin shuffle)
+    true_spks = model_dicts[0][day, 'spks']
+    true_psh = model_dicts[0][day, 'np']
+
+    shuff_spks = model_dicts[1][day, 'spks']
+    shuff_psh = model_dicts[1][day, 'np']
+
+    ### Day bin + shuffles #### 
+    day_bin = model_dicts[1][0, 'day_bin_ix']
+    shuff_day_bin = model_dicts[1][0, 'day_bin_ix_shuff']
+
+    ntrls = np.max(model_dicts[1][day, 'trl'])
+    ### First make sure all the spiking and pushes check out
+    passes = 0
+    for i_t, shuff in enumerate(shuff_day_bin):
+        if shuff in day_bin: 
+            ix0 = np.nonzero(day_bin == shuff)[0]
+            assert(np.all(shuff_spks[i_t, :] == true_spks[ix0, :]))
+            assert(np.all(shuff_psh[i_t, :]  ==  true_psh[ix0, :]))
+        else: 
+            passes += 1
+    print('Total passes %d / Max %d' %(passes, 2*ntrls))
+
+    #### Ok, now query for mag / angs, true conditon vs. shuffled conditon 
+    ### distribution 
+    command_x_cond = np.zeros((32, 20))
+    for imag in range(4):
+        for iang in range(8):
+
+            shuff = np.zeros((20, 20, 2))
+
+            ### Get out indices ###
+            ix = np.nonzero(np.logical_and(command_bins[:, 0] == imag, command_bins[:, 1] == iang))[0]          
+            
+            ### Get targets 
+            tgs = model_dicts[0][day, 'trg'][ix]
+            tsk = model_dicts[0][day, 'task'][ix]
+
+            for j, (tg, ts) in enumerate(zip(tgs, tsk)):
+                command_x_cond[imag*8 + iang, int(ts*10 + tg)] += 1
+
+                ### For this particular point, what task/target did the shuffle come from?
+                sdb = shuff_day_bin[ix[j]]
+                if sdb in day_bin: 
+                    ix0 = np.nonzero(day_bin == sdb)[0]
+
+                    ### Get the bin from which this piont is shuffled 
+                    tg0 = model_dicts[0][day, 'trg'][ix0]
+                    ts0 = model_dicts[0][day, 'task'][ix0]
+
+                    ### Label vs true target 
+                    shuff[int(ts*10 + tg), int(ts*10 + tg), 0] += 1
+                    shuff[int(ts*10 + tg), int(ts0*10 + tg0), 1] += 1
+
+            #### Shuffle normalization 
+            shuff[:, :, 1] = shuff[:, :, 1] / np.sum(shuff[:, :, 1], axis = 1)[:, np.newaxis]
+            
+            #### For each command, where does the shuffle draw from ### ? 
+            f, ax = plt.subplots(ncols = 2, figsize = (8, 4))
+            ax[0].pcolormesh(shuff[:, :, 0], cmap = 'viridis')
+            cax = ax[1].pcolormesh(shuff[:, :, 1], cmap = 'viridis')
+            ax[0].set_ylabel('Dat Label')
+            ax[1].set_ylabel('Shuff Dat Label')
+            ax[0].set_xlabel('True Targ')
+            ax[1].set_xlabel('True Targ')
+            ax[0].set_title('Day %d, Mag %d, Ang %d' %(day, imag, iang))
+
+    #### Distribution of commands | conditons 
+    f, ax = plt.subplots(nrows = 4, figsize = (10, 10))
+    for tmp in range(4):
+        tmp_c = command_x_cond[tmp*8:(tmp+1)*8, :]
+        cax = ax[tmp].pcolormesh(tmp_c, cmap='viridis', vmin=0, vmax=160)
+        ax[tmp].set_ylabel('Commands, Mag %d' %(tmp))
+
+    ax[0].set_title('Commands | Conditions, Day %d' %(day))
+    ax[-1].set_xlabel('Conditions: CO | OBS')
+    f.tight_layout()
+
+    #### Confirm the predictions from the model? 
+    ### Go through teh test ix, and models, and confirm that the model predicts the predicted in both cases; 
+    N = model_dicts[1][day, 'np'].shape[0]
+
+    for i_fold in range(5):
+
+        ### Shuff model
+        shuff_model = model_dicts[1][day, model_nm, i_fold, 0., 'model']
+        shuff_test_ix = model_dicts[1][day, model_nm, i_fold, 0., 'test_ix']
+        shuff_train_ix = np.array([i for i in range(N) if i not in shuff_test_ix])
+
+        shuff_act = model_dicts[1][day, 'np'][shuff_test_ix, :]
+        spks_pred = model_dicts[1][day, model_nm][shuff_test_ix, :]
+
+        ### Test Ix stats; 
+        np.unique(model_dicts[1][day, 'task'][shuff_train_ix])
+        np.unique(model_dicts[1][day, 'trg'][shuff_train_ix])
+
+        assert(np.allclose(spks_pred, shuff_model.predict(shuff_act)))
+
+        ### mean FR         
 
 
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
