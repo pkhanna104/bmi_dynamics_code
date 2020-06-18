@@ -1,5 +1,6 @@
 import scipy.io as sio
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -23,8 +24,50 @@ import copy
 
 #TODO: function which decides which way the trajectory goes around the obstacle
 # def obs_traj_cw_vs_ccw(traj_x, traj_y, target_pos):
-    
+def traj_signed_area_about_target_axis(traj_x, traj_y, target_pos):
+    """
+    computes the signed area of a trajectory around a target axis.  
+    the target orthogonal axis is a counterclockwise rotation of 90 deg
+    0) construct target axis (t) + target orthog axis (to)
+    1) project data on target axis (t_proj) and target orthog axis (to_proj)
+    2) compute riemann sum as: np.sum(np.diff(t_proj)*to_proj[1:])
+    """
+    #0)
+    t,to = target_axes(target_pos)
 
+    #1)
+    traj = np.vstack((traj_x, traj_y))
+    t_proj = np.dot(t, traj)
+    to_proj = np.dot(to, traj)
+
+    #2)
+    a_traj = np.hstack((0, np.diff(t_proj)*to_proj[1:]))
+    a = np.sum(a_traj)
+    d_dic = {'kin_px':traj_x, 'kin_py':traj_y, 
+    'kin_pt':t_proj, 'kin_pto':to_proj, 
+    'kin_pt_area':a_traj, 'kin_pt_cum_area':np.cumsum(a_traj)}
+    df = pd.DataFrame(data=d_dic)
+
+    #Return a dataframe for traj, proj, area
+    #Return the area as a
+    return a, df
+
+def target_axes(target_pos):
+    """
+    Constructs a right-handed coordinate system where the x-axis is the axis going from (0,0) to target_pos
+    and the y-axis is ccw 90 deg rotation of the x-axis
+    """
+    x = target_pos/np.linalg.norm(target_pos, ord=2)
+    y = np.dot(rot2D_mat(np.pi/2), x)
+    return x,y
+
+def rot2D_mat(theta):
+    """
+    returns a 2D rotation matrix, which rotates points counterclockwise by theta
+    theta: angle (rad) 
+    """
+    mat = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    return mat
 
 def cartesian2polar(y,x):
     """
