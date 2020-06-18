@@ -455,13 +455,15 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
 
         DWI = []; 
         DX = []; 
+        DSH = []; 
         days = []; mets = []; grp = []; 
-        mnz = np.zeros((ndays, 2)) # days x [x / wi]
+        mnz = np.zeros((ndays, 3)) # days x [x / wi]
 
         f, ax = plt.subplots(figsize=(ndays/2., 4))
 
         for i_d in range(ndays):
 
+            diffs_shuff = []; 
             diffs_wi = []; 
             diffs_x = []; 
 
@@ -470,24 +472,36 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
             tsk  = model_dict[i_d, 'task']
             targ = model_dict[i_d, 'trg']
             push = model_dict[i_d, 'np']
-
             commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
             ### Now go through combos and plot 
             for mag_i in range(4):
                 for ang_i in range(8):
-                    for targi in range(8):
+                    spks_shuff = np.zeros_like(spks)
+                    
+                    #### Get the command-specifci indices; 
+                    all_ix = np.nonzero(np.logical_and(commands_disc[:, 0] == mag_i, commands_disc[:, 1] == ang_i))[0]
+
+                    ### Shuffle them ###
+                    shuff_ix = np.random.permutation(len(all_ix))
+
+                    ### shuffle up the spks for this particular command ###
+                    spks_shuff[all_ix, :] = spks[all_ix[shuff_ix], :]
+
+                    for targi in np.unique(targ):
                         ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
+                        ix_co0 = np.nonzero(ix_co == True)[0]
+                        for ii in ix_co0: assert(ii in all_ix)
+
                         if len(np.nonzero(ix_co == True)[0]) > min_obs:
 
-                            for targi2 in range(8):
+                            for targi2 in np.unique(targ):
                                 ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
-
+                                ix_ob0 = np.nonzero(ix_ob == True)[0]
+                                for ii in ix_ob0: assert(ii in all_ix)
+                        
                                 if len(np.nonzero(ix_ob == True)[0]) > min_obs:
                                     
-                                    ix_co0 = np.nonzero(ix_co == True)[0]
-                                    ix_ob0 = np.nonzero(ix_ob == True)[0]
-
                                     ii = np.random.permutation(len(ix_co0))
                                     i1 = ii[:int(len(ix_co0)/2.)]
                                     i2 = ii[int(len(ix_co0)/2.):]
@@ -517,58 +531,89 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
 
                                     else:
                                         ### make the plot: 
+                                        diffs_shuff.append(np.mean(spks_shuff[ix_co1, :], axis=0) - np.mean(spks_shuff[ix_ob1, :], axis=0))
+                                        diffs_shuff.append(np.mean(spks_shuff[ix_co2, :], axis=0) - np.mean(spks_shuff[ix_ob2, :], axis=0))
+                                        
                                         diffs_wi.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_co2, :], axis=0))
                                         diffs_wi.append(np.mean(spks[ix_ob1, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
 
                                         diffs_x.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_ob1, :], axis=0))
                                         diffs_x.append(np.mean(spks[ix_co2, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
-
+                                        
             if cov:
                 mult = 1; 
             else: 
                 mult = 10; 
+
+            AD_sh = np.abs(np.hstack((diffs_shuff)))*mult # to hz; 
             AD_wi = np.abs(np.hstack((diffs_wi)))*mult # to Hz
             AD_x = np.abs(np.hstack((diffs_x)))*mult # To hz
 
+            DSH.append(AD_sh)
             DWI.append(AD_wi)
             DX.append(AD_x)
 
-            days.append(np.hstack(( np.zeros_like(AD_wi) + i_d, np.zeros_like(AD_x) + i_d)))
-            grp.append( np.hstack(( np.zeros_like(AD_wi) + 1,   np.zeros_like(AD_x)))) # looking for + slp
+            days.append(np.hstack(( np.zeros_like(AD_wi) + i_d, np.zeros_like(AD_x) + i_d, np.zeros_like(AD_sh) + i_d)))
+            grp.append( np.hstack(( np.zeros_like(AD_wi) + 1,   np.zeros_like(AD_x), np.zeros_like(AD_sh) + 2))) # looking for + slp
+            
             mets.append(AD_wi)
             mets.append(AD_x)
+            mets.append(AD_sh)
 
-            for i, (D, col) in enumerate(zip([AD_x, AD_wi], ['k', 'gray'])):
-                ax.bar(i_d + i*.45, np.nanmean(D), color=col, edgecolor='none', width=.4, linewidth=1.0)
-                ax.errorbar(i_d + i*.45, np.nanmean(D), np.nanstd(D)/np.sqrt(len(D)), marker='|', color=col)
+            for i, (D, col) in enumerate(zip([AD_x, AD_wi, AD_sh], ['k', 'gray', 'lightgray'])):
+                ax.bar(i_d + i*.25, np.nanmean(D), color=col, edgecolor='none', width=.25, linewidth=1.0)
+                ax.errorbar(i_d + i*.25, np.nanmean(D), np.nanstd(D)/np.sqrt(len(D)), marker='|', color=col)
                 mnz[i_d, i] = np.nanmean(D)
          
         DWI = np.hstack((DWI))
         DX = np.hstack((DX))
+        DSH = np.hstack((DSH))
+
         days = np.hstack((days))
         grp = np.hstack((grp))
         mets = np.hstack((mets))
 
-        ### look at: run_LME(Days, Grp, Metric):
-        pv, slp = util_fcns.run_LME(days, grp, mets)
+        assert(len(days) == len(grp) == len(mets))
 
-        print 'LME model, fixed effect is day, rand effect is X vs. Wi., N = %d, ndays = %d, pv = %.4f, slp = %.4f' %(len(days), len(np.unique(days)), pv, slp)
+        ### look at: run_LME(Days, Grp, Metric):
+        pv, slp = util_fcns.run_LME(days[grp < 2], grp[grp < 2], mets[grp < 2])
+        print 'LME model, fixed effect is day, rand effect is X vs. Wi., N = %d, ndays = %d, pv = %.4f, slp = %.4f' %(len(days[grp < 2]), len(np.unique(days[grp < 2])), pv, slp)
+        
+        pv1, slp1 = util_fcns.run_LME(days[grp != 1], grp[grp != 1], mets[grp != 1])
+        print 'LME model, fixed effect is day, rand effect is X vs. SHUFF., N = %d, ndays = %d, pv = %.4f, slp = %.4f' %(len(days[grp != 1]), len(np.unique(days[grp != 1])), pv1, slp1)
 
         ###
-        axsumm.bar(0 + ia, np.mean(DX), color='k', edgecolor='none', width=.4, linewidth=2.0, alpha = .8)
-        axsumm.bar(0.4 + ia, np.mean(DWI), color='gray', edgecolor='none', width=.4, linewidth=2.0, alpha =.8)
+        axsumm.bar(0 + ia, np.mean(DX), color='k', edgecolor='none', width=.25, linewidth=2.0, alpha = .5)
+        axsumm.bar(0.25 + ia, np.mean(DWI), color='gray', edgecolor='none', width=.25, linewidth=2.0, alpha =.5)
+        axsumm.bar(0.5 + ia, np.mean(DSH), color='lightgray', edgecolor='none', width=.25, linewidth=2.0, alpha =.5)
+
+        # axsumm.plot(ia + (np.random.randn(len(DX))*.01), DX, 'k.', markersize = 2)
+        # axsumm.plot(0.25 + ia + (np.random.randn(len(DWI))*.01), DWI, 'k.', markersize = 2)
+        # axsumm.plot(0.50 + ia + (np.random.randn(len(DSH))*.01), DSH, 'k.', markersize = 2)
+
+        # axsumm.violinplot([DX, DWI, DSH], positions = [0+ia, 0.25+ia, 0.5+ia], widths = 0.25,
+        #     showmeans = True)
 
         for i_d in range(ndays):
-            axsumm.plot(np.array([0, .4]) + ia, mnz[i_d, :], '-', color='k', linewidth=1.0)
+            axsumm.plot(np.array([0, .25 , .5]) + ia, mnz[i_d, :], '-', color='k', linewidth=1.0)
 
-        if pv < 0.001: 
-            axsumm.text(0.2+ia, np.max(mnz), '***')
-        elif pv < 0.01: 
-            axsumm.text(0.2+ia, np.max(mnz), '**')
-        elif pv < 0.05: 
-            axsumm.text(0.2+ia, np.max(mnz), '*')
-        else:
-            axsumm.text(0.2+ia, np.max(mnz), 'n.s.')
+        axsumm.plot(ia + np.array([0., .25]), [1.02*np.max(mnz), 1.02*np.max(mnz)], 'k-')
+        axsumm.plot(ia + np.array([0., .5]) , [1.1*np.max(mnz), 1.1*np.max(mnz)], 'k-')
+
+        for ip, pvi in enumerate([pv, pv1]):
+            if ip == 0:
+                mult = 1.02
+            else:
+                mult = 1.1
+
+            if pvi < 0.001: 
+                axsumm.text(.125 + ia, mult*np.max(mnz), '***')
+            elif pvi < 0.01: 
+                axsumm.text(.125 + ia, mult*np.max(mnz), '**')
+            elif pvi < 0.05: 
+                axsumm.text(.125 + ia, mult*np.max(mnz), '*')
+            else:
+                axsumm.text(.125 + ia, mult*np.max(mnz), 'n.s.')
 
         # ax.set_ylabel('Difference in Hz')
         # ax.set_xlabel('Days')
@@ -577,8 +622,12 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
         # f.tight_layout()
 
         ### Need to stats test the differences across populations:    
-    axsumm.set_xticks([0.2, 1.2])
-    axsumm.set_xticklabels(['G', 'J']) 
+    #axsumm.set_xticks([0.25, 1.25])
+    axsumm.set_xticks([0., .25, .5, 1., 1.25, 1.5])
+    axsumm.set_xticklabels(['Grom\nX Cond', 'Grom\nW Cond','Grom\nX Cond Shuff',
+                            'Jeev\nX Cond', 'Jeev\nW Cond','Jeev\nX Cond Shuff'],
+                            rotation = 45, fontsize = 8)
+    #axsumm.set_xticklabels(['G', 'J']) 
     if cov:
         axsumm.set_ylim([0, 30])
         axsumm.set_ylabel(' Cov Diffs ($Hz^2$) ') 
@@ -588,7 +637,7 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
         axsumm.set_ylim([0, 5])
         axsumm.set_ylabel(' Mean Diffs (Hz) ') 
     fsumm.tight_layout()
-    fsumm.savefig(fig_dir+'both_monks_w_vs_x_task_mean_diffs_cov%s.svg'%(str(cov)))
+    #fsumm.savefig(fig_dir+'both_monks_w_vs_x_task_mean_diffs_cov%s.svg'%(str(cov)))
 
 def disc_plot(n_disc):
 
