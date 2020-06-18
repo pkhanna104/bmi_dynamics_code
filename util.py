@@ -35,13 +35,18 @@ def make_df_idx(index_df, task_idx, tc, target, trial, pre, num_data):
 	pre - how many "prefix" samples are in the data
 	num_data - number of samples
 	"""
-	label = ['task', 'tc', 'target', 'trial', 'bin']
+	label = ['task', 'tc', 'target', 'trial', 'bin', 'trial_start', 'trial_stop']
 	m_task = np.ones(num_data)*task_idx
 	m_tc = np.ones(num_data)*tc
 	m_target = np.ones(num_data)*target
 	m_trial = np.ones(num_data)*trial
 	m_bin = np.arange(num_data)-pre
-	m_idx = np.stack((m_task, m_tc, m_target, m_trial, m_bin), axis=1) #num_data X 5
+	m_trial_start = np.zeros(num_data)
+	m_trial_start[pre] = 1
+	m_trial_stop = np.zeros(num_data)
+	m_trial_stop[-1] = 1
+
+	m_idx = np.stack((m_task, m_tc, m_target, m_trial, m_bin, m_trial_start, m_trial_stop), axis=1) #num_data X 5
 	df_idx = pd.DataFrame(m_idx, index=index_df, columns=label)
 	return df_idx	
 

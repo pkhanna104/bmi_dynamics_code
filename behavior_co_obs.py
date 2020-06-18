@@ -21,6 +21,20 @@ import pylab as pl
 from IPython import display
 import copy
 
+#TODO: function which decides which way the trajectory goes around the obstacle
+# def obs_traj_cw_vs_ccw(traj_x, traj_y, target_pos):
+    
+
+
+def cartesian2polar(y,x):
+    """
+    Input: y, x
+    Assumes y,x are 1d numpy arrays
+    """
+    d = np.vstack((y,x)) #2 x num_samples
+    mag = np.linalg.norm(d,ord=2,axis=0)
+    angle = np.arctan2(y,x)
+    return mag, angle
 
 def center_angle(angle, ctr_orig, ctr_new):
     """
