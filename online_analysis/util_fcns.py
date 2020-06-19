@@ -174,6 +174,16 @@ def get_jeev_decoder(day_ix):
     KG_potent = KG.copy(); #$[[3, 5], :]; # 2 x N
     return np.squeeze(np.array(KG_potent))
 
+def get_decoder(animal, day_ix):
+    ''' 
+    returns 2 x N decoder 
+    '''
+    if animal == 'grom':
+        _, KG = get_grom_decoder(day_ix)
+        return KG[[3, 5], :]
+    elif animal == 'jeev':
+        return get_jeev_decoder(day_ix)
+
 #### Linear mixed effect modeling: 
 def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
     data = pd.DataFrame(dict(Days=Days, Grp=Grp, Metric=Metric))
