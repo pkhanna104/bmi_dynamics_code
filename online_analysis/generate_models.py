@@ -203,7 +203,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     full_shuffle = False,
     within_bin_shuffle = False, 
     shuff_id = 0,
-    add_model_to_datafile = False):
+    add_model_to_datafile = False,
+    task_demean = False):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -242,6 +243,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         -- fit_task_specific_model_test_task_spec --- leftover from sept 2019 -- fit on task specific data / test on it 
         -- fit_task_spec_and_general -- fit on task spec data and general data and use models to reconstruct all data; 
         -- fit_condition_spec_no_general -- fit data on condition specific data, reconstruct all data. 
+        -- task_demean -- option to fit task demeaned spikes instead of full spiking activity; 
 
     Output param: 
     '''
@@ -269,10 +271,14 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         elif within_bin_shuffle:
             hdf_filename = hdf_filename + '_within_bin_shuff%d' %shuff_id
 
+        if task_demean:
+            hdf_filename = hdf_filename + '_tsk_demean'
+
         if fit_intercept:
             hdf_filename = hdf_filename + '.h5'
         else:
             hdf_filename = hdf_filename + '_no_intc.h5'
+
 
 
     ### Place to save models: 
@@ -355,9 +361,28 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         ### Replicate datastructure for saving later: 
         if return_models:
 
+            ##### Model data / task #####
+            model_data[i_d, 'task'] = np.squeeze(np.array(data_temp['tsk']))
+
+            #### Task Demean ######
+            if task_demean:
+                ix_co = np.nonzero(model_data[i_d, 'task'] == 0)[0]
+                ix_ob = np.nonzero(model_data[i_d, 'task'] == 1)[0]
+                
+                ### Get the means ###
+                co_spks_mn = np.mean(sub_spikes[ix_co, :], axis=0)
+                ob_spks_mn = np.mean(sub_spikes[ix_ob, :], axis=0)
+
+                ### save the means ### 
+                model_data[i_d, 'spks_co_mn'] = co_spks_mn
+                model_data[i_d, 'spks_ob_mn'] = ob_spks_mn
+
+                ### subtract the means 
+                sub_spikes[ix_co, :] = sub_spikes[ix_co, :] - co_spks_mn[np.newaxis, :]
+                sub_spikes[ix_ob, :] = sub_spikes[ix_ob, :] - ob_spks_mn[np.newaxis, :]
+
             ### Want to save neural push, task, target 
             model_data[i_d, 'spks'] = sub_spikes.copy();
-            model_data[i_d, 'task'] = np.squeeze(np.array(data_temp['tsk']))
             model_data[i_d, 'trg'] = np.squeeze(np.array(data_temp['trg']))
             model_data[i_d, 'np'] = np.squeeze(np.array(sub_push_all))
             model_data[i_d, 'bin_num'] = np.squeeze(np.array(data_temp['bin_num']))
@@ -497,7 +522,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             
                         else:
                             model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
-                           
+                            
                         ### Save model -- for use later.
                         
                         if add_model_to_datafile:
@@ -572,6 +597,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     else:
         sff3 = ''
 
+    if task_demean:
+        sff4 = '_task_demean'
+    else:
+        sff4 = ''
+
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
         pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
@@ -580,13 +610,13 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec%s.pkl' %(model_set_number, sff2), 'wb'))
         
         elif fit_task_spec_and_general:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s%s%s.pkl' %(model_set_number, sff, sff2, sff3), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s%s%s%s.pkl' %(model_set_number, sff, sff2, sff3, sff4), 'wb'))
         
         elif fit_condition_spec_no_general:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec%s%s.pkl' %(model_set_number, sff2, sff3), 'wb'))
         
         else:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s.pkl' %(model_set_number, sff2, sff3), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4), 'wb'))
 
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
@@ -914,6 +944,12 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
 
             ### Also include target_info: 
             tg_model_nms, tg_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'tg')
+            tsk_model_nms, tsk_model_str = ['tsk', '']
+
+        elif include_state == 4:
+            ### task-related model / string 
+            vel_model_nms = []; 
+            pos_model_nms = []; 
             tsk_model_nms, tsk_model_str = ['tsk', '']
 
         elif include_state == 0:
