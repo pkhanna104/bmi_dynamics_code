@@ -8,6 +8,7 @@ def get_model_var_list(model_set_number):
     #######    -1 --  position 
     #######    2 -- velocity & position & target
     #######    3 -- velocity & position & target & task
+    #######    4 -- task only 
     #######    0 -- none; 
     
     ####### Include action_lags --> whether to include push_{t-1} etc. WILL include the lags if psh_1 is in the model name; 
@@ -90,6 +91,8 @@ def get_model_var_list(model_set_number):
 
     elif model_set_number == 7:
         model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity; 
+        model_var_list.append([np.array([-1]), 'hist_1pos_4psh_0spksm_1_spksp_0', 4, 1, 0]) ### only previous neural activity pls action; 
+
         #model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_1', 0, 1, 1]) ### only previous neural activity & action; 
         predict_key = 'spks'
         history_bins_max = 1; 
