@@ -12,6 +12,7 @@ import analysis_config, util_fcns
 import generate_models, generate_models_list
 
 import scipy
+from collections import defaultdict
 
 fig_dir = analysis_config.config['fig_dir']
 
@@ -539,7 +540,7 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
 
                                         diffs_x.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_ob1, :], axis=0))
                                         diffs_x.append(np.mean(spks[ix_co2, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
-                                        
+
             if cov:
                 mult = 1; 
             else: 
@@ -2074,7 +2075,8 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
     if use_action:
         models_to_include = ['hist_1pos_0psh_1spksm_1_spksp_0']
     else:
-        models_to_include = ['hist_1pos_0psh_0spksm_1_spksp_0']
+        models_to_include = ['hist_1pos_0psh_0spksm_1_spksp_0', 
+                             'hist_1pos_4psh_0spksm_1_spksp_0']
 
     if ndays is None:
         ndays_none = True
@@ -2121,7 +2123,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         ### Real bar plot ###
         #####################
         ### 3 plots -- one for CO, one for OB, one combined
-        ### CO / OBS data  x Fit CO/OBS/GEN x ndays
+        ### CO/OBS/ALL data  x Fit CO/OBS/GEN x ndays
         R2s_plot_spks = np.zeros((2, 3, ndays))
         R2s_plot_acts = np.zeros((2, 3, ndays)) 
 
@@ -2362,6 +2364,133 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
     #fob.tight_layout()
     fbth.tight_layout()
     #fbth.savefig('gen_w_vs_x.svg')
+
+def reinventing_model_7(model_set_number = 7, data = None, data_demean = None):
+    ### For each model (above x CO/OBS/GEN), want to plot how well it does on each task
+    ### Want to plot how well it explains: 
+    ### Each day will have a colored line, Co = -, Obs = -- 
+
+    ###     a) overall R2 -- neural 
+    ###     b) overall R2 -- action 
+    ###     c) command mean diffs 
+    ###     d) condition spec means 
+
+    fr2, axr2 = plt.subplots(nrows = 3, figsize = (8, 15))
+    Xr2 = [[], []]
+    
+    for ia, animal in enumerate(['grom', 'jeev']):
+        
+        ### Load the model with matching number of samples // load the model WITH intercept 
+        if data is None:
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
+        else:
+            dat = data[ia]
+
+        #### Load the demeaned model ###
+        if data_demean is None:
+            dat_dem = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_task_demean.pkl' %(model_set_number), 'rb'))
+        else:
+            dat_dem = data_demean[ia]
+
+        ### Plotting; 
+        ### CO/OBS data R2 avg. for models fit on CO / OBS / gen applied to ALL data; 
+        model_nms = ['hist_1pos_0psh_0spksm_1_spksp_0', 'hist_1pos_4psh_0spksm_1_spksp_0']
+        model_label_nms = ['$y_t|y_{t-1}$', '$y_t|y_{t-1}, tsk$']
+        
+        ### To keep track of bar plots 
+        r2_xlab = []
+        r2_xtic = []
+        
+        ### Then after each plot, will have ###
+        tmp_lines = defaultdict(list)
+
+        for i_m, model_nm in enumerate(model_nms):
+
+            ### For each day ###
+            for i_d in range(analysis_config.data_params[animal+'_ndays']): 
+
+                ### Get deocder ###
+                KG = util_fcns.get_decoder(animal, i_d)
+
+                tsk = dat[i_d, 'task']
+                ix_co = np.nonzero(tsk == 0)[0]
+                ix_ob = np.nonzero(tsk == 1)[0]
+                
+                spks = dat[i_d, 'spks']
+                pred_spks = dat[i_d, model_nm] # T x N x 3
+
+                psh = dat[i_d, 'np']
+                pred_psh = [np.dot(KG, pred_spks[:, :, k].T).T for k in range(3)]
+                pred_psh = np.dstack((pred_psh))
+                assert(psh.shape[0] == pred_psh.shape[0])
+                assert(psh.shape[1] == pred_psh.shape[1])
+
+                for mod_fit, mod_fitdat in enumerate(['CO', 'OBS', 'COMB']):
+        
+                    #### Overall R2 of the models  
+                    tmp_lines[0, i_d, 'neur'].append(util_fcns.get_R2(spks[ix_co, :], pred_spks[ix_co, :, mod_fit]))
+                    tmp_lines[1, i_d, 'neur'].append(util_fcns.get_R2(spks[ix_ob, :], pred_spks[ix_ob, :, mod_fit]))
+
+                    tmp_lines[0, i_d, 'act'].append(util_fcns.get_R2(psh[ix_co, :], pred_psh[ix_co, :, mod_fit]))
+                    tmp_lines[1, i_d, 'act'].append(util_fcns.get_R2(psh[ix_ob, :], pred_psh[ix_ob, :, mod_fit]))
+
+                    if i_d == 0:
+                        r2_xlab.append('%s: Mod %s, Fit %s' %(animal, model_label_nms[i_m], mod_fitdat))
+                        r2_xtic.append(ia*10 + i_m*4 + mod_fit)
+
+                    #### Fit task-spec diffs + individual model; 
+                    if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+
+                        #### Get task-specific activity 
+                        spks_dem  = dat_dem[i_d, 'spks']
+                        pred_spks_dem = dat_dem[i_d, model_nm]
+                        tsk_dem   = dat_dem[i_d, 'task']
+                        ix_co_dem = np.nonzero(tsk == 0)[0]
+                        ix_ob_dem = np.nonzero(tsk == 1)[0]
+
+                        #### Get the task related activity #### 
+                        tmp_lines[0, i_d, 'neur_dem'].append(util_fcns.get_R2(spks_dem[ix_co_dem, :], pred_spks_dem[ix_co_dem, :, mod_fit]))
+                        tmp_lines[1, i_d, 'neur_dem'].append(util_fcns.get_R2(spks_dem[ix_ob_dem, :], pred_spks_dem[ix_ob_dem, :, mod_fit]))
+
+        ### Aggregate for bars 
+        model_R2s = defaultdict(list)
+
+        ### Plot individual days 
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+            
+            for i_p, pl in enumerate(['neur', 'act', 'neur_dem']):
+                if pl in ['neur', 'act']:
+                    ### Plot Days# ###
+                    axr2[i_p].plot(r2_xtic, np.hstack((tmp_lines[0, i_d, pl])), '.-', color=analysis_config.pref_colors[i_d])
+                    axr2[i_p].plot(r2_xtic, np.hstack((tmp_lines[1, i_d, pl])), '.--', color=analysis_config.pref_colors[i_d])
+                    axr2[i_p].set_ylabel(pl)
+
+                    for i in range(len(np.hstack((tmp_lines[0, i_d, pl])))):
+                        model_R2s[i, i_p].append(tmp_lines[0, i_d, pl][i])
+                        model_R2s[i, i_p].append(tmp_lines[1, i_d, pl][i])
+                else:
+                    axr2[i_p].plot(np.arange(3)+10*ia, np.hstack((tmp_lines[0, i_d, pl])), '.-', color=analysis_config.pref_colors[i_d])
+                    axr2[i_p].plot(np.arange(3)+10*ia, np.hstack((tmp_lines[1, i_d, pl])), '.--', color=analysis_config.pref_colors[i_d])
+                    for i in range(3):
+                        model_R2s[i, i_p].append(tmp_lines[0, i_d, pl][i])
+                        model_R2s[i, i_p].append(tmp_lines[1, i_d, pl][i])
+                        
+        for i, xt in enumerate(r2_xtic):
+            for i_p, pl in enumerate(['neur', 'act', 'neur_dem']):
+                if tuple([i, i_p]) in model_R2s.keys():
+                    axr2[i_p].bar(xt, np.mean(model_R2s[i, i_p]), width = 1., color = 'gray', alpha = .3)
+
+        Xr2[0].append(r2_xlab)
+        Xr2[1].append(r2_xtic)
+
+    for i_p in range(2):
+        axr2[i_p].set_xticks(np.hstack((Xr2[1])))
+        axr2[i_p].set_xticklabels(np.hstack((Xr2[0])), rotation = 45, fontsize=8)
+    axr2[i_p].set_title('Neur Demean: CO | OBS | COMB used to fit task demeaned spikes')
+    fr2.tight_layout()
+
+
+    
 
 def generic_r2_plotter(model_set_number, model_nms, model_suffx, plot_ix = None, 
     neural_or_action = 'neural', ylabs = None, savedir = None):
