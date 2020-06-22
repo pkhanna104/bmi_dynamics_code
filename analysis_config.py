@@ -11,6 +11,7 @@ config['jeev_pref'] = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/'
 config['BMI_DYN'] = '/Users/preeyakhanna/bmi_dynamics_code/'
 config['fig_dir'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/figures/data_figs/'
 config['fig_dir2'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/data/'
+config['fig_dir3'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/presentations/6_2020_presentation_figs/'
 
 #########################################
 ############ Data paths  ################
