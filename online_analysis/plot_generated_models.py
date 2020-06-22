@@ -14,7 +14,7 @@ import generate_models, generate_models_list
 import scipy
 from collections import defaultdict
 
-fig_dir = analysis_config.config['fig_dir']
+fig_dir = analysis_config.config['fig_dir3']
 
 #### so far which models are useful 
 '''
@@ -288,13 +288,15 @@ def plot_real_mean_diffs_x_null_vs_potent(model_set_number = 3, min_obs = 15, co
     #fnul.savefig(fig_dir+'null_pot_neural_var.svg')
 
 #### Fig 2 ###############
-def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs = 15, plot_ex = False, plot_disc = False, cov = False):
+def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs = 15, 
+    plot_ex = False, plot_disc = False, cov = False, percent_change = False):
     ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
     ### Plot within a bar 
     ### Plot only sig. different ones
 
     ### Plot cov. diffs (mat1 - mat2)
     mag_boundaries = pickle.load(open(analysis_config.config['grom_pref']+'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    co_obs_cmap = [np.array([0, 103, 56])/255., np.array([46, 48, 146])/255., ]
 
     for ia, animal in enumerate(['grom','jeev']):
         model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
@@ -313,8 +315,9 @@ def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs 
         
         for i_d in range(ndays):
             if plot_ex: 
-                fex, axex = plt.subplots(ncols = 10, nrows = 5, figsize = (12, 6))
-                axex_cnt = 0; 
+                if i_d == 0:
+                    fex, axex = plt.subplots(ncols = 4, figsize = (12, 3))
+                    axex_cnt = 0; 
 
             diffs = []; diffs_cov = []; 
             sig_diffs = []; 
@@ -371,36 +374,59 @@ def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs 
                                 ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
 
                                 if len(np.nonzero(ix_ob == True)[0]) > min_obs:
-                                    
+                                    ####
+                                    ix_co0 = np.nonzero(ix_co == True)[0]
+                                    assert(np.allclose(np.mean(spks[ix_co, :], axis=0), np.mean(spks[ix_co0, :], axis=0)))
+                                            
                                     ### make the plot: 
                                     if cov:
                                         diffs = util_fcns.get_cov_diffs(ix_co, ix_ob, spks, diffs)
                                     else:
-                                        diffs.append(np.mean(spks[ix_co, :], axis=0) - np.mean(spks[ix_ob, :], axis=0))
+                                        if percent_change:
+                                            ix_co0 = np.nonzero(ix_co == True)[0]
+                                            ix_ob0 = np.nonzero(ix_ob == True)[0]
+
+                                            tmp_dff = np.mean(spks[ix_co0, :], axis=0) - np.mean(spks[ix_ob0, :], axis=0)
+                                            tmp_mn = np.mean(spks[np.hstack((ix_co0, ix_ob0)), :], axis=0)
+
+                                            ### If zero tmp_diff; 
+                                            assert(np.all(tmp_dff[tmp_mn == 0.] == 0.))
+                                            tmp_mn[tmp_mn == 0.] = 1.
+
+                                            perc_dff = np.array([float(td)/float(tm) for _, (td, tm) in enumerate(zip(tmp_dff, tmp_mn))])
+                                            diffs.append(perc_dff)
+                                        else:
+                                            diffs.append(np.mean(spks[ix_co, :], axis=0) - np.mean(spks[ix_ob, :], axis=0))
                                     #### Get the covariance and plot that: #####
 
                                     for n in range(N): 
                                         ks, pv = scipy.stats.ks_2samp(spks[ix_co, n], spks[ix_ob, n])
                                         if pv < 0.05:
-                                            sig_diffs.append(np.mean(spks[ix_co, n]) - np.mean(spks[ix_ob, n]))
+                                            pass
+                                            #sig_diffs.append(np.mean(spks[ix_co, n]) - np.mean(spks[ix_ob, n]))
 
                                         if plot_ex:
                                             #if np.logical_and(len(ix_co) > 30, len(ix_ob) > 30):
-                                            if axex_cnt < 40:
-                                                if np.logical_and(mag_i > 1, n == 38): 
-                                                    axi = axex[axex_cnt / 9, axex_cnt %9]
+                                            if i_d == 0:
+                                                if axex_cnt < 4:
+                                                    if np.logical_and(mag_i > 1, n == 38): 
+                                                        if np.logical_and(targi == 4, targi2 == 5):
+                                                            axi = axex[axex_cnt]# / 9, axex_cnt %9]
 
-                                                    util_fcns.draw_plot(0, 10*spks[ix_co, n], co_obs_cmap[0], 'white', axi)
-                                                    util_fcns.draw_plot(1, 10*spks[ix_ob, n], co_obs_cmap[1], 'white', axi)
+                                                            util_fcns.draw_plot(0, 10*spks[ix_co, n], co_obs_cmap[0], 'white', axi)
+                                                            util_fcns.draw_plot(1, 10*spks[ix_ob, n], co_obs_cmap[1], 'white', axi)
 
-                                                    axi.set_title('A:%d, M:%d, NN%d, \nCOT: %d, OBST: %d, Monk:%s'%(ang_i, mag_i, n, targi, targi2, animal),fontsize=6)
-                                                    axi.set_ylabel('Firing Rate (Hz)')
-                                                    axi.set_xlim([-.5, 1.5])
-                                                    #axi.set_ylim([-1., 10*(1+np.max(np.hstack(( spks[ix_co, n], spks[ix_ob, n]))))])
-                                                    axex_cnt += 1
-                                                    if axex_cnt == 40:
-                                                        fex.tight_layout()
-                                                        fex.savefig(fig_dir + 'monk_%s_ex_mean_diffs.svg'%animal)
+                                                            print('Animal %s, Day %d, Tg CO %d, Tg OB %d, ang %d, mag %d, mFR Co = %.2f, mFR OB = %.2f'%(animal,
+                                                                i_d, targi, targi2, ang_i, mag_i, np.mean(10*spks[ix_co, n]), np.mean(10*spks[ix_ob, n])))
+
+                                                            axi.set_title('A:%d, M:%d, NN%d, \nCOT: %d, OBST: %d, Monk:%s'%(ang_i, mag_i, n, targi, targi2, animal),fontsize=6)
+                                                            #axi.set_ylabel('Firing Rate (Hz)')
+                                                            axi.set_xlim([-.5, 1.5])
+                                                            #axi.set_ylim([-1., 10*(1+np.max(np.hstack(( spks[ix_co, n], spks[ix_ob, n]))))])
+                                                            axex_cnt += 1
+                                                            if axex_cnt == 4:
+                                                                fex.tight_layout()
+                                                                fex.savefig(fig_dir + 'monk_%s_ex_mean_diffs.eps'%animal)
 
             if len(sig_diffs) > 0:
                 SD = np.abs(np.hstack((sig_diffs)))*10 # to Hz
@@ -408,7 +434,10 @@ def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs 
                 SD = []; 
 
             #### Absolute difference in means; 
-            AD = np.abs(np.hstack((diffs)))*10 # to Hz
+            if percent_change:
+                AD = np.abs(np.hstack((diffs))) ## Fraction, no need to convert to hz
+            else:
+                AD = np.abs(np.hstack((diffs)))*10 # to Hz
             if cov:
                 assert(len(AD) <= 4*8*8*8*N*(N-1))
             else:
@@ -424,18 +453,24 @@ def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs 
                 ### add all the dots 
                 ax.plot(np.random.randn(len(D))*.1 + i*.3 + i_d, D, '.', color='gray', markersize=1.5, alpha = .5)
         
-        ax.set_ylabel('Abs Hz Diff Across Conditions')
+        if percent_change:
+            ax.set_ylabel('Abs Fraction Change Across Conditions')
+        else:
+            ax.set_ylabel('Abs Hz Diff Across Conditions')
         ax.set_xlabel('Days')
         ax.set_xlim([-1, ndays + 1])
         if cov:
             pass
         else:
-            ax.set_ylim([0., 20.])
+            if percent_change:
+                ax.set_ylim([0., 3.])
+            else:
+                ax.set_ylim([0., 20.])
         ax.set_title('Monk '+animal[0].capitalize())
         f.tight_layout()
-        f.savefig(fig_dir + 'monk_%s_mean_diffs_box_plots_cov_%s.png' %(animal, str(cov)), transparent = True)
+        f.savefig(fig_dir + 'monk_%s_mean_diffs_box_plots_cov_%s_perc_diff%s.eps' %(animal, str(cov), str(percent_change)), transparent = True)
 
-def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False):
+def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False, percent_change = False):
     ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
     ### Plot within a bar 
     ### Plot only sig. different ones
@@ -476,9 +511,9 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
             commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
             ### Now go through combos and plot 
+            spks_shuff = np.zeros_like(spks)
             for mag_i in range(4):
                 for ang_i in range(8):
-                    spks_shuff = np.zeros_like(spks)
                     
                     #### Get the command-specifci indices; 
                     all_ix = np.nonzero(np.logical_and(commands_disc[:, 0] == mag_i, commands_disc[:, 1] == ang_i))[0]
@@ -489,6 +524,12 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
                     ### shuffle up the spks for this particular command ###
                     spks_shuff[all_ix, :] = spks[all_ix[shuff_ix], :]
 
+            assert(np.allclose(np.sum(spks_shuff, axis=0), np.sum(spks, axis=0)))
+            assert(np.allclose(np.mean(spks_shuff, axis=0), np.mean(spks, axis=0)))
+
+            for mag_i in range(4):
+                for ang_i in range(8):
+                    all_ix = np.nonzero(np.logical_and(commands_disc[:, 0] == mag_i, commands_disc[:, 1] == ang_i))[0]
                     for targi in np.unique(targ):
                         ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
                         ix_co0 = np.nonzero(ix_co == True)[0]
@@ -531,20 +572,35 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
                                         diffs_x = util_fcns.get_cov_diffs(ix_co2, ix_ob2, spks, diffs_x)
 
                                     else:
-                                        ### make the plot: 
-                                        diffs_shuff.append(np.mean(spks_shuff[ix_co1, :], axis=0) - np.mean(spks_shuff[ix_ob1, :], axis=0))
-                                        diffs_shuff.append(np.mean(spks_shuff[ix_co2, :], axis=0) - np.mean(spks_shuff[ix_ob2, :], axis=0))
-                                        
-                                        diffs_wi.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_co2, :], axis=0))
-                                        diffs_wi.append(np.mean(spks[ix_ob1, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
+                                        if percent_change: 
+                                            ### make the plot: 
+                                            diffs_shuff.append(return_perc_diff(spks_shuff, ix_co1, ix_ob1))
+                                            diffs_shuff.append(return_perc_diff(spks_shuff, ix_co2, ix_ob2))
 
-                                        diffs_x.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_ob1, :], axis=0))
-                                        diffs_x.append(np.mean(spks[ix_co2, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
+                                            diffs_wi.append(return_perc_diff(spks, ix_co1, ix_co2))
+                                            diffs_wi.append(return_perc_diff(spks, ix_ob1, ix_ob2))
+
+                                            diffs_x.append(return_perc_diff(spks, ix_co1, ix_ob1))
+                                            diffs_x.append(return_perc_diff(spks, ix_co2, ix_ob2))
+
+                                        else:
+                                            ### make the plot: 
+                                            diffs_shuff.append(np.mean(spks_shuff[ix_co1, :], axis=0) - np.mean(spks_shuff[ix_ob1, :], axis=0))
+                                            diffs_shuff.append(np.mean(spks_shuff[ix_co2, :], axis=0) - np.mean(spks_shuff[ix_ob2, :], axis=0))
+                                            
+                                            diffs_wi.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_co2, :], axis=0))
+                                            diffs_wi.append(np.mean(spks[ix_ob1, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
+
+                                            diffs_x.append(np.mean(spks[ix_co1, :], axis=0) - np.mean(spks[ix_ob1, :], axis=0))
+                                            diffs_x.append(np.mean(spks[ix_co2, :], axis=0) - np.mean(spks[ix_ob2, :], axis=0))
 
             if cov:
                 mult = 1; 
             else: 
-                mult = 10; 
+                if percent_change:
+                    mult = 1;
+                else:
+                    mult = 10; 
 
             AD_sh = np.abs(np.hstack((diffs_shuff)))*mult # to hz; 
             AD_wi = np.abs(np.hstack((diffs_wi)))*mult # to Hz
@@ -635,10 +691,25 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
         #axsumm.set_ylim([0, .6])
         #axsumm.set_ylabel(' Main Cov. Overlap ') 
     else:
-        axsumm.set_ylim([0, 5])
-        axsumm.set_ylabel(' Mean Diffs (Hz) ') 
+        if percent_change:
+            axsumm.set_ylim([0, 1])
+            axsumm.set_ylabel(' Fraction change in mFR ') 
+        else:
+            axsumm.set_ylim([0, 5])
+            axsumm.set_ylabel(' Mean Diffs (Hz) ') 
     fsumm.tight_layout()
-    #fsumm.savefig(fig_dir+'both_monks_w_vs_x_task_mean_diffs_cov%s.svg'%(str(cov)))
+    fsumm.savefig(fig_dir+'both_monks_w_vs_x_task_mean_diffs_cov%s_perc_change%s.eps'%(str(cov), str(percent_change)))
+
+def return_perc_diff(spks, ix0, ix1):
+    tmp_diff = np.mean(spks[ix0, :], axis=0) - np.mean(spks[ix1, :], axis=0)
+    #tmp_mn = spks[np.hstack((ix0, ix1)), :]
+    #assert(tmp_mn.shape[0] == len(ix0) + len(ix1))
+    tmp_mn = np.mean(spks, axis=0)
+    assert(np.all(tmp_diff[tmp_mn == 0.] == 0.))
+    tmp_mn[tmp_mn==0.] = 1
+    perc_diff = np.array([td/tm for _, (td, tm) in enumerate(zip(tmp_diff, tmp_mn))])
+    assert(len(perc_diff) == spks.shape[1])
+    return perc_diff
 
 def disc_plot(n_disc):
 
@@ -660,7 +731,7 @@ def disc_plot(n_disc):
     # Generate some data...
     # Note that all of these are _2D_ arrays, so that we can use meshgrid
     # You'll need to "grid" your data to use pcolormesh if it's un-ordered points
-    theta, r = np.mgrid[0:2*np.pi:9j, 0:4:5j]
+    theta, r = np.mgrid[-np.pi/8.:(2*np.pi-np.pi/8.):9j, 0:4:5j]
     
     im1 = ax1.pcolormesh(theta, r, n_disc[:, :, 0].T, cmap = co_obs_cmap_cm[0], vmin=np.min(n_disc), vmax=np.max(n_disc))
     im2 = ax2.pcolormesh(theta, r, n_disc[:, :, 1].T, cmap = co_obs_cmap_cm[1], vmin=np.min(n_disc), vmax=np.max(n_disc))
@@ -668,7 +739,7 @@ def disc_plot(n_disc):
     for ax in [ax1, ax2]:
         ax.set_yticklabels([])
         ax.set_xticklabels([])
-    fig.savefig(fig_dir+'grom_day0_neur_38_targ4_targ5_dist.svg')
+    fig.savefig(fig_dir+'grom_day0_neur_38_targ4_targ5_dist.eps')
 
     # divider = make_axes_locatable(ax1)
     # cax = divider.append_axes('right', size='5%', pad=0.05)
@@ -714,11 +785,11 @@ def plot_r2_bar_model_1(min_obs = 15,
                                 'hist_1pos_2psh_1spksm_0_spksp_0', 
                                 'hist_1pos_3psh_1spksm_0_spksp_0', 
                                 'hist_1pos_3psh_1spksm_1_spksp_0',
-                                'hist_1pos_0psh_1spksm_1_spksp_0',
+                                'hist_1pos_0psh_1spksm_1_spksp_0',]
                                 
-                                'hist_1pos_-1psh_1spksm_1_spksp_0', 
-                                'hist_1pos_1psh_1spksm_1_spksp_0',
-                                'hist_1pos_2psh_1spksm_1_spksp_0']
+                                #'hist_1pos_-1psh_1spksm_1_spksp_0', 
+                                #'hist_1pos_1psh_1spksm_1_spksp_0',
+                                #'hist_1pos_2psh_1spksm_1_spksp_0']
 
             models_to_compare = np.array([0, 4, 5])
             models_colors = [[255., 0., 0.], 
@@ -727,10 +798,10 @@ def plot_r2_bar_model_1(min_obs = 15,
                              [101, 44, 144],
                              [101, 44, 144],
                              [39, 169, 225],
-                             [39, 169, 225],
-                             [39, 169, 225],
-                             [39, 169, 225],
-                             [39, 169, 225]]
+                             [39, 169, 225],]
+                             #[39, 169, 225],
+                             #[39, 169, 225],
+                             #[39, 169, 225]]
             xlab = [
             '$a_{t}$',
             '$a_{t}, p_{t-1}$',
@@ -738,10 +809,10 @@ def plot_r2_bar_model_1(min_obs = 15,
             '$a_{t}, p_{t-1}, v_{t-1}, tg$',
             '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk$',
             '$a_{t}, p_{t-1}, v_{t-1}, tg, tsk, y_{t-1}$',
-            '$a_{t}, y_{t-1}$',
-            '$a_{t}, y_{t-1}, p_{t-1}$',
-            '$a_{t}, y_{t-1}, p_{t-1}, v_{t-1}$',
-            '$a_{t}, y_{t-1}, p_{t-1}, v_{t-1}, tg$']
+            '$a_{t}, y_{t-1}$']#,
+            #'$a_{t}, y_{t-1}, p_{t-1}$',
+            #'$a_{t}, y_{t-1}, p_{t-1}, v_{t-1}$',
+            #'$a_{t}, y_{t-1}, p_{t-1}, v_{t-1}, tg$']
 
         elif model_set_number == 2:
             models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
@@ -795,12 +866,12 @@ def plot_r2_bar_model_1(min_obs = 15,
         
         #### Only for task specific ####
         else:
-            # if os.path.exists(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number):
-            #     print('Option 1')
-            #     model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number, 'rb'))
-            # else:
-            print('Option 2')
-            model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_.pkl'%model_set_number, 'rb'))
+            if os.path.exists(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number):
+                print('Option 1')
+                model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number, 'rb'))
+            else:
+                print('Option 2')
+                model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl'%model_set_number, 'rb'))
         
         if include_shuffs is not None:
             shuffs = []
@@ -836,7 +907,7 @@ def plot_r2_bar_model_1(min_obs = 15,
                     raise Exception('No shuffles of index %d identified! '%(shuf_ix))
 
         #### Setup the plot ####
-        f, ax = plt.subplots(figsize=(4, 6))
+        f, ax = plt.subplots(figsize=(6, 6))
         
         ##### Data holder for either mean of individual neurons or population R2 ####
         ### Will be normalized by baseline if that setting is selected ######
@@ -871,7 +942,7 @@ def plot_r2_bar_model_1(min_obs = 15,
                     pdata = model_dict[i_d, models_to_include[0]]
                 else:
                     print('General task spec baseline, model: %s, %d' %(models_to_include[0], task_spec_ix))
-                    pdata = model_dict[i_d, models_to_include[0]]#[:, :, task_spec_ix]
+                    pdata = model_dict[i_d, models_to_include[0]][:, :, task_spec_ix]
 
                 tdata = model_dict[i_d, 'spks']
                 R2_baseline = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
@@ -885,7 +956,7 @@ def plot_r2_bar_model_1(min_obs = 15,
                 if task_spec_ix is None:
                     pdata = model_dict[i_d, mod]
                 else:
-                    pdata = model_dict[i_d, mod]#[:, :, task_spec_ix]
+                    pdata = model_dict[i_d, mod][:, :, task_spec_ix]
 
                 ### Get population R2 ### 
                 R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
@@ -920,7 +991,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 
                     for i_s, shuf in enumerate(shuffs):
                         tdata = shuf[i_d, 'spks']
-                        pdata = shuf[i_d, mod]#[:, :, task_spec_ix]
+                        pdata = shuf[i_d, mod][:, :, task_spec_ix]
                         R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
 
                         if perc_increase:
@@ -941,7 +1012,6 @@ def plot_r2_bar_model_1(min_obs = 15,
 
             #### Line plot of R2 w increasing models #####
             ax.plot(mdz, tmp, '-', color='gray', linewidth = 1.)
-
 
         #### Plots total mean ###
         tmp = []; tmp_e = []; 
@@ -976,10 +1046,10 @@ def plot_r2_bar_model_1(min_obs = 15,
         ax.set_xticklabels(xlab, rotation=45)#, fontsize=6)
 
         f.tight_layout()
-        # if task_spec_ix is None:
-        #     f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
-        # else:
-        #     f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d_tsk_spec_%d.svg'%(pop_str, perc_increase, model_set_number, task_spec_ix))
+        if task_spec_ix is None:
+            f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
+        else:
+            f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d_tsk_spec_%d.eps'%(pop_str, perc_increase, model_set_number, task_spec_ix))
         
         ##### Print stats ####
         if model_set_number == 1:
@@ -2374,6 +2444,12 @@ def reinventing_model_7(model_set_number = 7, data = None, data_demean = None):
     ###     b) overall R2 -- action 
     ###     c) command mean diffs 
     ###     d) condition spec means 
+    ###     e) % correct in next action predicitons (CW vs. CCW)
+    ###     f) % correct in mag direction 
+
+    ###     g) distribution of eigenvalues 
+    ###     h) potent dynamics? 
+
 
     fr2, axr2 = plt.subplots(nrows = 3, figsize = (8, 15))
     Xr2 = [[], []]
@@ -2409,7 +2485,7 @@ def reinventing_model_7(model_set_number = 7, data = None, data_demean = None):
             ### For each day ###
             for i_d in range(analysis_config.data_params[animal+'_ndays']): 
 
-                ### Get deocder ###
+                ### Get decoder ###
                 KG = util_fcns.get_decoder(animal, i_d)
 
                 tsk = dat[i_d, 'task']
@@ -2418,8 +2494,8 @@ def reinventing_model_7(model_set_number = 7, data = None, data_demean = None):
                 
                 spks = dat[i_d, 'spks']
                 pred_spks = dat[i_d, model_nm] # T x N x 3
-
                 psh = dat[i_d, 'np']
+
                 pred_psh = [np.dot(KG, pred_spks[:, :, k].T).T for k in range(3)]
                 pred_psh = np.dstack((pred_psh))
                 assert(psh.shape[0] == pred_psh.shape[0])
@@ -2487,11 +2563,177 @@ def reinventing_model_7(model_set_number = 7, data = None, data_demean = None):
         axr2[i_p].set_xticks(np.hstack((Xr2[1])))
         axr2[i_p].set_xticklabels(np.hstack((Xr2[0])), rotation = 45, fontsize=8)
     axr2[i_p].set_title('Neur Demean: CO | OBS | COMB used to fit task demeaned spikes')
+    
+    #### Preeya 
+    axr2[2].set_ylabel('Neural pred w/ demeaning by task')
     fr2.tight_layout()
 
+def reinventing_model_7_w_sig(model_set_number = 7, data = None,
+    task_spec_ix = 0):
+    '''
+    Same as above but comparing CO vs. GEN for models that were fit with same amount of data; 
+    '''
+    ### Top row = CO data, bottom row = OBS data 
+    ### LEft col = neural, left col = action 
+    fr2, axr2 = plt.subplots(nrows = 2, ncols = 2, figsize = (8, 8))
+    Xr2 = [[], []]
+    
+    ### LME model fit; ####
+    R2_lme = defaultdict(list)
+    Modfit_lme =defaultdict(list)
+    Day_Tsk_fit_lme = defaultdict(list)
+    Neur_act_lme =defaultdict(list)
+
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+
+    for ia, animal in enumerate(['grom', 'jeev']):
+        
+        ### Load the model with matching number of samples // load the model WITH intercept 
+        if data is None:
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
+        else:
+            dat = data[ia]
+
+        ### Plotting; 
+        ### CO/OBS data R2 avg. for models fit on CO / OBS / gen applied to ALL data; 
+        model_nms = ['hist_1pos_0psh_0spksm_1_spksp_0']#, 'hist_1pos_4psh_0spksm_1_spksp_0']
+        model_label_nms = ['$y_t|y_{t-1}$']#, '$y_t|y_{t-1}, tsk$']
+        
+        ### To keep track of bar plots 
+        r2_xlab = []
+        r2_xtic = []
+        
+        ### Then after each plot, will have ###
+        tmp_lines = defaultdict(list)
+
+        for i_m, model_nm in enumerate(model_nms):
+
+            ### For each day ###
+            for i_d in range(analysis_config.data_params[animal+'_ndays']): 
+
+                ### Get decoder ###
+                KG = util_fcns.get_decoder(animal, i_d)
+
+                tsk = dat[i_d, 'task']
+                trg = dat[i_d, 'targ']
+                ix_co = np.nonzero(tsk == 0)[0]
+                ix_ob = np.nonzero(tsk == 1)[0]
+                
+                spks = dat[i_d, 'spks']
+                pred_spks = dat[i_d, model_nm] # T x N x 3
+                
+                psh = dat[i_d, 'np']
+                pred_psh = [np.dot(KG, pred_spks[:, :, k].T).T for k in range(3)]
+                pred_psh = np.dstack((pred_psh))
+                assert(psh.shape[0] == pred_psh.shape[0])
+                assert(psh.shape[1] == pred_psh.shape[1])
+
+                for mod_fit, mod_fitdat in enumerate(['CO', 'OBS', 'COMB']):
+                    if mod_fit in [task_spec_ix, 2]:        
+
+                        #### Overall R2 of the models  
+                        n0 = util_fcns.get_R2(spks[ix_co, :], pred_spks[ix_co, :, mod_fit])
+                        n1 = util_fcns.get_R2(spks[ix_ob, :], pred_spks[ix_ob, :, mod_fit])
+                        
+                        a0 = util_fcns.get_R2(psh[ix_co, :], pred_psh[ix_co, :, mod_fit])
+                        a1 = util_fcns.get_R2(psh[ix_ob, :], pred_psh[ix_ob, :, mod_fit])
+
+                        tmp_lines[0, i_d, 'neur'].append(n0)
+                        tmp_lines[1, i_d, 'neur'].append(n1)
+
+                        tmp_lines[0, i_d, 'act'].append(a0)
+                        tmp_lines[1, i_d, 'act'].append(a1)
+
+                        R2_lme[animal, 0].append(n0)
+                        R2_lme[animal, 1].append(n1)
+                        Modfit_lme[animal, 0].append(mod_fit)
+                        Modfit_lme[animal, 1].append(mod_fit)
+                        Day_Tsk_fit_lme[animal, 0].append(i_d*100 + 0)
+                        Day_Tsk_fit_lme[animal, 1].append(i_d*100 + 1)
+                        Neur_act_lme[animal, 0].append(0)
+                        Neur_act_lme[animal, 1].append(0)
+                        
+                        R2_lme[animal, 0].append(a0)
+                        R2_lme[animal, 1].append(a1)
+                        Modfit_lme[animal, 0].append(mod_fit)
+                        Modfit_lme[animal, 1].append(mod_fit)
+                        Day_Tsk_fit_lme[animal, 0].append(i_d*100 + 0)
+                        Day_Tsk_fit_lme[animal, 1].append(i_d*100 + 1)
+                        Neur_act_lme[animal, 0].append(1)
+                        Neur_act_lme[animal, 1].append(1)
+                    
+                        if i_d == 0:
+                            r2_xlab.append('%s: Mod %s, Fit %s' %(animal, model_label_nms[i_m], mod_fitdat))
+                            r2_xtic.append(ia*4 + mod_fit)
+                
+                ############ Assess command means ############
+                pred_command_mns = dict()
+                true_command_mns = dict()
+
+                pred_command_mns_cond = dict()
+                true_command_mns_cond = dict()
+
+                #### Get command bins; 
+                command_bins = util_fcns.commands2bins([psh], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                
+                for magi in range(4):
+                    for angi in range(8):
+                        ix = np.nonzero(np.logical_and(command_bins[:, 0] == magi, command_bins[:, 1] == angi))[0]
+                        
+                        if len(ix) > min_obs:
+                            true_command_mns.append(np.mean(spks[ix, :], axis=0))
+                            pred_command_mns.append(np.mean(pred_spks[ix, :], axis=0))
+
+                        for targi in range(10):
+                            for targi2 in range(10):
+
+                                ix_co_i = (command_bins[:, 0] == magi) & (command_bins[:, 1] == angi) & (tsk == 0) & (trg == targi)
+
+
+
+        ### Aggregate for bars 
+        model_R2s = defaultdict(list)
+
+        ### Plot individual days 
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+            for i_p, pl in enumerate(['neur', 'act']):
+                
+                ### Plot Days# ###
+                axr2[0, i_p].plot(r2_xtic, np.hstack((tmp_lines[0, i_d, pl])), '.-', color=analysis_config.pref_colors[i_d])
+                axr2[1, i_p].plot(r2_xtic, np.hstack((tmp_lines[1, i_d, pl])), '.--', color=analysis_config.pref_colors[i_d])
+                axr2[0, i_p].set_title(pl)
+
+                for i in range(len(np.hstack((tmp_lines[0, i_d, pl])))):
+                    model_R2s[i, i_p, 0].append(tmp_lines[0, i_d, pl][i])
+                    model_R2s[i, i_p, 1].append(tmp_lines[1, i_d, pl][i])
+
+        for i, xt in enumerate(r2_xtic):
+            for i_p, pl in enumerate(['neur', 'act']):
+            
+                axr2[0, i_p].bar(xt, np.mean(model_R2s[i, i_p, 0]), width = 1., color = 'gray', alpha = .3)
+                axr2[1, i_p].bar(xt, np.mean(model_R2s[i, i_p, 1]), width = 1., color = 'gray', alpha = .3)
+                
+        #### get the LME model significance value ####
+        ix_co_n = np.nonzero(np.hstack((Neur_act_lme[animal, 0])) == 0)[0]
+        ix_co_a = np.nonzero(np.hstack((Neur_act_lme[animal, 0])) == 1)[0]
+        ix_obs_n = np.nonzero(np.hstack((Neur_act_lme[animal, 1])) == 0)[0]
+        ix_obs_a = np.nonzero(np.hstack((Neur_act_lme[animal, 1])) == 1)[0]
+
+        task_lab = ['CO data', 'Obs Data']
+        for na, ixs in enumerate([[ix_co_n, ix_obs_n], [ix_co_a, ix_obs_a]]):
+            for co_obs, ix in enumerate(ixs):
+                pv, slp = util_fcns.run_LME(np.hstack((Day_Tsk_fit_lme[animal, co_obs]))[ix], np.hstack((Modfit_lme[animal, co_obs]))[ix], np.hstack((R2_lme[animal, co_obs]))[ix], bar_plot = False)
+        
+                ### PLot this guy; 
+                axr2[co_obs, na].plot(np.array([0, 2]) + 3*ia, [.5, .5], 'k-')
+                axr2[co_obs, na].text(1 + 4*ia, .48, '%.4f'%pv)
+                axr2[co_obs, na].set_ylabel(task_lab[co_obs])
+
+        ####### Test command means ######
+        #for 
 
     
-
+    fr2.tight_layout()
 def generic_r2_plotter(model_set_number, model_nms, model_suffx, plot_ix = None, 
     neural_or_action = 'neural', ylabs = None, savedir = None):
     '''
