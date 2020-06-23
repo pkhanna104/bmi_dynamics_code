@@ -6,7 +6,355 @@ import matplotlib as mpl
 import numpy as np 
 import matplotlib.pyplot as plt
 import scipy.stats
+from collections import defaultdict 
+import seaborn
+seaborn.set(font='Arial',context='talk',font_scale=1.1, style='white')
 
+###### notebook fcns #######
+
+def scatters_and_barplots(include_shuffle = False, only_potent = False):
+    ''' 
+    method to get accuracy of angle / magnitude
+    '''
+    all_stats_dict = {}
+    save = False
+    for animal in ['jeev', 'grom']:
+        if animal == 'grom':
+            ndays = 9
+        elif animal == 'jeev':
+            ndays = 4
+        
+        stats_dict = defaultdict(list)
+        pot_stats_dict = defaultdict(list)
+            
+        for dyn_model in ['hist_1pos_0psh_0spksm_1_spksp_0']: #### Model name we care about 
+            for day in range(ndays):
+                for mod in [7]: ### Model set number; 
+                    for mod_type in [2]: ### task_spec_ix = general model 
+
+                        if include_shuffle:
+                            ang_stats, mag_stats, perc_corr, ang_shuff, mag_shuff, perc_shuff = plot_scatters(animal, mod, dyn_model, save, 
+                                                             day, minobs = 15, model_type = mod_type, only_potent = only_potent, include_shuffle = include_shuffle)
+                        else:
+                            ang_stats, mag_stats, perc_corr = plot_scatters(animal, mod, dyn_model, save, 
+                                                             day, minobs = 15, model_type = mod_type, only_potent = only_potent)
+                        
+                        #### Save this stuff, skip across condition ####
+                        stats_dict[mod_type, 'ang', 'trans'].append(ang_stats)
+                        stats_dict[mod_type, 'mag', 'trans'].append(mag_stats)
+
+                        stats_dict[mod_type, 'pc', 'trans'].append(perc_corr['true'])
+                        stats_dict[mod_type, 'pc', 'cw', 'trans'].append(perc_corr['cw'])
+                        stats_dict[mod_type, 'pc', 'ccw', 'trans'].append(perc_corr['ccw'])
+                        stats_dict[mod_type, 'pc', 'mag', 'trans'].append(perc_corr['mag'])
+                        stats_dict[mod_type, 'pc', 'ang_pw', 'trans'].append(perc_corr['ang_pairwise'])
+                    
+                        if include_shuffle:
+                            stats_dict[mod_type, 'ang', 'trans_shuff'].append(ang_shuff)
+                            stats_dict[mod_type, 'mag', 'trans_shuff'].append(mag_shuff)
+
+                            stats_dict[mod_type, 'pc', 'trans_shuff'].append(perc_shuff['true'])
+                            stats_dict[mod_type, 'pc', 'cw', 'trans_shuff'].append(perc_shuff['cw'])
+                            stats_dict[mod_type, 'pc', 'ccw', 'trans_shuff'].append(perc_shuff['ccw'])
+                            stats_dict[mod_type, 'pc', 'mag', 'trans_shuff'].append(perc_shuff['mag'])
+                            stats_dict[mod_type, 'pc', 'ang_pw', 'trans_shuff'].append(perc_shuff['ang_pairwise'])
+
+        ##### Save this ######
+        all_stats_dict[animal] = copy.deepcopy(stats_dict)
+
+    return all_stats_dict
+
+def plot_barplots(all_stats_dict, include_shuffle):
+
+    ndays = dict(grom=9, jeev=4)
+    blue = np.array([39, 169, 225])/255.
+
+    plot_types = ['trans']
+    if include_shuffle:
+        plot_types.append('trans_shuff')
+    
+    ########## Bar plots of metrics ###########
+    for i_a, animal in enumerate(['jeev', 'grom']):
+        lme = dict(ang_pc = [], ang_pc_shuff = [], mag_pc = [], mag_shuff = [], day = [], ang_pw = [], 
+            ang_pw_shuff = [])
+
+        for i_d in range(ndays[animal]):
+            
+            ### Percent Correct CW / CCW ###
+            tmp = all_stats_dict[animal][2, 'pc', 'trans'][i_d]
+            pc = float(tmp[0]) / float(tmp[1])
+            lme['ang_pc'].append(pc)
+
+            tmp = all_stats_dict[animal][2, 'pc', 'trans_shuff'][i_d]
+            pc = float(tmp[0]) / float(tmp[1])
+            lme['ang_pc_shuff'].append(pc)
+
+            ##### Angle pairwise relationships #####
+            tmp = all_stats_dict[animal][2, 'pc', 'ang_pw', 'trans'][i_d]
+            pc = float(tmp[0]) / float(tmp[1])
+            lme['ang_pw'].append(pc)
+
+            tmp = all_stats_dict[animal][2, 'pc', 'ang_pw', 'trans_shuff'][i_d]
+            pc = float(tmp[0]) / float(tmp[1])
+            lme['ang_pw_shuff'].append(pc)
+
+            ### Magnitude change; ####
+            tmp = all_stats_dict[animal][2, 'pc', 'mag', 'trans'][i_d]
+            pc = float(tmp[0])/float(tmp[1])
+            lme['mag_pc'].append(pc)
+            
+            tmp = all_stats_dict[animal][2, 'pc', 'mag', 'trans_shuff'][i_d]
+            pc = float(tmp[0])/float(tmp[1])
+            lme['mag_shuff'].append(pc)
+            
+            lme['day'].append(i_d)
+
+        val_ang = np.hstack(( np.hstack(( lme['ang_pc'] )), np.hstack((lme['ang_pc_shuff'])) ))
+        val_ang_pw = np.hstack(( np.hstack(( lme['ang_pw'] )), np.hstack((lme['ang_pw_shuff'])) ))
+        
+        grp_ang = np.hstack(( np.zeros((ndays[animal])) , np.zeros((ndays[animal])) + 1 ))
+        day_ang = np.hstack(( np.hstack(( lme['day'] )), np.hstack(( lme['day'] )) ))
+        
+        pv_ang, slp = util_fcns.run_LME(day_ang, grp_ang, val_ang)
+        print('Animal %s,, Angle CW/CCW predictions, pv = %.4f, slp = %.4f' %(animal, pv_ang, slp))
+        
+        pv_ang_pw, slp = util_fcns.run_LME(day_ang, grp_ang, val_ang_pw)
+        print('Animal %s,, Angle CW/CCW predictions PAIRWISE, pv = %.4f, slp = %.4f' %(animal, pv_ang_pw, slp))
+
+        import pdb; pdb.set_trace()
+
+        val_mag = np.hstack(( np.hstack(( lme['mag_pc'] )), np.hstack((lme['mag_shuff'])) ))
+        pv_mag, slp = util_fcns.run_LME(day_ang, grp_ang, val_mag)
+        print('Animal %s,, MAG predictions, pv = %.4f, slp = %.4f' %(animal, pv_mag, slp))
+        
+        pv_ast_ang, pv_ast_mag, pv_ast_ang_pw = get_stars([pv_ang, pv_mag, pv_ang_pw])
+
+        ######### Bar plot ##########
+        alpha = .7
+
+        f, ax = plt.subplots(ncols = 3, figsize = (15, 5))
+        ix0 = np.nonzero(grp_ang == 0)[0]
+        ix1 = np.nonzero(grp_ang == 1)[0]
+
+        ax[0].bar(0, np.mean(val_ang[ix0]), width = 1., color = blue, alpha = alpha)
+        ax[0].bar(1, np.mean(val_ang[ix1]), width = 1., color = 'gray', alpha = alpha)
+
+        ax[1].bar(0, np.mean(val_mag[ix0]), width = 1., color = blue, alpha = alpha)
+        ax[1].bar(1, np.mean(val_mag[ix1]), width = 1., color = 'gray', alpha = alpha)
+
+        ax[2].bar(0, np.mean(val_ang_pw[ix0]), width = 1., color = blue, alpha = alpha)
+        ax[2].bar(1, np.mean(val_ang_pw[ix1]), width = 1., color = 'gray', alpha = alpha)
+
+        ax[0].plot([0, 1], [.95, .95], 'k-')
+        ax[0].text(.5, .96, pv_ast_ang)
+
+        ax[1].plot([0, 1], [.95, .95], 'k-')
+        ax[1].text(.5, .96, pv_ast_mag)
+
+        ax[2].plot([0, 1], [.95, .95], 'k-')
+        ax[2].text(.5, .96, pv_ast_ang_pw)
+
+        for i_d in range(ndays[animal]):
+            ix = np.nonzero(day_ang == i_d)[0]
+            val_day = val_ang[ix]
+            grp_day = grp_ang[ix]
+
+            tmp = [val_day[grp_day == 0], val_day[grp_day==1]]
+            ax[0].plot([0, 1], tmp, '-', color='gray')
+
+            val_mday = val_mag[ix]
+            tmp = [val_mday[grp_day == 0], val_mday[grp_day==1]]
+            ax[1].plot([0, 1], tmp, '-', color='gray')
+
+            val_angpw_day = val_ang_pw[ix]
+            tmp = [val_angpw_day[grp_day == 0], val_angpw_day[grp_day==1]]
+            ax[2].plot([0, 1], tmp, '-', color='gray')
+
+        ax[0].set_ylabel('Percent Correct in CW/CCW direction\n vs. Shuffle')
+        ax[1].set_ylabel('Percent Correct Mag prediction \n vs. Shuffle')
+        ax[2].set_ylabel('Percent Correct Ang prediction \n vs. Shuffle')
+        
+        ax[0].set_ylim([0.4, 1.1])
+        ax[1].set_ylim([0.4, 1.1])
+        ax[2].set_ylim([0.4, 1.1])
+        
+        ax[0].set_xticks([0, 1])
+        ax[0].set_xticklabels(['$y_t | y_{t-1}$', 'shuffle'], rotation = 45, fontsize=14)
+        ax[1].set_xticks([0, 1])
+        ax[1].set_xticklabels(['$y_t | y_{t-1}$', 'shuffle'], rotation = 45, fontsize=14)
+        ax[2].set_xticks([0, 1])
+        ax[2].set_xticklabels(['$y_t | y_{t-1}$', 'shuffle'], rotation = 45, fontsize=14)
+        
+        ax[0].set_title("Animal %s" %(animal))
+        f.tight_layout()
+        f.savefig(analysis_config.config['fig_dir3']+'%s_next_step_pred_real_vs_shuffle.eps' %(animal))
+        # ax.set_ylabel('Perc Correct in CW/CCW direction vs. Chance')
+        # ax.set_xlabel('Days')
+        # ax.set_title("Animal %s, Gen Dyn, XTrans" %(animal))      
+
+def _notebook_dump():
+    # ###### Bar Plots on stats #######
+    # ### Gen vs. Condition specific plots together, 
+    # ### Trans / xcond plots together; 
+    
+    # xlab = []    
+    # ### L = Angle, R = Mag; 
+    # ### Rows = [slp, rv, r2]
+    # ndays = dict(grom=9, jeev=4)
+
+    # for i_a, animal in enumerate(['grom', 'jeev']):
+    #     stats_dict = all_stats_dict[animal]
+    #     colors = dict(trans='purple', xcond='darkblue')
+        
+    #     f, ax = plt.subplots(ncols = 2, nrows = 3, figsize = (8, 10))
+
+    #     ###  Metric x ang/mag x days
+    #     day_lines = np.zeros((3, 2, ndays[animal]))
+
+    #     for i_mt, mt in enumerate([2]):
+    #         for i_am, am in enumerate(['ang', 'mag']):
+    #             for j, jnm in enumerate(['trans']): ### Focus on transitions 
+    #                 for i_s, stats in enumerate([stats_dict]): ### Focus on stats 
+
+    #                     ### Get the temp stat ###
+    #                     tmp = np.vstack((stats[mt, am, jnm]))
+
+    #                     for i_m, met in enumerate(['Slp', 'R-line', 'R2-err']):
+    #                         axi = ax[i_m, i_am]
+
+    #                         if i_s == 0:
+    #                             axi.bar(3*j + i_mt + .5*i_s, np.mean(tmp[:, i_m]), color = colors[jnm], 
+    #                                 alpha = (1. - 0.5*i_mt), width = .5)
+    #                         else:
+    #                             axi.bar(3*j + i_mt + .5*i_s, np.mean(tmp[:, i_m]), color = 'gray', 
+    #                                 alpha = (1. - 0.5*i_mt), width = .5)
+
+    #                         axi.errorbar(3*j + i_mt + .5*i_s, np.mean(tmp[:, i_m]), 
+    #                                      np.std(tmp[:, i_m])/np.sqrt(len(tmp)),
+    #                                      marker = '|', color = 'k')
+
+    #                         axi.set_ylabel(met)
+    #                         axi.set_title(am)
+    #                         day_lines[i_m, i_am, :] = tmp[:, i_m]
+    #                         xlab.append('Pred. %s\nMod Type %d'%(jnm, mt))
+
+    #     f.tight_layout()
+    pass
+
+def get_stars(pv_list):
+    tmp = []
+    for pv in pv_list:
+        if pv < .0001:
+            tmp.append('***')
+        elif pv < .01:
+            tmp.append('**')
+        elif pv < .05:
+            tmp.append('*')
+        else:
+            tmp.append('n.s., pv=%.3f' %(pv))
+    return tmp
+
+def plot_scatters(animal, model_set_number, dyn_model, save, day, minobs = 15, minobs2 = 0,
+                 model_type = 2, only_potent = False, include_shuffle = False):
+    
+    '''
+    get data to make scatters of predicted vs. true angle 
+    '''
+    
+    data = preproc(animal, model_set_number, dyn_model, day, model_type = model_type, 
+                                minobs = minobs, minobs2 = minobs2, only_potent = only_potent, 
+                                include_shuffle = include_shuffle)
+    data['min_obs'] = minobs
+    data['save'] = save
+    data['save_dir'] = save_dir = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/data/pred_scatters/'
+    data['prefix'] = 'xtrans_'+data['prefix']
+
+    ang_stats, mag_stats, perc_corr, fax = plot_real_vs_pred_dAngle_dMag(**data)
+
+    if include_shuffle:
+        data_shuf = copy.deepcopy(data)
+        
+        ### Move the pred_spks_shuff to the pred_spks
+        data_shuf['pred_spks'] = data_shuf['pred_spks_shuff']
+        data_shuf['pred_push'] = data_shuf['pred_push_shuff']
+
+        ang_shuff, mag_shuff, perc_corr_shuff, fax_shuf = plot_real_vs_pred_dAngle_dMag(**data_shuf)
+        ax = fax_shuf[1]
+        if type(ax) is np.ndarray:
+            for axi in ax:
+                tmp = axi.get_title()
+                axi.set_title(tmp+'\n Model type'+str(model_type)+' SHUFF, only pot = '+str(only_potent)+'\n Day = '+str(day))
+        else:
+            tmp = ax.get_title()
+            ax.set_title(tmp+'\n Model type'+str(model_type)+' SHUFF, only pot = '+str(only_potent)+'\n Day = '+str(day))
+
+
+    ax = fax[1]
+    if type(ax) is np.ndarray:
+        for axi in ax:
+            tmp = axi.get_title()
+            axi.set_title(tmp+'\n Model type'+str(model_type)+', only pot = '+str(only_potent)+'\n Day = '+str(day))
+    else:
+        tmp = ax.get_title()
+        ax.set_title(tmp+'\n Model type'+str(model_type)+', only pot = '+str(only_potent)+'\n Day = '+str(day))
+    
+    if include_shuffle:
+        return ang_stats, mag_stats, perc_corr, ang_shuff, mag_shuff, perc_corr_shuff
+    else:
+        return ang_stats, mag_stats, perc_corr
+
+def plot_scatters_xcond(animal, model_set_number, dyn_model, save, day, minobs = 15, minobs2 = 0,
+                       model_type = 2,  only_potent = False):
+    
+    data = preproc(animal, model_set_number, dyn_model, day, model_type = model_type, 
+                                minobs = minobs, minobs2 = minobs2, only_potent = only_potent)
+    data['min_obs'] = minobs
+    data['save'] = save
+    data['save_dir'] = save_dir = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/data/pred_scatters/'
+    data['prefix'] = 'xcond_'+data['prefix']
+    ang_stats, mag_stats = plot_dAngle_dMag_xcond(**data)
+    return ang_stats, mag_stats
+
+def make_tg_compare_plots(animal, model_set_number, save, scale_rad = 2., 
+                   dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0', day = 0, minobs = 10, minobs2 = 3,
+                   model_type = 2.,
+                   save_dir = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/data/action_distributions_w_preds_pls_angmagsubs'):
+    
+    data = preproc(animal, model_set_number, dyn_model, day, model_type = model_type, 
+                                minobs = minobs, minobs2 = minobs2)
+    
+    data['arrow_scale'] = .01; 
+    data['lims'] = 8
+    data['save'] = save
+    data['save_dir'] = save_dir 
+    data['add_ang_mag_subplots'] = True; 
+    data['scale_rad'] = scale_rad; 
+    
+    # ### Go through adjacent targets 
+    for tg0 in range(8):
+        tg1 = np.mod(tg0+1, 8)
+        
+        data['targ0'] = tg0; 
+        data['targ1'] = tg1; 
+        plot_pred(**data)
+
+def make_ALL_plots(animal, model_set_number, save, scale_rad = 2., 
+                   dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0', day = 0, minobs = 10,
+                   model_type = 2.,
+                   save_dir = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/data/action_distributions_all_cond_w_preds_pls_angmagsubs'):
+    
+    data = preproc(animal, model_set_number, dyn_model, day, model_type = model_type, 
+                                minobs = 0, minobs2 = minobs)
+    data['arrow_scale'] = 0.01
+    data['lims'] = 8; 
+    data['save'] = save
+    data['save_dir'] = save_dir; 
+    data['scale_rad'] = scale_rad; 
+    data['add_ang_mag_subplots'] = True
+    
+    plot_pred_across_full_day(**data)
+
+########### Plot action plots #######
 def plot_pred(command_bins=None, push=None, trg=None, tsk=None, bin_num=None, mag_bound=None, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 3,
              arrow_scale = .004, lims = 5, prefix = '', save = False, save_dir = None, pred_push = None, scale_rad = 2.,
              add_ang_mag_subplots = False, **kwargs): 
@@ -680,13 +1028,14 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
     This is a method to plot real change in angle/mag from current bin to next bin for cases where 
     there are at least 15 observations of each
     '''
-    
+
     f, ax = plt.subplots(ncols = 2, figsize = (8, 4))
     
     reg_dict = dict(dA = [], pred_dA = [], dM = [], pred_dM = [])
 
     #### Percent Correct ####
     perc_corr = dict(true = [0, 0], cw = [0, 0], ccw = [0, 0])
+    perc_corr['ang_pairwise'] = [0, 0]
     perc_corr['mag'] = [0, 0]
 
     for m in range(4):
@@ -714,6 +1063,7 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
 
                             ### Store this; 
                             mag_dict[mp, ap] = np.linalg.norm(pred_next_segment_mn)
+                            mag_dict[mp, ap, 'full'] = pred_next_segment_mn 
                             mag_dict['id'].append([mp, ap])
 
                             ### Get angle / magnitude diffs; 
@@ -740,7 +1090,7 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
                             reg_dict['dM'].append(dM)
                             reg_dict['pred_dM'].append(pred_dM)
 
-                            ### Figure out if we should assess precent correct; 
+                            ### Figure out if we should assess precent correct of magnitude 
                             corr_dir = assess_corr_dir([m, a], [mp, ap], segment_mn, pred_next_segment_mn)
 
                             if corr_dir is None:
@@ -794,6 +1144,30 @@ def plot_real_vs_pred_dAngle_dMag(command_bins=None, push=None, bin_num=None, ma
                                     if dtmp == dnorm:
                                         perc_corr['mag'][0] += 1
 
+                    #### Structure within the angles themselves ####
+                    for tmp_m in range(4):
+                        ix_m = np.nonzero(tmp_ids[:, 0] == tmp_m)[0]
+                        if len(ix_m) > 1:
+                            tmp_n = len(ix_m)
+
+                            for i_t0 in range(tmp_n):
+                                tmp_ag0 = tmp_ids[ix_m[i_t0], 1]
+                                tmp_pred0 = mag_dict[tmp_m, tmp_ag0, 'full']
+
+                                for i_t1 in range(i_t0+1, tmp_n):
+                                    tmp_ag1 = tmp_ids[ix_m[i_t1], 1]
+                                    tmp_pred1 = mag_dict[tmp_m, tmp_ag1, 'full']
+
+                                    ### Make sure not the same angle ### 
+                                    assert(tmp_ag1 != tmp_ag0)
+
+                                    ##### Assess if starting from i_t0 and transitioning to i_t1, if angles move in the right direciton; 
+                                    # assess_corr_dir(disc_dir, disc_pred_dir, mn_dir, mn_pred_dir)
+                                    corr_dir = assess_corr_dir([tmp_m, tmp_ag0], [tmp_m, tmp_ag1], tmp_pred0, tmp_pred1)
+                                    assert(corr_dir is not None)
+                                    if corr_dir == True: 
+                                        perc_corr['ang_pairwise'][0] += 1
+                                    perc_corr['ang_pairwise'][1] += 1
 
     reg_dict = util_fcns.hstack_keys(reg_dict)
 
@@ -953,7 +1327,7 @@ def r2a(rad):
 
 ############ Preproc #######
 def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 10, minobs2 = 3,
-    only_potent = False):
+    only_potent = False, include_shuffle = False):
     ''' 
     method for preprocessing/extracting data from tuning model files before doing all the scatter plots 
     model_set_number and dyn_model dictate which model is used; 
@@ -962,6 +1336,7 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     only_potent is used to indicate that only potent neural data should be used to make predictions 
         at the next time step; this involves using the same model, but preprocessing the data used to predict 
         in order to keep only the potent parts; 
+    include_shuffle: adds shuffled to the data set processed; 
     '''
 
     if animal == 'grom':
@@ -972,8 +1347,11 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     ### Open the model type ####
     if model_type in [0, 1, 2]:
         ### Task spec vs. general 
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen.pkl' %(model_set_number), 'rb'))
-    
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
+            
+        if include_shuffle:
+            dat_shuff = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_within_bin_shuff0.pkl' %(model_set_number), 'rb'))
+            
     elif model_type == -1: 
         ### Full model 
         dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
@@ -1007,14 +1385,21 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     if model_type in [0, 1, 2]:
         if only_potent:
             pred_spks = dat[day, dyn_model, 'pot'][:, :, model_type]
+            if include_shuffle:
+                pred_spks_shuff = dat_shuff[day, dyn_model, 'pot'][:, :, model_type]
         else:
             pred_spks = dat[day, dyn_model][:, :, model_type]
-    
+            if include_shuffle:
+                pred_spks_shuff = dat_shuff[day, dyn_model][:, :, model_type]
+
     elif model_type == 'cond':
         if only_potent:
             pred_spks = dat_reconst[day, dyn_model, 'pot']
         else:
             pred_spks = dat_reconst[day, dyn_model]
+
+        if include_shuffle:
+            raise Exception('not yet implemented')
 
     #### True spks #####
     spks = dat[day, 'spks']
@@ -1022,8 +1407,13 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     ### Rest of stuff ####
     if animal == 'grom':
         pred_push = np.dot(K[[3, 5], :], pred_spks.T).T
+        if include_shuffle:
+            pred_push_shuff = np.dot(K[[3, 5], :], pred_spks_shuff.T).T
+
     elif animal == 'jeev':
         pred_push = np.dot(K, pred_spks.T).T
+        if include_shuffle:
+            pred_push_shuff = np.dot(K, pred_spks_shuff.T).T
 
     bin_num = dat[day, 'bin_num']
     tsk = dat[day, 'task']
@@ -1035,6 +1425,9 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     assert(pred_push.shape == push.shape)
     assert(len(tsk) == len(trg) == len(pos) == len(vel) == len(push) == len(bin_num))
     
+    if include_shuffle:
+        assert(spks.shape == pred_spks_shuff.shape == pred_spks.shape)
+
     ### Print the overall R2 of the push; 
     R2 = util_fcns.get_R2(push, pred_push)
     print('R2 of action %.2f' %(R2))
@@ -1048,6 +1441,9 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     
     data = dict(spks = spks, pred_spks = pred_spks, pred_push = pred_push, bin_num = bin_num, tsk = tsk, pos = pos, vel = vel, trg = trg, push = push,
         mag_bound = mag_boundaries[animal, day], command_bins = command_bins, prefix = prefix)
+    if include_shuffle:
+        data['pred_spks_shuff'] = pred_spks_shuff
+        data['pred_push_shuff'] = pred_push_shuff
 
     return data 
 
