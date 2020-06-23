@@ -435,7 +435,7 @@ def plot_rect(ctr, width, height, color):
 		[ctr[0]-d[0], ctr[1]+d[1]],
 		[ctr[0]-d[0], ctr[1]-d[1]]])
 	plt.plot(pts[:,0],pts[:,1],color, linewidth=4)	
-	plt.plot(pts[:,0],pts[:,1],'w', linewidth=1)
+	# plt.plot(pts[:,0],pts[:,1],'w', linewidth=1)
 
 def sim_bmi(cursor_state_in, spk_cnts, F, K): 
 	"""
