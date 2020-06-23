@@ -1,7 +1,7 @@
 ############## Methods to plot models generated in 'generate models' ###########
 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1., style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -880,25 +880,25 @@ def plot_r2_bar_model_1(min_obs = 15,
             pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d__'%model_set_number
 
             for shuf_ix in range(include_shuffs):
-                if os.path.exists('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix)):
-                    print('Shuff option 1')
-                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
+                if os.path.exists('%swithin_bin_shuff%d.pkl'%(pre2, shuf_ix)):
+                    print('Shuff option 2')
+                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre2, shuf_ix), 'rb'))
                     shuffs.append(copy.deepcopy(tmp))
 
                     # tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
                     # shuffs.append(copy.deepcopy(tmp))
 
-                elif os.apth.exists('%swithin_bin_shuff%d.pkl'%(pre2, shuf_ix)):
-                    print('Shuff option 2')
-                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre2, shuf_ix), 'rb'))
+                elif os.path.exists('%swithin_bin_shuff%d.pkl'%(pre3, shuf_ix)):
+                    print('Shuff option 3')
+                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre3, shuf_ix), 'rb'))
                     shuffs.append(copy.deepcopy(tmp))
 
                     # tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre2, shuf_ix), 'rb'))
                     # shuffs.append(copy.deepcopy(tmp))
 
-                elif os.apth.exists('%swithin_bin_shuff%d.pkl'%(pre3, shuf_ix)):
-                    print('Shuff option 3')
-                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre3, shuf_ix), 'rb'))
+                elif os.path.exists('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix)):
+                    print('Shuff option 1')
+                    tmp = pickle.load(open('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix), 'rb'))
                     shuffs.append(copy.deepcopy(tmp))
 
                     # tmp = pickle.load(open('%sfull_shuff%d.pkl'%(pre3, shuf_ix), 'rb'))
@@ -908,6 +908,8 @@ def plot_r2_bar_model_1(min_obs = 15,
 
         #### Setup the plot ####
         f, ax = plt.subplots(figsize=(6, 6))
+        if include_shuffs:
+            fsh, axsh  = plt.subplots(figsize = (6, 6))
         
         ##### Data holder for either mean of individual neurons or population R2 ####
         ### Will be normalized by baseline if that setting is selected ######
@@ -949,6 +951,8 @@ def plot_r2_bar_model_1(min_obs = 15,
                 print('R2 baseline; %.4f' %(R2_baseline))
 
             mdz = [] ### This is to keep track of the future x-axis of shuffles plotted; 
+            mdz_shuff = []; 
+
             for i_mod, mod in enumerate(models_to_include):
                 
                 ###### Predicted data, cross validated ####
@@ -987,7 +991,7 @@ def plot_r2_bar_model_1(min_obs = 15,
                 if include_shuffs is not None:
                     assert(task_spec_ix is not None)
                     ### For each shuffle: 
-                    width = 1./float(2 + len(shuffs))
+                    width = 1./float(len(shuffs))
 
                     for i_s, shuf in enumerate(shuffs):
                         tdata = shuf[i_d, 'spks']
@@ -996,60 +1000,89 @@ def plot_r2_bar_model_1(min_obs = 15,
 
                         if perc_increase:
                             R2_stats.append((R2 - R2_baseline)/R2_baseline)
-                            R2S[i_mod + (i_s+1)*width, i_d] = (R2 - R2_baseline)/R2_baseline
+                            R2S[i_mod + 0.1*(i_s+1)*width, i_d] = (R2 - R2_baseline)/R2_baseline
                         else:
                             R2_stats.append(R2)
-                            R2S[i_mod + (i_s+1)*width, i_d] = R2
+                            R2S[i_mod + 0.1*(i_s+1)*width, i_d] = R2
 
                         D.append(np.zeros_like(R2) + i_d)
-                        Mod.append(np.zeros_like(R2) + i_mod + (i_s+1)*width)
-                        mdz.append(i_mod + (i_s+1)*width)
+                        Mod.append(np.zeros_like(R2) + i_mod + 0.1*(i_s+1)*width)
+                        mdz_shuff.append(i_mod + 0.1*(i_s+1)*width)
 
             ##### Plot this single day #####
-            tmp = []; 
+            day_trace = []; 
             for i_mod2 in mdz:
-                tmp.append(R2S[i_mod2, i_d])
+                day_trace.append(R2S[i_mod2, i_d])
 
             #### Line plot of R2 w increasing models #####
-            ax.plot(mdz, tmp, '-', color='gray', linewidth = 1.)
+            ax.plot(mdz, day_trace, '-', color='gray', linewidth = 1.)
 
-        #### Plots total mean ###
-        tmp = []; tmp_e = []; 
+            if include_shuffs:
+                shday_trace = []; 
+                for i_mod22 in mdz_shuff:
+                    shday_trace.append(R2S[i_mod22, i_d])
+                axsh.plot(mdz, shday_trace, '-', color='gray', linewidth=1.)
+
+        #### Plots total mean pooled over days ###
+        mean_bar = []; std_bar = []; 
         for i_mod3 in mdz:
             tmp2 = []; 
             for i_d in range(ndays[animal]):
                 tmp2.append(R2S[i_mod3, i_d])
             tmp2 = np.hstack((tmp2))
-            #tmp2 = tmp2[~np.isnan(tmp2)]
-
+            
             ## mean 
-            tmp.append(np.mean(tmp2))
+            mean_bar.append(np.mean(tmp2))
 
             ## s.e.m
-            tmp_e.append(np.std(tmp2)/np.sqrt(len(tmp2)))
+            std_bar.append(np.std(tmp2)/np.sqrt(len(tmp2)))
 
         if include_shuffs is None:
             width = 1.
+        else:
+            sh_mean_bar = []; sh_std_bar = []; 
+            for i_mod4 in mdz_shuff:
+                tmp2sh = []; 
+                for i_d in range(ndays[animal]):
+                    tmp2sh.append(R2S[i_mod4, i_d])
+                tmp2sh = np.hstack((tmp2sh))
 
-        ### Overal mean 
+                sh_mean_bar.append(np.mean(tmp2sh))
+                sh_std_bar.append(np.std(tmp2sh)/np.sqrt(len(tmp2sh)))
+
+        ### Overal for the full data #####
         for i_m, i_mod in enumerate(mdz):
+            ### Plot integers; 
             if int(i_mod) == i_mod:
                 color = models_colors[int(i_mod)]
-            else:
-                color = 'gray'
-                
-            ax.bar(i_mod, tmp[i_m], color = color, edgecolor='k', linewidth = 1., width = width, alpha = 0.5)
-            ax.errorbar(i_mod, tmp[i_m], yerr=tmp_e[i_m], marker='|', color='k')        
-        ax.set_ylabel('%s R2, neur, perc_increase R2 %s'%(pop_str, perc_increase))
+            ax.bar(i_mod, mean_bar[i_m], color = color, edgecolor='k', linewidth = 1., width = width, alpha = 0.5)
+            ax.errorbar(i_mod, mean_bar[i_m], yerr=std_bar[i_m], marker='|', color='k')    
 
+            if include_shuffs is not None:
+                axsh.bar(i_mod, sh_mean_bar[i_m], color=color, edgecolor='k', linewidth = 1., width = width, alpha = 0.2)
+                axsh.errorbar(i_mod, sh_mean_bar[i_m], yerr=sh_std_bar[i_m], marker='|', color='k')    
+                ax.set_ylim([-.3, .5])
+                axsh.set_ylim([-.3, .5])
+        ax.set_ylabel('%s R2, neur, perc_increase R2 %s'%(pop_str, perc_increase))
         ax.set_xticks(np.arange(M))
         ax.set_xticklabels(xlab, rotation=45)#, fontsize=6)
-
         f.tight_layout()
+
+        if include_shuffs is not None:
+            axsh.set_ylabel('%s R2, neur, perc_increase R2 %s'%(pop_str, perc_increase))
+            axsh.set_xticks(np.arange(M))
+            axsh.set_xticklabels(xlab, rotation=45)#, fontsize=6)
+            fsh.tight_layout()
+
+        ### Overall for the SHUFFLED data #####
         if task_spec_ix is None:
-            f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.svg'%(pop_str, perc_increase, model_set_number))
+            f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d.eps'%(pop_str, perc_increase, model_set_number))
+            if include_shuffs is not None:
+                fsh.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d_SHUFFLED.eps'%(pop_str, perc_increase, model_set_number))
         else:
             f.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d_tsk_spec_%d.eps'%(pop_str, perc_increase, model_set_number, task_spec_ix))
+            if include_shuffs is not None:
+                fsh.savefig(fig_dir + animal + '_%sr2_behav_models_perc_increase%s_model%d_tsk_spec_%d_SHUFFLED.eps'%(pop_str, perc_increase, model_set_number, task_spec_ix))
         
         ##### Print stats ####
         if model_set_number == 1:
@@ -1078,125 +1111,126 @@ def plot_r2_bar_model_1(min_obs = 15,
                 print '---------------------------'
                 print '---------------------------'
         
-        if pt_2: 
-            f, ax = plt.subplots(ncols = 2)
-            f1, ax1 = plt.subplots(ncols = len(models_to_include), figsize=(12.5, 2.5))
-            f2, ax2 = plt.subplots()
-            ### now comput R2 ###
-            Pred = dict(); Tru = dict(); 
+        # if pt_2: 
+        #     f, ax = plt.subplots(ncols = 2)
+        #     f1, ax1 = plt.subplots(ncols = len(models_to_include), figsize=(12.5, 2.5))
+        #     f2, ax2 = plt.subplots()
+        #     ### now comput R2 ###
+        #     Pred = dict(); Tru = dict(); 
             
-            for i_d in range(ndays[animal]):
+        #     for i_d in range(ndays[animal]):
 
-                ### Basics -- get the binning for the neural push commands: 
-                neural_push = model_dict[i_d, 'np']
+        #         ### Basics -- get the binning for the neural push commands: 
+        #         neural_push = model_dict[i_d, 'np']
 
-                ### Commands
-                commands = util_fcns.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+        #         ### Commands
+        #         commands = util_fcns.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
                 
-                ### Get task / target
-                tsk = model_dict[i_d, 'task']
-                targ = model_dict[i_d, 'trg']
-                bin_num = model_dict[i_d, 'bin_num']
+        #         ### Get task / target
+        #         tsk = model_dict[i_d, 'task']
+        #         targ = model_dict[i_d, 'trg']
+        #         bin_num = model_dict[i_d, 'bin_num']
 
-                ### Now go through each task targ and assess when there are enough observations: 
-                y_true = model_dict[i_d, key]
-                T, N = y_true.shape
+        #         ### Now go through each task targ and assess when there are enough observations: 
+        #         y_true = model_dict[i_d, key]
+        #         T, N = y_true.shape
 
-                ### Neural activity
-                R2 = dict(); 
-                for i_m, mod in enumerate(models_to_include):
-                    R2['co', mod] = []; 
-                    R2['obs', mod] = []; 
-                    R2['both', mod] = []; 
+        #         ### Neural activity
+        #         R2 = dict(); 
+        #         for i_m, mod in enumerate(models_to_include):
+        #             R2['co', mod] = []; 
+        #             R2['obs', mod] = []; 
+        #             R2['both', mod] = []; 
 
-                for i_mag in range(4):
-                    for i_ang in range(8):
-                        for i_t in range(2): # Task 
-                            for targ in range(8): # target: 
-                                ix0 = (commands[:,0] == i_mag) & (commands[:,1] == i_ang) & (tsk == i_t) & (targ == targ)
-                                ix0 = np.nonzero(ix0 == True)[0]
-                                if len(ix0) > min_obs:
+        #         for i_mag in range(4):
+        #             for i_ang in range(8):
+        #                 for i_t in range(2): # Task 
+        #                     for targ in range(8): # target: 
+        #                         ix0 = (commands[:,0] == i_mag) & (commands[:,1] == i_ang) & (tsk == i_t) & (targ == targ)
+        #                         ix0 = np.nonzero(ix0 == True)[0]
+        #                         if len(ix0) > min_obs:
 
-                                    for i_m, model in enumerate(models_to_include):
+        #                             for i_m, model in enumerate(models_to_include):
 
-                                        if task_spec_ix is None:
-                                            y_pred = model_dict[i_d, model]
-                                        else:
-                                            y_pred = model_dict[i_d, model][:, :, task_spec_ix]
+        #                                 if task_spec_ix is None:
+        #                                     y_pred = model_dict[i_d, model]
+        #                                 else:
+        #                                     y_pred = model_dict[i_d, model][:, :, task_spec_ix]
 
-                                        ### Get R2 of this observation: 
-                                        spk_true = np.mean(y_true[ix0, :], axis=0)
-                                        spk_pred = np.mean(y_pred[ix0, :], axis=0)
+        #                                 ### Get R2 of this observation: 
+        #                                 spk_true = np.mean(y_true[ix0, :], axis=0)
+        #                                 spk_pred = np.mean(y_pred[ix0, :], axis=0)
 
-                                        if i_t == 0:
-                                            R2['co', model].append([spk_true, spk_pred])
-                                        elif i_t == 1:
-                                            R2['obs', model].append([spk_true, spk_pred])
+        #                                 if i_t == 0:
+        #                                     R2['co', model].append([spk_true, spk_pred])
+        #                                 elif i_t == 1:
+        #                                     R2['obs', model].append([spk_true, spk_pred])
 
-                                        ### Both 
-                                        R2['both', model].append([spk_true, spk_pred])
+        #                                 ### Both 
+        #                                 R2['both', model].append([spk_true, spk_pred])
 
-                tsk_cols = ['b']#,'r','k']
-                for i_t, tsk in enumerate(['both']):#, 'obs', 'both']):
-                    for i_m, model in enumerate(models_to_include):
+        #         tsk_cols = ['b']#,'r','k']
+        #         for i_t, tsk in enumerate(['both']):#, 'obs', 'both']):
+        #             for i_m, model in enumerate(models_to_include):
 
-                        tru_co = np.vstack(( [R[0] for R in R2[tsk, model]] ))
-                        pre_co = np.vstack(( [R[1] for R in R2[tsk, model]] ))
+        #                 tru_co = np.vstack(( [R[0] for R in R2[tsk, model]] ))
+        #                 pre_co = np.vstack(( [R[1] for R in R2[tsk, model]] ))
 
-                        SSR = np.sum((tru_co - pre_co)**2)# Not over neruons, axis = 0)
-                        SST = np.sum((tru_co - np.mean(tru_co, axis=0)[np.newaxis, :])**2)#, axis=0)
-                        R2_co_pop = 1 - (SSR/SST)
+        #                 SSR = np.sum((tru_co - pre_co)**2)# Not over neruons, axis = 0)
+        #                 SST = np.sum((tru_co - np.mean(tru_co, axis=0)[np.newaxis, :])**2)#, axis=0)
+        #                 R2_co_pop = 1 - (SSR/SST)
                         
-                        SSR = np.sum((tru_co - pre_co)**2, axis = 0)
-                        SST = np.sum((tru_co - np.mean(tru_co, axis=0)[np.newaxis, :])**2, axis=0)
-                        R2_co_neur = 1 - (SSR/SST)
+        #                 SSR = np.sum((tru_co - pre_co)**2, axis = 0)
+        #                 SST = np.sum((tru_co - np.mean(tru_co, axis=0)[np.newaxis, :])**2, axis=0)
+        #                 R2_co_neur = 1 - (SSR/SST)
 
-                        ax[0].plot(i_m, R2_co_pop, 'k*')
-                        ax[0].set_ylabel('R2 -- of mean task/targ/command/neuron (population neuron R2)')
-                        ax[0].set_ylim([-1, 1.])
+        #                 ax[0].plot(i_m, R2_co_pop, 'k*')
+        #                 ax[0].set_ylabel('R2 -- of mean task/targ/command/neuron (population neuron R2)')
+        #                 ax[0].set_ylim([-1, 1.])
 
-                        ax[1].plot(i_m, np.nanmean(R2_co_neur), 'k*')
-                        ax[1].set_ylabel('R2 -- of mean task/targ/command/neuron (individual neuron R2)')
-                        ax[1].set_ylim([-1, 1.])
+        #                 ax[1].plot(i_m, np.nanmean(R2_co_neur), 'k*')
+        #                 ax[1].set_ylabel('R2 -- of mean task/targ/command/neuron (individual neuron R2)')
+        #                 ax[1].set_ylim([-1, 1.])
 
-                        ax1[i_m].plot(tru_co.reshape(-1), pre_co.reshape(-1), 'k.', alpha=.2)
-                        try:
-                            Tru[model].append(tru_co.reshape(-1))
-                            Pred[model].append(pre_co.reshape(-1))
-                        except:
-                            Tru[model] = [tru_co.reshape(-1)]
-                            Pred[model] = [pre_co.reshape(-1)]
+        #                 ax1[i_m].plot(tru_co.reshape(-1), pre_co.reshape(-1), 'k.', alpha=.2)
+        #                 try:
+        #                     Tru[model].append(tru_co.reshape(-1))
+        #                     Pred[model].append(pre_co.reshape(-1))
+        #                 except:
+        #                     Tru[model] = [tru_co.reshape(-1)]
+        #                     Pred[model] = [pre_co.reshape(-1)]
                             
-            for i_m, model in enumerate(models_to_include):
-                slp,intc,rv,pv,err =scipy.stats.linregress(np.hstack((Tru[model])), np.hstack((Pred[model])))
-                x_ = np.linspace(np.min(np.hstack((Tru[model]))), np.max(np.hstack((Tru[model]))))
-                y_ = slp*x_ + intc; 
-                ax1[i_m].plot(x_, y_, '-', linewidth=.5)
-                ax1[i_m].set_title('%s, \n pv=%.2f\nrv=%.2f\nslp=%.2f' %(model, pv, rv, slp),fontsize=8)
+        #     for i_m, model in enumerate(models_to_include):
+        #         slp,intc,rv,pv,err =scipy.stats.linregress(np.hstack((Tru[model])), np.hstack((Pred[model])))
+        #         x_ = np.linspace(np.min(np.hstack((Tru[model]))), np.max(np.hstack((Tru[model]))))
+        #         y_ = slp*x_ + intc; 
+        #         ax1[i_m].plot(x_, y_, '-', linewidth=.5)
+        #         ax1[i_m].set_title('%s, \n pv=%.2f\nrv=%.2f\nslp=%.2f' %(model, pv, rv, slp),fontsize=8)
 
 
-                if model == 'hist_1pos_0psh_0spksm_1_spksp_0':
-                    if task_spec_ix is None:
-                        y_pred = model_dict[i_d, model]
-                    else:
-                        y_pred = model_dict[i_d, model][:, :, task_spec_ix]
-                    y_true = model_dict[i_d, key]; 
+        #         if model == 'hist_1pos_0psh_0spksm_1_spksp_0':
+        #             if task_spec_ix is None:
+        #                 y_pred = model_dict[i_d, model]
+        #             else:
+        #                 y_pred = model_dict[i_d, model][:, :, task_spec_ix]
+        #             y_true = model_dict[i_d, key]; 
 
-                    SSR = np.sum((y_pred - y_true)**2, axis=0)
-                    SST = np.sum((y_true - np.mean(y_true, axis=0)[np.newaxis, :])**2, axis=0)
-                    SST[np.isinf(SST)] = np.nan
+        #             SSR = np.sum((y_pred - y_true)**2, axis=0)
+        #             SST = np.sum((y_true - np.mean(y_true, axis=0)[np.newaxis, :])**2, axis=0)
+        #             SST[np.isinf(SST)] = np.nan
 
-                    r22 = 1 - SSR/SST; 
-                    ax2.plot(r22)
+        #             r22 = 1 - SSR/SST; 
+        #             ax2.plot(r22)
 
-                    print 'R2 mean day %d, %.2f', (i_d, np.mean(r22))
+        #             print 'R2 mean day %d, %.2f', (i_d, np.mean(r22))
 
             #f.tight_layout()
             #f1.tight_layout()
  
 ### Bar R2 and correlation plots -- figure 4;
 def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False, 
-    use_mFR_option = 'cond_spec', include_shuffs = None):
+    use_mFR_option = 'cond_spec', include_shuffs = None, scatter_ds = 0,
+    plot_diffs = False):
 
     '''
     updates -- 6/10/20 -- plotting task specific plot, using slimmer model 2, adding plot for dHz vs. baseline
@@ -1225,14 +1259,14 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
     for ia, animal in enumerate(['grom','jeev']):
 
         ### Load the model ####
-        #model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %model_set_number, 'rb'))
-        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_.pkl' %model_set_number, 'rb'))
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %model_set_number, 'rb'))
+        #model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_.pkl' %model_set_number, 'rb'))
         
         if include_shuffs is not None:
             model_dicts = [model_dict]
 
-            #pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
-            pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d__'%model_set_number
+            pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_'%model_set_number
+            #pre1 = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d__'%model_set_number
             for shuf_ix in range(include_shuffs):
 
                 if os.path.exists('%swithin_bin_shuff%d.pkl'%(pre1, shuf_ix)):
@@ -1295,7 +1329,7 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     spks = model_dict_i[i_d, 'spks']
 
                     ### General dynamics; 
-                    pred = model_dict_i[i_d, model]#[:, :, 2]
+                    pred = model_dict_i[i_d, model][:, :, 2]
 
                     ### Get the task parameters
                     tsk  = model_dict_i[i_d, 'task']
@@ -1419,41 +1453,43 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     MOD.append(i_m)
                     DAY.append(i_d)
 
-                    if i_ds == 0:
-                        color = 'r'
-                    elif i_ds == 1:
-                        color = 'b'
-                    elif i_ds == 2:
+                    if i_ds == scatter_ds:
                         color = 'k'
+                    # elif i_ds == 1:
+                    #     color = 'b'
+                    # elif i_ds == 2:
+                    #     color = 'k'
 
                     if use_mFR_option == 'ultra_pooled':
                         pass
                     else:
-                        ### T x N
+                        if plot_diffs:
+                            ### T x N
 
-                        x = np.vstack((diffs[model, i_d, i_ds]))*10
-                        y = np.vstack((pred_diffs[model, i_d, i_ds]))*10
+                            x = np.vstack((diffs[model, i_d, i_ds]))*10
+                            y = np.vstack((pred_diffs[model, i_d, i_ds]))*10
 
-                        #### For the diffs, want to reshape everything into a single long array 
-                        x = x.reshape(-1)
-                        y = y.reshape(-1)
+                            #### For the diffs, want to reshape everything into a single long array 
+                            x = x.reshape(-1)
+                            y = y.reshape(-1)
 
-                        axall[i_d, i_m].plot(x, y, color+'.', markersize=2.)
-                        axall[i_d, i_m].set_xlim([-40, 40])
-                        axall[i_d, i_m].set_ylim([-40, 40])
-                        axall[i_d, i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
-                        axall[i_d, i_m].set_ylabel('Pred Mn Diff | Command')
-                        axall[i_d, i_m].set_xlabel('Mn Diff | Command')
+                            if i_ds == scatter_ds:
+                                axall[i_d, i_m].plot(x, y, color+'.', markersize=2.)
+                            axall[i_d, i_m].set_xlim([-40, 40])
+                            axall[i_d, i_m].set_ylim([-40, 40])
+                            axall[i_d, i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
+                            axall[i_d, i_m].set_ylabel('Pred Mn Diff | Command', fontsize=14)
+                            axall[i_d, i_m].set_xlabel('Mn Diff | Command', fontsize=14)
 
-                        ### get variance explained -- here, each point is a neuron / command / day / targ1 / targ 2 difference
-                        ### the mean for SST is the neuron specific avg. true difference. 
-                        VAF = util_fcns.get_R2(x, y, pop = True)
+                            ### get variance explained -- here, each point is a neuron / command / day / targ1 / targ 2 difference
+                            ### the mean for SST is the neuron specific avg. true difference. 
+                            VAF = util_fcns.get_R2(x, y, pop = True)
 
-                        ### Old VAF: 
-                        #VAF = 1 - np.sum((x-y)**2)/np.sum((x-np.mean(x))**2)
-                        R2[model, i_d, i_ds].append(VAF);
-                        axall[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s' %(i_d,VAF, '$'+models_to_include_labs[i_m]+'$'), fontsize=14)
-                        VAL.append(VAF)
+                            ### Old VAF: 
+                            #VAF = 1 - np.sum((x-y)**2)/np.sum((x-np.mean(x))**2)
+                            R2[model, i_d, i_ds].append(VAF);
+                            axall[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s' %(i_d,VAF, '$'+models_to_include_labs[i_m]+'$'), fontsize=14)
+                            VAL.append(VAF)
 
                     ### Always plot 
                     ########### ONLY PLOT TRUE Z FR #########
@@ -1463,93 +1499,146 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     x2 = x2.reshape(-1)
                     y2 = y2.reshape(-1)
 
-                    slp,intc,rv,pv,err = scipy.stats.linregress(x2, y2)
-                    axall2[i_d, i_m].plot([np.min(x2), np.max(x2)], slp*np.array([np.min(x2), np.max(x2)]) + intc, '--', color=color)
-
+                    
                     ### Here, not reshaping, want to keep the mean FR | command, condition comparable to mFR for neuron overall; 
-                    axall2[i_d, i_m].plot(x2, y2, color+'.', markersize=2.)
+                    if i_ds == scatter_ds:
+                        slp,intc,rv,pv,err = scipy.stats.linregress(x2, y2)
+                        axall2[i_d, i_m].plot([np.min(x2), np.max(x2)], slp*np.array([np.min(x2), np.max(x2)]) + intc, '--', color=color)
+                        axall2[i_d, i_m].plot(x2, y2, color+'.', markersize=2.)
     
                     axall2[i_d, i_m].set_xlim([-40, 40])
                     axall2[i_d, i_m].set_ylim([-40, 40])
                     axall2[i_d, i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
-                    axall2[i_d, i_m].set_ylabel('Pred Mn | Cond, Command')
-                    axall2[i_d, i_m].set_xlabel('Mn FR | Cond, Command')
+
+                    if use_mFR_option == 'ultra_pooled':
+                        axall2[i_d, i_m].set_ylabel('Pred Mn | Command\n - mFR', fontsize=14)
+                        axall2[i_d, i_m].set_xlabel('Mn FR | Command\n - mFR', fontsize=14)        
+                    
+                    else:
+                        if use_mFR_option == 'command_spec':
+                            axall2[i_d, i_m].set_ylabel('Pred Mn | Cond, Command\n - mFR|Command', fontsize=14)
+                        elif use_mFR_option == 'command_axis_spec':
+                            axall2[i_d, i_m].set_ylabel('Pred Mn | Cond, Command\n - Pred mFR|Command', fontsize=14)
+                        axall2[i_d, i_m].set_xlabel('Mn FR | Cond, Command\n - mFR|Command', fontsize=14)
                     
                     VAF2 = util_fcns.get_R2(x2, y2, pop = True)
                     VAL2.append(VAF2)
                     R22[model, i_d, i_ds].append(VAF2)
-                    axall2[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s \n %s' %(i_d,VAF2, '$'+models_to_include_labs[i_m]+'$', use_mFR_option), fontsize=14)
+                    if i_ds == scatter_ds:
+                        axall2[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s \n %s' %(i_d,VAF2, '$'+models_to_include_labs[i_m]+'$', use_mFR_option), fontsize=14)
+
+        #### Save the second one ########
+        fall2.savefig(fig_dir + 'scatter_%s_%s_command_cond_spec.eps'%(animal, use_mFR_option))
 
         if use_mFR_option == 'ultra_pooled':
             VAL = None
         else:
             fall.tight_layout()
             if include_shuffs is None:
-                fall.savefig(analysis_config.config['fig_dir2'] + 'diff_scatters_%s_R2_unrolled.png' %(animal))
-            VAL = np.hstack((VAL))
+                fall.savefig(analysis_config.config['fig_dir3'] + 'diff_scatters_%s_R2_unrolled.eps' %(animal))
+            if len(VAL) > 0:
+                VAL = np.hstack((VAL))
 
         fall2.tight_layout()
         if include_shuffs is None:
-            fall2.savefig(analysis_config.config['fig_dir2'] + 'cond_spec_scatters_%s_mFR_%s.png' %(animal, use_mFR_option))
+            fall2.savefig(analysis_config.config['fig_dir3'] + 'cond_spec_scatters_%s_mFR_%s.eps' %(animal, use_mFR_option))
 
         MOD = np.hstack((MOD))
         MDI = np.hstack((MDI))
         DAY = np.hstack((DAY))
         VAL2 = np.hstack((VAL2))
 
+
         for iv, (val, r2_caps, nm) in enumerate(zip([VAL, VAL2], [R2, R22], ['diffs', 'mFR_cond_command'])):
+
             if val is None:
                 pass
             else:
-                #### R2 bar plot ####
-                fbar, axbar = plt.subplots(figsize=(8, 8))
-                
-                if include_shuffs is None:
-                    ### Plot indices ###
-                    ix0 = np.nonzero(MOD < 2)[0]
-                    ix1 = np.nonzero(MOD > 0)[0]
+                cont = False
+                if iv > 0:
+                    cont = True
+                else:
+                    if iv == 0 and plot_diffs:
+                        cont = True
 
-                    pv0, slp0 = util_fcns.run_LME(DAY[ix0], MOD[ix0], val[ix0])
-                    pv1, slp1 = util_fcns.run_LME(DAY[ix1], MOD[ix1], val[ix1])
+                if cont:
+                    #### R2 bar plot ####
+                    fbar, axbar = plt.subplots(figsize=(8, 8))
 
-                    print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix0])), pv0, slp0, len(ix0)))
-                    print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix1])), pv1, slp1, len(ix1)))
+                    if len(model_dicts) > 1:
+                        fbarsh, axbarsh = plt.subplots(figsize = (8, 8))
+                    
+                    if include_shuffs is None:
+                        ### Plot indices ###
+                        ix0 = np.nonzero(MOD < 2)[0]
+                        ix1 = np.nonzero(np.logical_and(MOD > 0, MOD <3))[0]
 
-                ### Plot as bar plot ###
-                all_data = {}
-                for i_m, model in enumerate(models_to_include):
-                    for i_ds in range(len(model_dicts)):
-                        all_data[model, i_ds] = []; 
+                        pv0, slp0 = util_fcns.run_LME(DAY[ix0], MOD[ix0], val[ix0])
+                        pv1, slp1 = util_fcns.run_LME(DAY[ix1], MOD[ix1], val[ix1])
 
-                for i_d in range(ndays):
-                    tmp = []; tmp2 = []; 
+                        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix0])), pv0, slp0, len(ix0)))
+                        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix1])), pv1, slp1, len(ix1)))
+
+                    ### Plot as bar plot ###
+                    all_data = {}
                     for i_m, model in enumerate(models_to_include):
                         for i_ds in range(len(model_dicts)):
-                            r2 = np.hstack((r2_caps[model, i_d, i_ds]))
-                            #r2[np.isinf(r2)] = np.nan
-                            tmp.append(np.mean(r2))
-                            tmp2.append(i_m + 0.25*(i_ds))
-                            all_data[model, i_ds].append(r2)
-                    axbar.plot(tmp2, tmp, '-', color='gray')
+                            all_data[model, i_ds] = []; 
 
-                #### Model colors ###
-                model_cols = [[255, 0, 0], [101, 44, 144], [39, 169, 225], [39, 169, 225]]
-                model_cols = [np.array(m)/255. for m in model_cols]
+                    for i_d in range(ndays):
+                        tmp = []; tmp2 = []; tmp_sh = []; tmp2_sh = []; 
+                        for i_m, model in enumerate(models_to_include):
+                            for i_ds in range(len(model_dicts)):
+                                r2 = np.hstack((r2_caps[model, i_d, i_ds]))
+                                #r2[np.isinf(r2)] = np.nan
+                                if i_ds == 0:
+                                    tmp.append(np.mean(r2))
+                                    tmp2.append(i_m + 0.25*(i_ds))
+                                elif i_ds == 1:
+                                    tmp_sh.append(np.mean(r2))
+                                    tmp2_sh.append(i_m)
+                                all_data[model, i_ds].append(r2)
+                        axbar.plot(tmp2, tmp, '-', color='gray')
+                        if len(tmp_sh) > 0:
+                            axbarsh.plot(tmp2_sh, tmp_sh, '-', color='gray')
 
-                for i_m, model in enumerate(models_to_include):
-                    for i_ds in range(len(model_dicts)):
-                        tmp3 = np.hstack((all_data[model, i_ds]))
-                        axbar.bar(i_m + 0.25*(i_ds), np.mean(tmp3), color = model_cols[i_m], edgecolor='k', linewidth=2., width = 0.25)
-                        axbar.errorbar(i_m + 0.25*(i_ds), np.mean(tmp3), yerr=np.std(tmp3)/np.sqrt(len(tmp3)), color = 'k', marker='|')
+                    #### Model colors ###
+                    model_cols = [[255, 0, 0], [101, 44, 144], [39, 169, 225], [39, 169, 225]]
+                    model_cols = [np.array(m)/255. for m in model_cols]
 
-                axbar.set_xticks(np.arange(len(models_to_include)))
-                models_to_include_labs_tex = ['$' + m + '$' for m in models_to_include_labs]
-                axbar.set_xticklabels(models_to_include_labs_tex, rotation = 45)#, fontsize=10)
-                fbar.tight_layout()
-                if iv == 0:
-                    fbar.savefig(analysis_config.config['fig_dir2']+'monk_%s_r2_comparison_%s.png' %(animal, nm))
-                else:
-                    fbar.savefig(analysis_config.config['fig_dir2'] + 'monk_%s_r2_comparison_%s_mFR%s.png' %(animal, nm, use_mFR_option))    
+                    for i_m, model in enumerate(models_to_include):
+                        for i_ds in range(len(model_dicts)):
+                            tmp3 = np.hstack((all_data[model, i_ds]))
+                            if i_ds == 0:
+                                axbar.bar(i_m , np.mean(tmp3), color = model_cols[i_m], edgecolor='k', linewidth=2., width = 1)
+                                axbar.errorbar(i_m, np.mean(tmp3), yerr=np.std(tmp3)/np.sqrt(len(tmp3)), color = 'k', marker='|')
+                            elif i_ds == 1:
+                                axbarsh.bar(i_m , np.mean(tmp3), color = model_cols[i_m], edgecolor='k', linewidth=2., width = 1, alpha = .2)
+                                axbarsh.errorbar(i_m, np.mean(tmp3), yerr=np.std(tmp3)/np.sqrt(len(tmp3)), color = 'k', marker='|')
+
+                    axbar.set_xticks(np.arange(len(models_to_include)))
+                    if include_shuffs:
+                        axbarsh.set_xticks(np.arange(len(models_to_include)))
+                    models_to_include_labs_tex = ['$' + m + '$' for m in models_to_include_labs]
+                    axbar.set_xticklabels(models_to_include_labs_tex, rotation = 45)#, fontsize=10)
+                    if include_shuffs:
+                        axbarsh.set_xticklabels(models_to_include_labs_tex, rotation = 45)#, fontsize=10)
+    
+                    axbar.set_ylim([-.1, .7])
+                    if include_shuffs:
+                        axbarsh.set_ylim([-.1, .7])
+                        fbarsh.tight_layout()
+
+                    fbar.tight_layout()
+                    
+                    if iv == 0:
+                        fbar.savefig(analysis_config.config['fig_dir3']+'monk_%s_r2_comparison_%s.eps' %(animal, nm))
+                        if include_shuffs:
+                            fbarsh.savefig(analysis_config.config['fig_dir3']+'monk_%s_r2_comparison_%s_SHUFFLE.eps' %(animal, nm))
+                    else:
+                        fbar.savefig(analysis_config.config['fig_dir3'] + 'monk_%s_r2_comparison_%s_mFR%s.eps' %(animal, nm, use_mFR_option))  
+                        if include_shuffs:
+                            fbarsh.savefig(analysis_config.config['fig_dir3'] + 'monk_%s_r2_comparison_%s_mFR%s_SHUFFLE.eps' %(animal, nm, use_mFR_option))  
 
 ### Fig 5 #### 
 ### Mean diffs of action at next time step ###
@@ -2145,8 +2234,8 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
     if use_action:
         models_to_include = ['hist_1pos_0psh_1spksm_1_spksp_0']
     else:
-        models_to_include = ['hist_1pos_0psh_0spksm_1_spksp_0', 
-                             'hist_1pos_4psh_0spksm_1_spksp_0']
+        models_to_include = ['hist_1pos_0psh_0spksm_1_spksp_0']#, 
+                             #'hist_1pos_4psh_0spksm_1_spksp_0']
 
     if ndays is None:
         ndays_none = True
@@ -2186,8 +2275,8 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                 ndays_all = np.arange(9);
                 ndays = 9; 
             elif animal == 'jeev':
-                ndays_all = [0, 2, 3];
-                ndays = 3; 
+                ndays_all = [0, 1, 2, 3];
+                ndays = 4; 
 
         #####################
         ### Real bar plot ###
@@ -2353,9 +2442,14 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
             # axob[z, i_a].errorbar(0.4, np.mean(R2s_plot_spks[1, 0, :]), yerr=np.std(R2s_plot_spks[1, 0, :])/np.sqrt(ndays), color = 'k', marker='|')
 
             #### Figure w/ combo ####
-            axbth[z, i_a].bar(0, np.mean(pwii), color='w', edgecolor='k', width=.4, linewidth=.2)
-            axbth[z, i_a].bar(0.4, np.mean(pxi), color='grey', edgecolor='k', width=.4, linewidth=.2)
-            axbth[z, i_a].bar(0.8, np.mean(palli), color='k', edgecolor='k', width=.4, linewidth=.2)
+            #### GENERAL / WITHIN / ACROSS ####
+            axbth[z, i_a].bar(0, np.mean(palli), color='grey', edgecolor='k', width=.4, alpha = 0.5)
+            axbth[z, i_a].bar(0.4, np.mean(pwii), color='w', edgecolor='k', width=.4, alpha = 0.5)
+            axbth[z, i_a].bar(0.8, np.mean(pxi), color='k', edgecolor='k', width=.4, alpha = 0.5)
+            
+            # axbth[z, i_a].bar(0, np.mean(pwii), color='w', edgecolor='k', width=.4, linewidth=.2)
+            # axbth[z, i_a].bar(0.4, np.mean(pxi), color='grey', edgecolor='k', width=.4, linewidth=.2)
+            # axbth[z, i_a].bar(0.8, np.mean(palli), color='k', edgecolor='k', width=.4, linewidth=.2)
             
         
             for i_d in range(ndays):
@@ -2368,9 +2462,11 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                     #### PWII/PXI/PALLI are all NDAYS x 2 --> [day0_0, day0_1, day1_0, day1_1, ...]
                     ### here 
                     if x == 0:
-                        axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'k-', linewidth = 1.)
+                        #axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'k-', linewidth = 1.)
+                        axbth[z, i_a].plot([0, .4, .8], [palli[2*i_d + x], pwii[2*i_d + x], pxi[2*i_d + x]], '-', color = 'gray', linewidth = 1.)
                     elif x == 1:
-                        axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'b-', linewidth = 1.)
+                        #axbth[z, i_a].plot([0, .4, .8], [pwii[2*i_d + x], pxi[2*i_d + x], palli[2*i_d + x]], 'b-', linewidth = 1.)
+                        axbth[z, i_a].plot([0, .4, .8], [palli[2*i_d + x], pwii[2*i_d + x], pxi[2*i_d + x]], '-', color = 'gray', linewidth = 1.)
                     #axbth[z, i_a].plot([0, .4,], [pwii[2*i_d + x], pxi[2*i_d + x]], 'k-', linewidth = 1.)
 
                     DAYs.append(i_d)
@@ -2389,21 +2485,39 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
             axbth[z, i_a].set_title('%s, Monk %s'%(tis[z], animal),fontsize = 8)
             axbth[z, i_a].set_ylabel('R2')
             axbth[z, i_a].set_xticks([0., .4, .8])
-            axbth[z, i_a].set_xticklabels(['Within', 'Across', 'Both'])
+            axbth[z, i_a].set_xticklabels(['General', 'Within Task', 'Across Task'])
         
         ### stats: 
-        print 'Neural, subj %s, w vs x' %(animal)
+        print 'Neural, subj %s, w vs X' %(animal)
         w_vs_x = np.hstack(( np.hstack((RW)), np.hstack((RX)) ))
         grps = np.hstack(( np.zeros_like(RW), np.zeros_like(RX)+1))
         pv, slp = util_fcns.run_LME(DAYs, grps, w_vs_x)
         print('pv: %.2f, slp %.2f'%(pv, slp))
 
         if pv < 0.001: 
-            axbth[0, i_a].text(0.2, np.max(w_vs_x), '***')
+            axbth[0, i_a].text(0.4, np.max(w_vs_x), '***')
         elif pv < 0.01: 
-            axbth[0, i_a].text(0.2, np.max(w_vs_x), '**')
+            axbth[0, i_a].text(0.4, np.max(w_vs_x), '**')
         elif pv < 0.05:
-            axbth[0, i_a].text(0.2, np.max(w_vs_x), '*')
+            axbth[0, i_a].text(0.4, np.max(w_vs_x), '*')
+        else:
+            axbth[0, i_a].text(0.4, np.max(w_vs_x), 'n.s')
+
+        print 'Neural, subj %s, w vs GEN' %(animal)
+        w_vs_g = np.hstack(( np.hstack((RW)), np.hstack((RGEN)) ))
+        grps = np.hstack(( np.zeros_like(RW), np.zeros_like(RGEN)+1))
+        pv, slp = util_fcns.run_LME(DAYs, grps, w_vs_g)
+        print('pv: %.2f, slp %.2f'%(pv, slp))
+
+        if pv < 0.001: 
+            axbth[0, i_a].text(0.2, np.max(w_vs_g), '***')
+        elif pv < 0.01: 
+            axbth[0, i_a].text(0.2, np.max(w_vs_g), '**')
+        elif pv < 0.05:
+            axbth[0, i_a].text(0.2, np.max(w_vs_g), '*')
+        else:
+            axbth[0, i_a].text(0.2, np.max(w_vs_g), 'n.s')
+
 
         print 'ACTION, subj %s, w vs x' %(animal)
         w_vs_x = np.hstack(( np.hstack((RW_A)), np.hstack((RX_A)) ))
@@ -2412,13 +2526,28 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
         print('pv: %.2f, slp %.2f'%(pv, slp))
 
         if pv < 0.001: 
-            axbth[1, i_a].text(0.2, np.max(w_vs_x), '***')
+            axbth[1, i_a].text(0.4, np.max(w_vs_x), '***')
         elif pv < 0.01: 
-            axbth[1, i_a].text(0.2, np.max(w_vs_x), '**')
+            axbth[1, i_a].text(0.4, np.max(w_vs_x), '**')
         elif pv < 0.05:
-            axbth[1, i_a].text(0.2, np.max(w_vs_x), '*')
+            axbth[1, i_a].text(0.4, np.max(w_vs_x), '*')
         else:
-            axbth[1, i_a].text(0.2, np.max(w_vs_x), 'n.s.')
+            axbth[1, i_a].text(0.4, np.max(w_vs_x), 'n.s.')
+
+        print 'ACTION, subj %s, w vs gen' %(animal)
+        w_vs_g = np.hstack(( np.hstack((RW_A)), np.hstack((RGEN_A)) ))
+        grps = np.hstack(( np.zeros_like(RW_A), np.zeros_like(RGEN_A)+1))
+        pv, slp = util_fcns.run_LME(DAYs, grps, w_vs_g)
+        print('pv: %.2f, slp %.2f'%(pv, slp))
+
+        if pv < 0.001: 
+            axbth[1, i_a].text(0.2, np.max(w_vs_g), '***')
+        elif pv < 0.01: 
+            axbth[1, i_a].text(0.2, np.max(w_vs_g), '**')
+        elif pv < 0.05:
+            axbth[1, i_a].text(0.2, np.max(w_vs_g), '*')
+        else:
+            axbth[1, i_a].text(0.2, np.max(w_vs_g), 'n.s.')
 
         #### Plot combined tasks R2 figure ###
         for i_z, nm in enumerate(['Neural', 'Action']):
@@ -2433,7 +2562,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
     #fco.tight_layout()
     #fob.tight_layout()
     fbth.tight_layout()
-    #fbth.savefig('gen_w_vs_x.svg')
+    fbth.savefig(fig_dir + 'general_dynamics_w_vs_x_matchN%s.eps' %(str(match_task_spec_n)))
 
 def reinventing_model_7(model_set_number = 7, data = None, data_demean = None):
     ### For each model (above x CO/OBS/GEN), want to plot how well it does on each task
