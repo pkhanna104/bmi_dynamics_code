@@ -148,6 +148,7 @@ def compute_dX(X, Y, A, dim0, dim1, setdimeq1):
         non_dim = [i for i in range(len(A)) if i not in [dim0, dim1]]
         assert(len(non_dim) == 1)
         non_dim = non_dim[0]
+        print('no zero dim: %d' %non_dim)
     else:
         non_dim = []
 
