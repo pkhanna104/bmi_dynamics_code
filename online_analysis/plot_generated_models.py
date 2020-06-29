@@ -1,7 +1,7 @@
 ############## Methods to plot models generated in 'generate models' ###########
 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1., style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -3271,20 +3271,37 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
         f.tight_layout()
 
 #### Eigenvalue decomposition 
-def eigvalue_plot(dt = 0.1):
+def eigvalue_plot(dt = 0.1, plt_evs_gte = 0.8, dat = None):
 
     dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
     n_folds = 5; 
+
+    #### Get data if needed #####
+    if dat is None:
+        dat = []
+
+        ### Iterate through the animals 
+        for animal in ['grom', 'jeev']:
+            dati = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(7), 'rb'))
+            dat.append(dati)
+
+    #### Stable points ####
+    f_stb, ax_stb = plt.subplots(ncols = 4, nrows = 4, figsize = (12, 12))
+    cnt = 0; 
 
     for i_a, animal in enumerate(['grom', 'jeev']):
 
         ###### Using the task specific models and the general models ######
         ##### Get the one with data matched #######
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(7), 'rb'))
+        data = dat[i_a]
+
+        f, ax = plt.subplots(ncols = 3, figsize = (9, 3))
 
         ##### for each day and task -- 
         for i_d in range(analysis_config.data_params[animal+'_ndays']):
-            f, ax = plt.subplots(ncols = 3, figsize = (10, 4))
+            
+            stb = []; 
+            mn = []; 
 
             ### For each day, plot the eigenvalues ####
             for i_f in range(n_folds):
@@ -3293,31 +3310,69 @@ def eigvalue_plot(dt = 0.1):
                 for i_m in range(3):
 
                     #### Get the model 
-                    model = dat[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
-
-
-                    #pred0 = np.mat(X0)*np.mat(model[0].coef_).T + model[0].intercept_[np.newaxis, :]
+                    model = data[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
                     
+                    if i_m == 2:
+                        N = data[i_d, 'spks'].shape[0]
+                        test_ix = data[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'test_ix']
+                        train_ix = np.array([i for i in np.arange(N) if i not in test_ix])
+                        mn.append(np.mean(data[i_d, 'spks'][train_ix, :], axis=0))
+
                     #### Get the A matrix; 
                     A = np.mat(model.coef_)
-                    N = A.shape[0]
+                    if type(model.intercept_) is np.ndarray:
 
-                    ### Add intercept to the A matrix 
-                    A = np.vstack((A, np.zeros((1, N))))
-                    intc = model.intercept_[:, np.newaxis]
-                    intc = np.vstack((intc, [1]))
-                    A = np.hstack((A, intc))
+                        if i_m == 2:
+                            #### Compute the ImAinv and stable point #####
+                            ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
+                            stb.append(np.squeeze(np.array(np.dot(ImAinv, model.intercept_[:, np.newaxis]))))
+                        
+                        N = A.shape[0]
+                        # ## Add intercept to the A matrix 
+                        A = np.vstack((A, np.zeros((1, N))))
+                        intc = model.intercept_[:, np.newaxis]
+                        intc = np.vstack((intc, [1]))
+                        A = np.hstack((A, intc))
 
                     ### eigenvalues; 
                     ev, evect = np.linalg.eig(A)
 
+                    ### ONly look at eigenvalues explaining > 
+                    ix_sort = np.argsort(np.abs(ev))[::-1]
+                    ev_sort = ev[ix_sort]
+                    cumsum = np.cumsum(np.abs(ev_sort))/np.sum(np.abs(ev_sort))
+                    ix_keep = np.nonzero(cumsum>plt_evs_gte)[0]
+                    ev_sort_truc = ev_sort[:ix_keep[0]+1]
+
                     ### get frequency; 
-                    angs = np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
+                    angs = np.angle(ev_sort_truc) #np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
                     hz = np.abs(angs)/(2*np.pi*dt)
-                    decay = -1./np.log(np.abs(ev))*dt # Time decay constant in ms
-                    ax[i_m].plot(decay, hz, 'k.')
-                    ax[i_m].set_xlim([0., .2])
-                    ax[i_m].set_ylim([-.01, 4.9])
+                    decay = -1./np.log(np.abs(ev_sort_truc))*dt # Time decay constant in ms
+                    ax[i_m].plot(decay, hz, '.', color = analysis_config.pref_colors[i_d])
+                    ax[i_m].set_xlabel('Decay in seconds')
+                    ax[i_m].set_ylabel('Frequency (Hz), max=5')
+                    ax[i_m].set_xlim([-.5, .5])
+                    ax[i_m].set_ylim([-.1,5.05])
+
+            #### bar plots #####
+            if len(stb) > 0:
+                stb = np.vstack((stb))
+                mn = np.vstack((mn))
+                nf, nn = stb.shape
+
+                #### Plot Stable Pt ###
+                ax_stb[cnt/4, cnt%4].plot(np.mean(stb, axis=0), np.mean(mn, axis=0), 'k.')
+                ax_stb[cnt/4, cnt%4].set_xlim([0., 4])
+                ax_stb[cnt/4, cnt%4].set_ylim([0., 4])
+                ax_stb[cnt/4, cnt%4].plot([0, 4], [0, 4], 'k--', alpha=.5)
+                ax_stb[cnt/4, cnt%4].set_xlabel('Est. Stable Pt')
+                ax_stb[cnt/4, cnt%4].set_ylabel('Est. mFR')
+                ax_stb[cnt/4, cnt%4].set_title('Anim %s, Day %d' %(animal, i_d))
+                cnt += 1
+                      
+
+        f.tight_layout()
+    f_stb.tight_layout()
 
 
 ### Check model dictionaries ####

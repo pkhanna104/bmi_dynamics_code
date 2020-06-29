@@ -204,7 +204,9 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     within_bin_shuffle = False, 
     shuff_id = 0,
     add_model_to_datafile = False,
-    task_demean = False):
+    task_demean = False,
+    gen_demean = False,
+    alpha_always_zero = False):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -273,6 +275,14 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
         if task_demean:
             hdf_filename = hdf_filename + '_tsk_demean'
+            assert(not gen_demean)
+
+        if gen_demean:
+            hdf_filename = hdf_filename + '_gen_demean'
+            assert(not task_demean)
+
+        if alpha_always_zero:
+            hdf_filename = hdf_filename + '_alphazero'
 
         if fit_intercept:
             hdf_filename = hdf_filename + '.h5'
@@ -380,6 +390,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                 ### subtract the means 
                 sub_spikes[ix_co, :] = sub_spikes[ix_co, :] - co_spks_mn[np.newaxis, :]
                 sub_spikes[ix_ob, :] = sub_spikes[ix_ob, :] - ob_spks_mn[np.newaxis, :]
+            
+            elif gen_demean:
+                spks_mn = np.mean(sub_spikes, axis=0)
+                sub_spikes = sub_spikes - spks_mn[np.newaxis, :]
+                model_data[i_d, 'spks_mn'] = spks_mn
 
             ### Want to save neural push, task, target 
             model_data[i_d, 'spks'] = sub_spikes.copy();
@@ -480,6 +495,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
                     if ridge:
                         alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+                        if alpha_always_zero:
+                            alpha_spec = 0.
+                            print('alpha zero')
+
                         model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
                             only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
                             fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
@@ -599,8 +618,15 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
     if task_demean:
         sff4 = '_task_demean'
+    elif gen_demean:
+        sff4 = '_gen_demean'
     else:
         sff4 = ''
+
+    if alpha_always_zero:
+        sff5 = '_alphazero'
+    else:
+        sff5 = ''
 
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
@@ -610,13 +636,13 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec%s.pkl' %(model_set_number, sff2), 'wb'))
         
         elif fit_task_spec_and_general:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s%s%s%s.pkl' %(model_set_number, sff, sff2, sff3, sff4), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen%s%s%s%s%s.pkl' %(model_set_number, sff, sff2, sff3, sff4, sff5), 'wb'))
         
         elif fit_condition_spec_no_general:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec%s%s.pkl' %(model_set_number, sff2, sff3), 'wb'))
         
         else:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5), 'wb'))
 
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
