@@ -157,26 +157,29 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
                 ### Unpack model_var_list; 
                 _, model_nm, _, _, _ = model_var_list_i; 
 
-                ####### HERE ######
-                #############################
-                ### Model with parameters ###
-                #############################
-                for ia, alpha in enumerate(alphas):
+                if model_nm == 'identity_dyn':
+                    pass
+                else:
+                    ####### HERE ######
+                    #############################
+                    ### Model with parameters ###
+                    #############################
+                    for ia, alpha in enumerate(alphas):
 
-                    ### Model ###
-                    model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha,
-                        fit_intercept = fit_intercept)
-                    str_alpha = str(alpha)
-                    str_alpha = str_alpha.replace('.','_')
-                    name = model_nm + '_alpha_' + str_alpha
+                        ### Model ###
+                        model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha,
+                            fit_intercept = fit_intercept, model_nm= model_nm)
+                        str_alpha = str(alpha)
+                        str_alpha = str_alpha.replace('.','_')
+                        name = model_nm + '_alpha_' + str_alpha
 
-                    ### add info ###
-                    ##### h5file is an HDF table, model_ is the output model, i_d is day, first day 
-                    ##### model name 
-                    ##### data_temp_dict_test 
-                    h5file, model_, _ = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=name, 
-                        test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key, 
-                        fit_intercept = fit_intercept)
+                        ### add info ###
+                        ##### h5file is an HDF table, model_ is the output model, i_d is day, first day 
+                        ##### model name 
+                        ##### data_temp_dict_test 
+                        h5file, model_, _ = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=name, 
+                            test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key, 
+                            fit_intercept = fit_intercept)
 
     h5file.close()
     print 'H5 File Done: ', hdf_filename
@@ -494,28 +497,36 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     model_data[model_nm, 'variables'] = variables
 
                     if ridge:
-                        alpha_spec = ridge_dict[animal][0][i_d, model_nm]
-                        if alpha_always_zero:
-                            alpha_spec = 0.
-                            print('alpha zero')
+                        if model_nm == 'identity_dyn':
+                            pass
 
-                        model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
-                            only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
-                            fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
-                            fit_intercept = fit_intercept)
+                        else:
+                            alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+                            if alpha_always_zero:
+                                alpha_spec = 0.
+                                print('alpha zero')
 
-                        save_model = True
+                            model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
+                                only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
+                                fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
+                                fit_intercept = fit_intercept, model_nm = model_nm)
+                            save_model = True
+
                     else:
                         raise Exception('Need to figure out teh stirng business again -- removed for clarity')
                         model_ = ols(st, data_temp_dict).fit()
                         save_model = False
 
                     if save_model:
-                        h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
-                            test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
-                            only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth,
-                            fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
-                            fit_intercept = fit_intercept)
+                        if model_nm == 'identity_dyn':
+                            pred_Y = identity_dyn(data_temp_dict_test, nneur)
+                        
+                        else:
+                            h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
+                                test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
+                                only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, KG = KG,
+                                fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
+                                fit_intercept = fit_intercept)
 
                         ### Save models, make predictions ####
                         ### Need to figure out which spikes are where:
@@ -545,9 +556,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         ### Save model -- for use later.
                         
                         if add_model_to_datafile:
-                            print('Adding model and test_indices') 
-                            model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
-                            model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
+                            if model_nm != 'identity_dyn':
+                                print('Adding model and test_indices') 
+                                model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
+                                model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
                             
                         #### Add / null potent? 
                         if include_null_pot:
@@ -837,7 +849,7 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
     test_data=None, test_data2=None, train_data2=None,
     only_potent_predictor = False, KG_pot = None, 
     fit_task_specific_model_test_task_spec = False,
-    fit_intercept = True):
+    fit_intercept = True, model_nm=None):
 
     ''' fit Ridge regression using alpha = ridge parameter
         only_potent_predictor --> multiply KG_pot -- which I think should be N x N by data;  '''
@@ -911,8 +923,13 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
         ##### Add relevant parameters; 
         model_2.nneurons = y_train.shape[1]
         model_2.nobs = X.shape[0]
-
         model_2.coef_names = x_var_names
+
+        if 'psh_2' in model_nm:
+            ###### Conditioning needs a covariance; 
+            pred_x = model_2.predict(X)
+            W = np.cov(y_train.T - pred_x.T)
+            model_2.W = W 
 
     if test_data is None:
         return model_2
@@ -939,6 +956,12 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
             pred2 = None
         
         return model_2, pred, pred2
+
+def identity_dyn(data_temp_dict, nneur):
+    pred_Y = []
+    for i in range(nneur): 
+        pred_Y.append(data_temp_dict['spk_tm1_n%d'%(i)])
+    return np.vstack((pred_Y)).T
 
 def return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur):
     variables_list = []
@@ -1051,57 +1074,60 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
 
         #### model names ####
         for im, model_nm in enumerate(model_names):
-
-            if skip_plots:
+            if model_nm == 'identity_dyn':
                 pass
             else:
-                f, ax = plt.subplots(figsize = (5, 3)) ### Separate fig for each day/
-            max_alpha[i_d, model_nm] = []
-
-            alp = []; 
-            #### alphas ####
-            for ia, (alpha, alpha_float) in enumerate(zip(str_alphas, alphas)):
-                alp_i = []; 
-
-                for fold in range(5):
-                    tbl = getattr(hdf.root, model_nm+'_alpha_'+alpha+'_fold_'+str(fold))
-                    day_index = np.nonzero(tbl[:]['day_ix'] == i_d)[0]
-
-                    if r2_ind_or_pop == 'ind':
-                        #### Add day index to alphas
-                        #### Uses alpha of individual neurons to decide optimal alpha
-                        alp_i.append(tbl[day_index]['r2'])
-                    
-                    elif r2_ind_or_pop == 'pop':
-                        ### Only take the first value -- all are the same; 
-                        tmp = tbl[day_index]['r2_pop']
-                        mn = np.mean(tmp)
-                        assert(np.allclose(tmp-mn, np.zeros((len(tmp), 1))))
-                        alp_i.append(mn)
-
-                ### plot alpha vs. mean day: 
                 if skip_plots:
                     pass
                 else:
-                    ax.bar(np.log10(alpha_float), np.nanmean(np.hstack((alp_i))), width=.3)
-                    ax.errorbar(np.log10(alpha_float), np.nanmean(np.hstack((alp_i))), np.nanstd(np.hstack((alp_i)))/np.sqrt(len(np.hstack((alp_i)))),
-                        marker='|', color='k')
+                    f, ax = plt.subplots(figsize = (5, 3)) ### Separate fig for each day/
 
-                ### max_alpha[i_d, model_nm] = []
-                alp.append([alpha_float, np.nanmean(np.hstack((alp_i)))])
+                max_alpha[i_d, model_nm] = []
 
-            if skip_plots:
-                pass
-            else:
-                ax.set_title('Animal %s, Model %s, Day %d' %(animal, model_nm, i_d), fontsize = 10)
-                ax.set_ylabel('R2')
-                ax.set_xlabel('Log10(alpha)')
-                f.tight_layout()
+                alp = []; 
+                #### alphas ####
+                for ia, (alpha, alpha_float) in enumerate(zip(str_alphas, alphas)):
+                    alp_i = []; 
 
-            ### Get the max to use: 
-            alp = np.vstack((alp))
-            ix_max = np.argmax(alp[:, 1])
-            max_alpha[i_d, model_nm] = alp[ix_max, 0]
+                    for fold in range(5):
+                        tbl = getattr(hdf.root, model_nm+'_alpha_'+alpha+'_fold_'+str(fold))
+                        day_index = np.nonzero(tbl[:]['day_ix'] == i_d)[0]
+
+                        if r2_ind_or_pop == 'ind':
+                            #### Add day index to alphas
+                            #### Uses alpha of individual neurons to decide optimal alpha
+                            alp_i.append(tbl[day_index]['r2'])
+                        
+                        elif r2_ind_or_pop == 'pop':
+                            ### Only take the first value -- all are the same; 
+                            tmp = tbl[day_index]['r2_pop']
+                            mn = np.mean(tmp)
+                            assert(np.allclose(tmp-mn, np.zeros((len(tmp), 1))))
+                            alp_i.append(mn)
+
+                    ### plot alpha vs. mean day: 
+                    if skip_plots:
+                        pass
+                    else:
+                        ax.bar(np.log10(alpha_float), np.nanmean(np.hstack((alp_i))), width=.3)
+                        ax.errorbar(np.log10(alpha_float), np.nanmean(np.hstack((alp_i))), np.nanstd(np.hstack((alp_i)))/np.sqrt(len(np.hstack((alp_i)))),
+                            marker='|', color='k')
+
+                    ### max_alpha[i_d, model_nm] = []
+                    alp.append([alpha_float, np.nanmean(np.hstack((alp_i)))])
+
+                if skip_plots:
+                    pass
+                else:
+                    ax.set_title('Animal %s, Model %s, Day %d' %(animal, model_nm, i_d), fontsize = 10)
+                    ax.set_ylabel('R2')
+                    ax.set_xlabel('Log10(alpha)')
+                    f.tight_layout()
+
+                ### Get the max to use: 
+                alp = np.vstack((alp))
+                ix_max = np.argmax(alp[:, 1])
+                max_alpha[i_d, model_nm] = alp[ix_max, 0]
 
     return max_alpha
 
