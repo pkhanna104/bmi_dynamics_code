@@ -844,6 +844,10 @@ def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, include_action_lags=False,
             else:
                 nms.append(var_name+'x_tm0')
                 nms.append(var_name+'y_tm0')   
+        
+        elif 'psh_2' in model_nm:
+            print('Conditioning on push')
+        
         else:
             print('No push')
 
@@ -1046,13 +1050,13 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
 
 def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=None, 
     fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, 
-    KG_pot = None, fit_task_specific_model_test_task_spec = False, fit_intercept = True):
+    KG_pot = None, KG = None, fit_task_specific_model_test_task_spec = False, fit_intercept = True):
 
     ##### Ridge Models ########
     if type(model_v) is sklearn.linear_model.ridge.Ridge or type(model_v[0]) is sklearn.linear_model.ridge.Ridge:
         # CLF/RIDGE models: 
         model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
-            fit_task_specific_model_test_task_spec, fit_intercept = fit_intercept)
+            KG, fit_task_specific_model_test_task_spec, fit_intercept = fit_intercept, model_nm = model_nm)
         
         if type(model_v) is list:
             nneurons = model_v[0].nneurons
@@ -1071,7 +1075,7 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
         ### Make a new table / column; ####
         tab = h5file.createTable("/", model_nm+'_fold_'+str(int(fold)), Model_Table)
         col = h5file.createGroup(h5file.root, model_nm+'_fold_'+str(int(fold))+'_nms')
-        
+
         try:
             vrs = np.array(model_v.coef_names, dtype=np.str)
             h5file.createArray(col, 'vars', vrs)
@@ -1126,7 +1130,8 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
     return h5file, model_v, predictions
 
 def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
-    KG_pot = None, fit_task_specific_model_test_task_spec = False, testY = None, fit_intercept = True):
+    KG_pot = None, KG = None, fit_task_specific_model_test_task_spec = False, testY = None, fit_intercept = True,
+    model_nm = None):
     
     # Called from h5_add_model: 
     # model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
@@ -1184,9 +1189,52 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
         pred = np.mat(X)*np.mat(model.coef_).T + model.intercept_[np.newaxis, :]
     else:
         pred = np.mat(X)*np.mat(model.coef_).T
-        
+    
     pred_ = model.predict(X); 
     assert(np.all(pred == pred_))
+
+    if 'psh_2' in model_nm: 
+        
+        A = []
+        for v in ['pshx_tm0', 'pshy_tm0']: 
+            A.append(test_data[v][:, np.newaxis])
+        A = np.hstack((A))
+        assert(A.shape[0] == X.shape[0])
+
+        ### Condition on action! 
+        ### For each datapoint, estimate 
+        ## y  ~ N (Ayt+b, W)
+        ## a  ~ N (K(Ayt+b), KWK') 
+        ## E(y_t | a_t) = (Ayt + b) + WK'()
+        cov = model.W; 
+        cov12 = np.dot(KG, cov).T
+        cov21 = np.dot(KG, cov)
+        cov22 = np.dot(KG, np.dot(cov, KG.T))
+        cov22I = np.linalg.inv(cov22)
+
+        T = A.shape[0]
+
+        pred_w_cond = []
+        for i_t in range(T):
+
+            ### Get this prediction (mu 1)
+            mu1_i = pred[i_t, :].T
+
+            ### Get predicted value of action; 
+            mu2_i = np.dot(KG, mu1_i)
+
+            ### Actual action; 
+            a_i = A[i_t, :][:, np.newaxis]
+
+            ### Conditon step; 
+            mu1_2_i = mu1_i + np.dot(cov12, np.dot(cov22I, a_i - mu2_i))
+
+            ### Make sure it matches; 
+            assert(np.allclose(np.dot(KG, mu1_2_i), a_i))
+
+            pred_w_cond.append(np.squeeze(np.array(mu1_2_i)))
+
+        pred = np.vstack((pred_w_cond))
 
     ########## Get statistics ##################
     SSR = np.sum((np.array(pred - Y))**2, axis=0) 

@@ -11,6 +11,11 @@ def get_model_var_list(model_set_number):
     #######    4 -- task only 
     #######    0 -- none; 
     
+    ###### Include action "psh_x"
+    ######     x=1 -- include action 
+    ######     x=2 -- condition on action 
+    ######     
+
     ####### Include action_lags --> whether to include push_{t-1} etc. WILL include the lags if psh_1 is in the model name; 
     ###### Include past_y{t-1} if zero -- nothing. If > 1, include that many past lags
 
@@ -84,10 +89,14 @@ def get_model_var_list(model_set_number):
     #     predict_key = 'spks'
     #     history_bins_max = 1; 
 
-    # elif model_set_number == 6:
-    #     model_var_list.append([np.array([-1]), 'hist_1pos_1psh_0spks_0_spksp_0', 1, 0, 0]) ### Only state; 
-    #     predict_key = 'psh'
-    #     history_bins_max = 1; 
+    elif model_set_number == 6:
+        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_2spksm_1_spksp_0', 0, 1, 0]) ### Only dynamics, conditioned on action  
+        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_1spksm_1_spksp_0', 0, 1, 0]) ### dynamics and action
+        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only dynamics
+        model_var_list.append([np.array([-1]), 'identity_dyn', 0, 0, 0]) ### Identity dynamics; 
+        predict_key = 'spks'
+        history_bins_max = 1;
+        include_action_lags = False 
 
     elif model_set_number == 7:
         model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only previous neural activity; 

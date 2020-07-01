@@ -470,7 +470,7 @@ def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs 
         f.tight_layout()
         f.savefig(fig_dir + 'monk_%s_mean_diffs_box_plots_cov_%s_perc_diff%s.eps' %(animal, str(cov), str(percent_change)), transparent = True)
 
-def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False, percent_change = False):
+def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False, percent_change = False, skip_within = False):
     ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
     ### Plot within a bar 
     ### Plot only sig. different ones
@@ -617,10 +617,16 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
             mets.append(AD_x)
             mets.append(AD_sh)
 
-            for i, (D, col) in enumerate(zip([AD_x, AD_wi, AD_sh], ['k', 'gray', 'lightgray'])):
-                ax.bar(i_d + i*.25, np.nanmean(D), color=col, edgecolor='none', width=.25, linewidth=1.0)
-                ax.errorbar(i_d + i*.25, np.nanmean(D), np.nanstd(D)/np.sqrt(len(D)), marker='|', color=col)
-                mnz[i_d, i] = np.nanmean(D)
+            if skip_within:
+                for i, (D, col) in enumerate(zip([AD_x, AD_sh], ['k', 'lightgray'])):
+                    ax.bar(i_d + i*.25, np.nanmean(D), color=col, edgecolor='none', width=.25, linewidth=1.0)
+                    ax.errorbar(i_d + i*.25, np.nanmean(D), np.nanstd(D)/np.sqrt(len(D)), marker='|', color=col)
+                    mnz[i_d, i] = np.nanmean(D)
+            else:
+                for i, (D, col) in enumerate(zip([AD_x, AD_wi, AD_sh], ['k', 'gray', 'lightgray'])):
+                    ax.bar(i_d + i*.25, np.nanmean(D), color=col, edgecolor='none', width=.25, linewidth=1.0)
+                    ax.errorbar(i_d + i*.25, np.nanmean(D), np.nanstd(D)/np.sqrt(len(D)), marker='|', color=col)
+                    mnz[i_d, i] = np.nanmean(D)
          
         DWI = np.hstack((DWI))
         DX = np.hstack((DX))
@@ -641,8 +647,11 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
 
         ###
         axsumm.bar(0 + ia, np.mean(DX), color='k', edgecolor='none', width=.25, linewidth=2.0, alpha = .5)
-        axsumm.bar(0.25 + ia, np.mean(DWI), color='gray', edgecolor='none', width=.25, linewidth=2.0, alpha =.5)
-        axsumm.bar(0.5 + ia, np.mean(DSH), color='lightgray', edgecolor='none', width=.25, linewidth=2.0, alpha =.5)
+        if skip_within:
+            axsumm.bar(0.25 + ia, np.mean(DSH), color='lightgray', edgecolor='none', width=.25, linewidth=2.0, alpha =.5)
+        else:
+            axsumm.bar(0.25 + ia, np.mean(DWI), color='gray', edgecolor='none', width=.25, linewidth=2.0, alpha =.5)
+            axsumm.bar(0.5 + ia, np.mean(DSH), color='lightgray', edgecolor='none', width=.25, linewidth=2.0, alpha =.5)
 
         # axsumm.plot(ia + (np.random.randn(len(DX))*.01), DX, 'k.', markersize = 2)
         # axsumm.plot(0.25 + ia + (np.random.randn(len(DWI))*.01), DWI, 'k.', markersize = 2)
@@ -652,25 +661,37 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
         #     showmeans = True)
 
         for i_d in range(ndays):
-            axsumm.plot(np.array([0, .25 , .5]) + ia, mnz[i_d, :], '-', color='k', linewidth=1.0)
+            if skip_within:
+                axsumm.plot(np.array([0, .25 ]) + ia, mnz[i_d, [0, 1]], '-', color='k', linewidth=1.0)
+            else:
+                axsumm.plot(np.array([0, .25 , .5]) + ia, mnz[i_d, :], '-', color='k', linewidth=1.0)
+
 
         axsumm.plot(ia + np.array([0., .25]), [1.02*np.max(mnz), 1.02*np.max(mnz)], 'k-')
-        axsumm.plot(ia + np.array([0., .5]) , [1.1*np.max(mnz), 1.1*np.max(mnz)], 'k-')
+        if skip_within:
+            pass
+        else:
+            axsumm.plot(ia + np.array([0., .5]) , [1.1*np.max(mnz), 1.1*np.max(mnz)], 'k-')
 
-        for ip, pvi in enumerate([pv, pv1]):
+        if skip_within:
+            PVs = [pv1]
+        else:
+            PVs = [pv, pv1]
+        
+        for ip, pvi in enumerate(PVs):
             if ip == 0:
                 mult = 1.02
             else:
                 mult = 1.1
 
             if pvi < 0.001: 
-                axsumm.text(.125 + ia, mult*np.max(mnz), '***')
+                axsumm.text(.125 + ia, mult*np.max(mnz), '***', ha='center')
             elif pvi < 0.01: 
-                axsumm.text(.125 + ia, mult*np.max(mnz), '**')
+                axsumm.text(.125 + ia, mult*np.max(mnz), '**', ha='center')
             elif pvi < 0.05: 
-                axsumm.text(.125 + ia, mult*np.max(mnz), '*')
+                axsumm.text(.125 + ia, mult*np.max(mnz), '*', ha='center')
             else:
-                axsumm.text(.125 + ia, mult*np.max(mnz), 'n.s.')
+                axsumm.text(.125 + ia, mult*np.max(mnz), 'n.s.', ha='center')
 
         # ax.set_ylabel('Difference in Hz')
         # ax.set_xlabel('Days')
@@ -680,8 +701,14 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
 
         ### Need to stats test the differences across populations:    
     #axsumm.set_xticks([0.25, 1.25])
-    axsumm.set_xticks([0., .25, .5, 1., 1.25, 1.5])
-    axsumm.set_xticklabels(['Grom\nX Cond', 'Grom\nW Cond','Grom\nX Cond Shuff',
+    if skip_within:
+        axsumm.set_xticks([0., .25, 1., 1.25])
+        axsumm.set_xticklabels(['Grom\nX Cond','Grom\nX Cond Shuff',
+                            'Jeev\nX Cond', 'Jeev\nX Cond Shuff'],
+                            rotation = 45)
+    else:
+        axsumm.set_xticks([0., .25, .5, 1., 1.25, 1.5])
+        axsumm.set_xticklabels(['Grom\nX Cond', 'Grom\nW Cond','Grom\nX Cond Shuff',
                             'Jeev\nX Cond', 'Jeev\nW Cond','Jeev\nX Cond Shuff'],
                             rotation = 45, fontsize = 8)
     #axsumm.set_xticklabels(['G', 'J']) 
@@ -842,6 +869,23 @@ def plot_r2_bar_model_1(min_obs = 15,
             models_colors = [[39, 169, 225]]
             xlab = ['$y_{t-1}$']
             models_to_compare = []
+
+        elif model_set_number == 6:
+            models_to_include = ['hist_1pos_0psh_2spksm_1_spksp_0',
+                                 'hist_1pos_0psh_1spksm_1_spksp_0',
+                                 'identity_dyn',
+                                 'hist_1pos_0psh_0spksm_1_spksp_0']
+
+            xlab = ['$y_t = f(y_{t-1} | a_t)$', 
+                    '$y_t = f(y_{t-1}, a_t)$', 
+                    '$y_t = y_{t-1}$',
+                    '$y_t = f(y_{t-1})$']
+            models_colors = [[39, 169, 225], 
+                             [39, 169, 225], 
+                             [39, 169, 225], 
+                             [39, 169, 225], ]
+            models_to_compare = []
+
 
         #### Number of models ######
         M = len(models_to_include)
