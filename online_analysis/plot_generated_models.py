@@ -1,17 +1,19 @@
 ############## Methods to plot models generated in 'generate models' ###########
 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1., style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.4, style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
-import pickle, copy, os
+import pickle, copy, os, glob
 
 import analysis_config, util_fcns
 import generate_models, generate_models_list
+from dynamics_sims import plot_flow_field_utils
 
 import scipy
+import scipy.io as sio
 from collections import defaultdict
 
 fig_dir = analysis_config.config['fig_dir3']
@@ -1270,11 +1272,217 @@ def plot_r2_bar_model_1(min_obs = 15,
 
             #f.tight_layout()
             #f1.tight_layout()
- 
+
+######################################
+##### July 2020 fig 4 --- todo #######
+######################################
+def plot_r2_bar_model_dynamics_only(min_obs = 15, 
+    r2_pop = True, perc_increase = True, model_dicts = None):
+    '''
+    inputs: min_obs -- number of obs need to count as worthy of comparison; 
+    perc_increase: get baseline from shuffle
+    pt_2 more plots -- not totally sure what they are;  
+    r2_pop -- assume its population vs. indivdual 
+    model_set_number -- which models to plot from which set; 
+    include_shuffs -- Number of shuffles to include (will search for range(include_shuffs)). Right now code is just programmed to get index "0"
+    '''
+
+    ### For stats each neuron is an observation ##
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref']+ 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    key = 'spks' 
+
+    ### Now generate plots -- testing w/ 1 day
+    ndays = dict(grom=9, jeev=4)
+
+
+    for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
+        
+        xlab = ['shuffled', 
+                'general\ndynamics', 
+                'task-spec\ndynamics',
+                'identity\ndynamics']
+        xkeys = ['shuffled', 'dyn_gen', 'dyn_tsk', 'identity_dyn']
+
+        models_colors = [[100, 100, 100], 
+                         [39, 169, 225], 
+                         [39, 169, 225], 
+                         [100, 100, 100]]
+
+        models_to_compare = []
+
+
+        #### Number of models ######
+        M = len(xlab)
+
+        #### Make sure match #######
+        assert(len(models_colors) == M)
+
+        #### normalize the colors #######
+        models_colors = [np.array(m)/256. for m in models_colors]
+
+        ##### fold ? ######
+        #fold = ['maroon', 'orangered', 'goldenrod', 'teal', 'blue']
+        if r2_pop:
+            pop_str = 'Population'
+        else:
+            pop_str = 'Indiv'        
+
+        ### Go through each neuron and plot mean true vs. predicted (i.e R2) for a given command  / target combo: 
+        model_set_number = 6
+        if model_dicts is None:
+            model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number, 'rb'))
+        else:
+            model_dict = model_dicts[animal]
+        ##### Data holder for either mean of individual neurons or population R2 ####
+        ### Will be normalized by baseline if that setting is selected ######
+        R2S = dict()
+
+        ####### Holders for LME if not doing population R2 ########
+        D = []; # Days; 
+        Mod = []; # Model Number 
+
+        ######### R2 for each neuron if not doing population R2  #######
+        f, ax = plt.subplots(figsize = (6, 6))
+        R2s = dict()
+
+        ####### Iterate through each day #########
+        for i_d in range(ndays[animal]):
+
+            ###### Get the decoders ###########
+            if animal == 'grom': 
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_grom(i_d)
+            
+            elif animal == 'jeev':
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_jeev(i_d)
+
+            ###### True data #####
+            pred_Y = dict()
+
+            ######### General dynamics conditioned on action #########
+            pred_Y['dyn_gen'] =  model_dict[i_d, 'hist_1pos_0psh_2spksm_1_spksp_0'][:, :, 2]
+
+            ######### Get task specific #########
+            tsk_spec = np.zeros_like(model_dict[i_d, 'hist_1pos_0psh_2spksm_1_spksp_0'][:, :, 2])
+
+            for tsk in range(2):
+                ix_tsk = np.nonzero(model_dict[i_d, 'task'] == tsk)[0]
+                tsk_spec[ix_tsk, :] = model_dict[i_d, 'hist_1pos_0psh_2spksm_1_spksp_0'][ix_tsk, :, tsk]
+
+            pred_Y['dyn_tsk'] = tsk_spec.copy()
+
+            ######### Get shuffled ###############
+            pred_Y['shuffled'] = get_shuffled_data(animal, i_d, 'hist_1pos_0psh_2spksm_1_spksp_0')
+
+            ######## Get zero order hold #########
+            pred_Y['identity_dyn'] = model_dict[i_d, 'identity_dyn'][:, :, 2]
+
+            ######## PLotting #########
+            for i_mod, (mod, xl) in enumerate(zip(xkeys, xlab)):
+                
+                ###### Predicted data, cross validated ####
+                tdata = model_dict[i_d, 'spks']
+                pdata = pred_Y[mod]
+
+                ### Get population R2 ### 
+                if mod != 'shuffled':
+                    R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
+                else:
+                    R2 = []
+                    for shuffi in range(pdata.shape[2]):
+                        R2.append(util_fcns.get_R2(tdata, pdata[:, :, shuffi], pop = r2_pop))
+                    R2 = np.hstack((R2))
+                    R2mn = np.mean(R2)
+                if perc_increase:
+                    R2s[i_d, mod] = (R2 - R2mn)/R2mn
+                else:
+                    R2s[i_d, mod] = R2
+
+        R2_shuff = [R2s[i_d, 'shuffled'] for i_d in range(ndays[animal])]
+        
+        ### Bar plot w/ distribution at beginning ###
+        util_fcns.draw_plot(0, np.hstack((R2_shuff)), models_colors[0], 'white', ax, width = 0.9)
+        day_r2 = np.zeros((ndays[animal], len(xkeys)))
+        
+        for i_mod, mod in enumerate(xkeys):
+            if mod == 'shuffled':
+                pass
+            else:
+                if mod == 'identity_dyn':
+                    pass
+                else:
+                    r2_tmp = [R2s[i_d, mod] for i_d in range(ndays[animal])]
+                    ax.bar(i_mod, np.mean(r2_tmp), width=.9, color = models_colors[i_mod])
+                    ax.errorbar(i_mod, np.mean(r2_tmp), np.std(r2_tmp), marker = '|', color = 'k')
+
+            #### For each day ####
+            for i_d in range(ndays[animal]):
+                if mod == 'shuffled':
+                    day_r2[i_d, i_mod] = np.mean(R2s[i_d, mod])
+                else:
+                    day_r2[i_d, i_mod] = R2s[i_d, mod]
+
+        ##### Plot the individual line #####
+        shuff_vs_dyn = np.zeros((ndays[animal]))
+        lme_gen_vs_tsk = dict(day=[], gen_vs_tsk=[], r2 = [])
+        
+        for i_d in range(ndays[animal]):
+            ax.plot(np.arange(len(xkeys)-1), day_r2[i_d, :-1], '-', color='gray', linewidth=1.)
+
+            #### Compare model 1 to shuffle #####
+            shuff_vs_dyn[i_d] = get_perc(R2s[i_d, 'shuffled'], R2s[i_d, 'dyn_gen'])
+
+            #### Compare model 1 to model 2 #####
+            lme_gen_vs_tsk['day'].append([i_d, i_d])
+            lme_gen_vs_tsk['gen_vs_tsk'].append([0, 1])
+            lme_gen_vs_tsk['r2'].append([R2s[i_d, 'dyn_gen'], R2s[i_d, 'dyn_tsk']])
+
+        ###### Run LME for tsk spec vs. general #####
+        pv0, slp0 = util_fcns.run_LME(lme_gen_vs_tsk['day'], lme_gen_vs_tsk['gen_vs_tsk'],
+            lme_gen_vs_tsk['r2'])
+        pv0_str = util_fcns.get_pv_str(pv0)
+
+        mx = np.max(day_r2[:, [1, 2]])
+        ax.plot([1, 2], [1.1*mx, 1.1*mx], 'k-')
+        ax.text(1.5, 1.15*mx, pv0_str, ha='center')
+        ax.set_xticks(np.arange(len(xlab)-1))
+        ax.set_xticklabels(xlab[:-1], rotation = 45)
+
+        #### Plot stars ####
+        if np.all(shuff_vs_dyn == 1.):
+            mx = np.max(day_r2[:, [0, 1]])
+            ax.plot([0, 1], [1.1*mx, 1.1*mx], 'k-')
+            ax.text(.5, 1.15*mx, '***', ha='center')
+        ax.set_xlim([-.6, 2.6])
+        if perc_increase:
+            ax.set_ylabel('Frac. Increase in R2\nabove Shuffle Mean')
+        else:
+            ax.set_ylabel('R2')
+        f.tight_layout()
+        f.savefig(analysis_config.config['fig_dir']+'%s_fig4_dynR2_percIncrease%s.svg'%(animal, str(perc_increase)))
+
+def get_shuffled_data(animal, day, model_nm):
+    pref = analysis_config.config['shuff_fig_dir']
+    files = np.sort(glob.glob(pref + '%s_%d_shuff*_%s.mat' %(animal, day, model_nm)))
+
+    pred_Y = []
+    for i_f, fl in enumerate(files):
+        tmp = sio.loadmat(fl)
+        if len(tmp['model_data'].shape) == 3:
+            pred_Y.append(tmp['model_data'][:, :, 2])
+        else:
+            pred_Y.append(tmp['model_data'])
+
+    return np.dstack((pred_Y))
+
+def get_perc(dist, value):
+    ix = np.nonzero(dist < value)[0]
+    return float(len(ix))/len(dist)
+
+
 ### Bar R2 and correlation plots -- figure 4;
 def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False, 
     use_mFR_option = 'cond_spec', include_shuffs = None, scatter_ds = 0,
-    plot_diffs = False):
+    plot_diffs = False, day_i = 0):
 
     '''
     updates -- 6/10/20 -- plotting task specific plot, using slimmer model 2, adding plot for dHz vs. baseline
@@ -1289,16 +1497,19 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
     
     mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
 
-    models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
-                         'hist_1pos_3psh_1spksm_0_spksp_0', ### Full state 
-                         'hist_1pos_3psh_1spksm_1_spksp_0',### Full state + y_t-1
-                         'hist_1pos_0psh_1spksm_1_spksp_0'] ### a_t + y_t-1
+    if model_set_number == 2:
+        models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
+                             'hist_1pos_3psh_1spksm_0_spksp_0', ### Full state 
+                             'hist_1pos_3psh_1spksm_1_spksp_0',### Full state + y_t-1
+                             'hist_1pos_0psh_1spksm_1_spksp_0'] ### a_t + y_t-1
 
-    models_to_include_labs = ['y_t | a_t', 
-                              'y_t | a_t, s_{t-1}, s_tFinal, tsk', 
-                              'y_t | a_t, s_{t-1},..., y_{t-1}',
-                              'y_t | a_t, y_{t-1}']
-
+        models_to_include_labs = ['y_t | a_t', 
+                                  'y_t | a_t, s_{t-1}, s_tFinal, tsk', 
+                                  'y_t | a_t, s_{t-1},..., y_{t-1}',
+                                  'y_t | a_t, y_{t-1}']
+    elif model_set_number == 6:
+        models_to_include = ['hist_1pos_0psh_2spksm_1_spksp_0']
+        models_to_include_labs = ['y_t = f(y_{t-1} | a_t)']
 
     for ia, animal in enumerate(['grom','jeev']):
 
@@ -1342,8 +1553,12 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
         R2 = dict(); R22 = dict(); NN = dict(); 
         z_fr = dict(); pred_z_fr = dict(); mn_fr = {}
 
-        fall, axall = plt.subplots(ncols = len(models_to_include), nrows = ndays, figsize=(len(models_to_include)*3, ndays*3))
-        fall2, axall2 = plt.subplots(ncols = len(models_to_include), nrows = ndays, figsize=(len(models_to_include)*3, ndays*3))
+        fall, axall = plt.subplots(ncols = len(models_to_include), nrows = 1, figsize=(len(models_to_include)*5, 5))
+        fall2, axall2 = plt.subplots(ncols = len(models_to_include), nrows = 1, figsize=(len(models_to_include)*5, 5))
+
+        if len(models_to_include) == 1:
+            axall = np.array([axall])
+            axall2 = np.array([axall2])
 
         for i_m, model in enumerate(models_to_include):
             for i_d in range(ndays):
@@ -1518,12 +1733,13 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                             y = y.reshape(-1)
 
                             if i_ds == scatter_ds:
-                                axall[i_d, i_m].plot(x, y, color+'.', markersize=2.)
-                            axall[i_d, i_m].set_xlim([-40, 40])
-                            axall[i_d, i_m].set_ylim([-40, 40])
-                            axall[i_d, i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
-                            axall[i_d, i_m].set_ylabel('Pred Mn Diff | Command', fontsize=14)
-                            axall[i_d, i_m].set_xlabel('Mn Diff | Command', fontsize=14)
+                                if i_d == day_i:
+                                    axall[i_m].plot(x, y, color+'.', markersize=2.)
+                            axall[i_m].set_xlim([-40, 40])
+                            axall[i_m].set_ylim([-40, 40])
+                            axall[i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
+                            axall[i_m].set_ylabel('Pred Mn Diff | Command', fontsize=14)
+                            axall[i_m].set_xlabel('Mn Diff | Command', fontsize=14)
 
                             ### get variance explained -- here, each point is a neuron / command / day / targ1 / targ 2 difference
                             ### the mean for SST is the neuron specific avg. true difference. 
@@ -1532,7 +1748,8 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                             ### Old VAF: 
                             #VAF = 1 - np.sum((x-y)**2)/np.sum((x-np.mean(x))**2)
                             R2[model, i_d, i_ds].append(VAF);
-                            axall[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s' %(i_d,VAF, '$'+models_to_include_labs[i_m]+'$'), fontsize=14)
+                            if i_ds == scatter_ds and i_d == day_i:
+                                axall[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s' %(i_d,VAF, '$'+models_to_include_labs[i_m]+'$'), fontsize=14)
                             VAL.append(VAF)
 
                     ### Always plot 
@@ -1546,40 +1763,41 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     
                     ### Here, not reshaping, want to keep the mean FR | command, condition comparable to mFR for neuron overall; 
                     if i_ds == scatter_ds:
-                        slp,intc,rv,pv,err = scipy.stats.linregress(x2, y2)
-                        axall2[i_d, i_m].plot([np.min(x2), np.max(x2)], slp*np.array([np.min(x2), np.max(x2)]) + intc, '--', color=color)
-                        axall2[i_d, i_m].plot(x2, y2, color+'.', markersize=2.)
+                        if i_d == day_i:
+                            slp,intc,rv,pv,err = scipy.stats.linregress(x2, y2)
+                            axall2[i_m].plot([np.min(x2), np.max(x2)], slp*np.array([np.min(x2), np.max(x2)]) + intc, '--', color=color)
+                            axall2[i_m].plot(x2, y2, color+'.', markersize=2.)
     
-                    axall2[i_d, i_m].set_xlim([-40, 40])
-                    axall2[i_d, i_m].set_ylim([-40, 40])
-                    axall2[i_d, i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
+                    axall2[i_m].set_xlim([-40, 40])
+                    axall2[i_m].set_ylim([-40, 40])
+                    axall2[i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
 
                     if use_mFR_option == 'ultra_pooled':
-                        axall2[i_d, i_m].set_ylabel('Pred Mn | Command\n - mFR', fontsize=14)
-                        axall2[i_d, i_m].set_xlabel('Mn FR | Command\n - mFR', fontsize=14)        
+                        axall2[i_m].set_ylabel('Pred Mn | Command\n - mFR', fontsize=14)
+                        axall2[i_m].set_xlabel('Mn FR | Command\n - mFR', fontsize=14)        
                     
                     else:
                         if use_mFR_option == 'command_spec':
-                            axall2[i_d, i_m].set_ylabel('Pred Mn | Cond, Command\n - mFR|Command', fontsize=14)
+                            axall2[i_m].set_ylabel('Pred Mn | Cond, Command\n - mFR|Command', fontsize=14)
                         elif use_mFR_option == 'command_axis_spec':
-                            axall2[i_d, i_m].set_ylabel('Pred Mn | Cond, Command\n - Pred mFR|Command', fontsize=14)
-                        axall2[i_d, i_m].set_xlabel('Mn FR | Cond, Command\n - mFR|Command', fontsize=14)
+                            axall2[i_m].set_ylabel('Pred Mn | Cond, Command\n - Pred mFR|Command', fontsize=14)
+                        axall2[i_m].set_xlabel('Mn FR | Cond, Command\n - mFR|Command', fontsize=14)
                     
                     VAF2 = util_fcns.get_R2(x2, y2, pop = True)
                     VAL2.append(VAF2)
                     R22[model, i_d, i_ds].append(VAF2)
-                    if i_ds == scatter_ds:
-                        axall2[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s \n %s' %(i_d,VAF2, '$'+models_to_include_labs[i_m]+'$', use_mFR_option), fontsize=14)
+                    if i_ds == scatter_ds and i_d == day_i:
+                        axall2[i_m].set_title('Day %d, VAF = %.4f\n %s \n %s' %(i_d,VAF2, '$'+models_to_include_labs[i_m]+'$', use_mFR_option), fontsize=14)
 
         #### Save the second one ########
-        fall2.savefig(fig_dir + 'scatter_%s_%s_command_cond_spec.eps'%(animal, use_mFR_option))
+        fall2.savefig(fig_dir + 'scatter_%s_%s_command_cond_spec_scatterShuff%d.eps'%(animal, use_mFR_option, scatter_ds))
 
         if use_mFR_option == 'ultra_pooled':
             VAL = None
         else:
             fall.tight_layout()
             if include_shuffs is None:
-                fall.savefig(analysis_config.config['fig_dir3'] + 'diff_scatters_%s_R2_unrolled.eps' %(animal))
+                fall.savefig(analysis_config.config['fig_dir3'] + 'diff_scatters_%s_R2_unrolled_scatterShuff%d.eps' %(animal, scatter_ds))
             if len(VAL) > 0:
                 VAL = np.hstack((VAL))
 
@@ -1631,6 +1849,371 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
 
                     for i_d in range(ndays):
                         tmp = []; tmp2 = []; tmp_sh = []; tmp2_sh = []; 
+                        
+                        for i_m, model in enumerate(models_to_include):
+                            for i_ds in range(len(model_dicts)):
+                                r2 = np.hstack((r2_caps[model, i_d, i_ds]))
+                                #r2[np.isinf(r2)] = np.nan
+                                if i_ds == 0:
+                                    tmp.append(np.mean(r2))
+                                    tmp2.append(i_m + 0.25*(i_ds))
+                                elif i_ds == 1:
+                                    tmp_sh.append(np.mean(r2))
+                                    tmp2_sh.append(i_m)
+                                all_data[model, i_ds].append(r2)
+                        axbar.plot(tmp2, tmp, '-', color='gray')
+                        if len(tmp_sh) > 0:
+                            axbarsh.plot(tmp2_sh, tmp_sh, '-', color='gray')
+
+                    #### Model colors ###
+                    model_cols = [[255, 0, 0], [101, 44, 144], [39, 169, 225], [39, 169, 225]]
+                    model_cols = [np.array(m)/255. for m in model_cols]
+
+                    for i_m, model in enumerate(models_to_include):
+                        for i_ds in range(len(model_dicts)):
+                            tmp3 = np.hstack((all_data[model, i_ds]))
+                            if i_ds == 0:
+                                axbar.bar(i_m , np.mean(tmp3), color = model_cols[i_m], edgecolor='k', linewidth=2., width = 1)
+                                axbar.errorbar(i_m, np.mean(tmp3), yerr=np.std(tmp3)/np.sqrt(len(tmp3)), color = 'k', marker='|')
+                            elif i_ds == 1:
+                                axbarsh.bar(i_m , np.mean(tmp3), color = model_cols[i_m], edgecolor='k', linewidth=2., width = 1, alpha = .2)
+                                axbarsh.errorbar(i_m, np.mean(tmp3), yerr=np.std(tmp3)/np.sqrt(len(tmp3)), color = 'k', marker='|')
+
+                    axbar.set_xticks(np.arange(len(models_to_include)))
+                    if include_shuffs:
+                        axbarsh.set_xticks(np.arange(len(models_to_include)))
+                    models_to_include_labs_tex = ['$' + m + '$' for m in models_to_include_labs]
+                    axbar.set_xticklabels(models_to_include_labs_tex, rotation = 45)#, fontsize=10)
+                    if include_shuffs:
+                        axbarsh.set_xticklabels(models_to_include_labs_tex, rotation = 45)#, fontsize=10)
+    
+                    axbar.set_ylim([-.1, .7])
+                    if include_shuffs:
+                        axbarsh.set_ylim([-.1, .7])
+                        fbarsh.tight_layout()
+
+                    fbar.tight_layout()
+                    
+                    if iv == 0:
+                        fbar.savefig(analysis_config.config['fig_dir3']+'monk_%s_r2_comparison_%s.eps' %(animal, nm))
+                        if include_shuffs:
+                            fbarsh.savefig(analysis_config.config['fig_dir3']+'monk_%s_r2_comparison_%s_SHUFFLE.eps' %(animal, nm))
+                    else:
+                        fbar.savefig(analysis_config.config['fig_dir3'] + 'monk_%s_r2_comparison_%s_mFR%s.eps' %(animal, nm, use_mFR_option))  
+                        if include_shuffs:
+                            fbarsh.savefig(analysis_config.config['fig_dir3'] + 'monk_%s_r2_comparison_%s_mFR%s_SHUFFLE.eps' %(animal, nm, use_mFR_option))  
+
+def plot_real_vs_pred_bars_w_shuffle():
+def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False, 
+    use_mFR_option = 'cond_spec', include_shuffs = None, scatter_ds = 0,
+    plot_diffs = False, day_i = 0):
+
+    '''
+    updates -- 6/10/20 -- plotting task specific plot, using slimmer model 2, adding plot for dHz vs. baseline
+
+    use_mFR_option -- 
+        -- ultra_pooled: use pooled mFR | day, also plot mFR | command (not condition)
+        -- pooled: for both x/y axis used pooled mFR: mFR | day 
+        -- command_spec: for both x/y axis used command mFR: mFR | day, command
+        -- command_axis_spec: for x axis used mFR | day, command, yaxis used pred mFR | day, command
+
+    '''
+    
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    models_to_include = ['hist_1pos_0psh_2spksm_1_spksp_0']
+    models_to_include_labs = ['y_t = f(y_{t-1} | a_t)']
+
+    for ia, animal in enumerate(['grom','jeev']):
+
+        ### Load the model ####
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %model_set_number, 'rb'))
+        
+        ### Number of days #####
+        ndays = analysis_config.data_params[animal + '_ndays']
+
+        ### Keep track fo diffs and sig diffs #####
+        diffs = dict(); 
+        sig_diffs = dict(); 
+
+        ### For keeping track of stats ####
+        MOD = []; DAY = []; VAL = []; VAL2 = []; MDI = []; 
+
+        pred_diffs = dict(); 
+        pred_sig_diffs = dict(); 
+
+        R2 = dict(); R22 = dict(); NN = dict(); 
+        z_fr = dict(); pred_z_fr = dict(); mn_fr = {}
+
+        for i_m, model in enumerate(models_to_include):
+            for i_d in range(ndays):
+
+                    ############# For real model ############
+                    ### Get the spiking data
+                    spks = model_dict_i[i_d, 'spks']
+
+                    ### General dynamics; 
+                    pred = model_dict_i[i_d, model][:, :, 2]
+
+                    ### Get the task parameters
+                    tsk  = model_dict_i[i_d, 'task']
+                    targ = model_dict_i[i_d, 'trg']
+                    push = model_dict_i[i_d, 'np']
+                
+                    assert(spks.shape[0] == pred.shape[0] == len(tsk) == len(targ) == push.shape[0])
+                    assert(push.shape[1] == 2)
+
+                    ### Setup the dicitonaries for stats to be tracked ####
+                    diffs[model, i_d, i_ds] = []
+                    sig_diffs[model, i_d, i_ds] = []
+
+                    pred_diffs[model, i_d, i_ds] = []
+                    pred_sig_diffs[model, i_d, i_ds] = []
+
+                    #### Setup the dictionaries for stats to be tracked ####
+                    z_fr[model, i_d, i_ds] = []
+                    pred_z_fr[model, i_d, i_ds] = []
+
+                    ### Get the discretized commands
+                    commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                    assert(commands_disc.shape == push.shape)
+
+                    #### Get mFR over full: 
+                    mFR_pool = np.mean(spks, axis=0)
+
+                    ### Now go through combos and plot 
+                    for mag_i in range(4):
+                        for ang_i in range(8):
+                            
+                            ix = np.nonzero(np.logical_and(commands_disc[:, 0] == mag_i, commands_disc[:, 1] == ang_i))[0]
+
+                            if len(ix) > 0:
+                                ### mFR for a given command ###
+                                command_mn_fr = np.mean(spks[ix, :], axis=0)
+                                pred_command_mn_fr = np.mean(pred[ix, :], axis=0)
+
+                                if use_mFR_option == 'pooled':
+                                    x_mfr = mFR_pool.copy()
+                                    y_mfr = mFR_pool.copy()
+                                
+                                elif use_mFR_option == 'command_spec':
+                                    x_mfr = command_mn_fr.copy()
+                                    y_mfr = command_mn_fr.copy()
+                                
+                                elif use_mFR_option == 'command_axis_spec':
+                                    x_mfr = command_mn_fr.copy()
+                                    y_mfr = pred_command_mn_fr.copy()
+                                
+                                if use_mFR_option == 'ultra_pooled':
+                                    x_mfr = mFR_pool.copy()
+                                    y_mfr = mFR_pool.copy()                            
+
+                                    ### For this option only plot the 
+                                    if len(ix) > min_obs:
+
+                                        ### Add this guy only for ultra_pooled 
+                                        z_fr[model, i_d, i_ds].append(np.mean(spks[ix, :], axis=0) - x_mfr)
+                                        pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix, :], axis=0) - y_mfr)
+
+                                else:
+                                    co_added_targ = []
+                                    obs_added_targ = []
+
+                                    for targi in np.unique(targ):
+                                        ### Get co / task 
+                                        ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
+                                        ix_co = np.nonzero(ix_co == True)[0]
+                                        for ixtmp in ix_co: assert(ixtmp in ix)
+                                        assert(len(ix_co) <= len(ix))
+                                        assert(np.all(commands_disc[ix_co, 0] == mag_i))
+                                        assert(np.all(commands_disc[ix_co, 1] == ang_i))
+                                        assert(np.all(tsk[ix_co] == 0))
+                                        assert(np.all(targ[ix_co] == targi))
+
+                                        if len(ix_co) >= min_obs:
+                                            #### Keep the mean CO condition specific command
+                                            if targi not in co_added_targ:
+                                                z_fr[model, i_d, i_ds].append(np.mean(spks[ix_co, :], axis=0) - x_mfr)
+                                                pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix_co, :], axis=0) - y_mfr)
+                                                co_added_targ.append(targi)
+
+                                            ### Get info second task: 
+                                            for targi2 in np.unique(targ):
+                                                ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
+                                                ix_ob = np.nonzero(ix_ob == True)[0]
+                                                
+                                                assert(np.all(ixtmp in ix for ixtmp in ix_ob))
+                                                assert(len(ix_ob) <= len(ix))
+                                                for ixtmp in ix_ob: assert(ixtmp in ix)
+                                                assert(np.all(commands_disc[ix_ob, 0] == mag_i))
+                                                assert(np.all(commands_disc[ix_ob, 1] == ang_i))
+                                                assert(np.all(tsk[ix_ob] == 1))
+                                                assert(np.all(targ[ix_ob] == targi2))
+
+                                                if len(ix_ob) >= min_obs:
+                                                    if targi2 not in obs_added_targ:
+                                                        z_fr[model, i_d, i_ds].append(np.mean(spks[ix_ob, :], axis=0) - x_mfr)
+                                                        pred_z_fr[model, i_d, i_ds].append(np.mean(pred[ix_ob, :], axis=0) - y_mfr)
+                                                        obs_added_targ.append(targi)
+
+                                                    assert(len(ix_co) >= min_obs)
+                                                    assert(len(ix_ob) >= min_obs)
+                                                    #print 'adding: mag_i: %d, ang_i: %d, targi: %d, targi2: %d' %(mag_i, ang_i, targi, targi2)
+                                                    ### make the plot: 
+                                                    if cov: 
+                                                        diffs[model, i_d, i_ds] = util_fcns.get_cov_diffs(ix_co, ix_ob, spks, diffs[model, i_d])
+                                                        pred_diffs[model, i_d, i_ds] = util_fcns.get_cov_diffs(ix_co, ix_ob, pred, pred_diffs[model, i_d])
+                                                    else: 
+                                                        diffs[model, i_d, i_ds].append(np.mean(spks[ix_co, :], axis=0) - np.mean(spks[ix_ob, :], axis=0))    
+                                                        pred_diffs[model, i_d, i_ds].append(np.mean(pred[ix_co, :], axis=0) - np.mean(pred[ix_ob, :], axis=0))
+
+            ### Now scatter plot all data over all days: 
+            #f, ax = plt.subplots(nrows = 1, ncols = 2, figsize=(8, 4))
+            ### Make R2 plots to show how much each plot accounts for variace: 
+            for i_d in range(ndays):
+                for i_ds in range(len(model_dicts)):
+
+                    MDI.append(i_ds)
+                    MOD.append(i_m)
+                    DAY.append(i_d)
+
+                    if i_ds == scatter_ds:
+                        color = 'k'
+                    # elif i_ds == 1:
+                    #     color = 'b'
+                    # elif i_ds == 2:
+                    #     color = 'k'
+
+                    if use_mFR_option == 'ultra_pooled':
+                        pass
+                    else:
+                        if plot_diffs:
+                            ### T x N
+
+                            x = np.vstack((diffs[model, i_d, i_ds]))*10
+                            y = np.vstack((pred_diffs[model, i_d, i_ds]))*10
+
+                            #### For the diffs, want to reshape everything into a single long array 
+                            x = x.reshape(-1)
+                            y = y.reshape(-1)
+
+                            if i_ds == scatter_ds:
+                                if i_d == day_i:
+                                    axall[i_m].plot(x, y, color+'.', markersize=2.)
+                            axall[i_m].set_xlim([-40, 40])
+                            axall[i_m].set_ylim([-40, 40])
+                            axall[i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
+                            axall[i_m].set_ylabel('Pred Mn Diff | Command', fontsize=14)
+                            axall[i_m].set_xlabel('Mn Diff | Command', fontsize=14)
+
+                            ### get variance explained -- here, each point is a neuron / command / day / targ1 / targ 2 difference
+                            ### the mean for SST is the neuron specific avg. true difference. 
+                            VAF = util_fcns.get_R2(x, y, pop = True)
+
+                            ### Old VAF: 
+                            #VAF = 1 - np.sum((x-y)**2)/np.sum((x-np.mean(x))**2)
+                            R2[model, i_d, i_ds].append(VAF);
+                            if i_ds == scatter_ds and i_d == day_i:
+                                axall[i_d, i_m].set_title('Day %d, VAF = %.4f\n %s' %(i_d,VAF, '$'+models_to_include_labs[i_m]+'$'), fontsize=14)
+                            VAL.append(VAF)
+
+                    ### Always plot 
+                    ########### ONLY PLOT TRUE Z FR #########
+                    x2 = np.vstack(( z_fr[model, i_d, i_ds]))*10
+                    y2 = np.vstack(( pred_z_fr[model, i_d, i_ds]))*10
+                    
+                    x2 = x2.reshape(-1)
+                    y2 = y2.reshape(-1)
+
+                    
+                    ### Here, not reshaping, want to keep the mean FR | command, condition comparable to mFR for neuron overall; 
+                    if i_ds == scatter_ds:
+                        if i_d == day_i:
+                            slp,intc,rv,pv,err = scipy.stats.linregress(x2, y2)
+                            axall2[i_m].plot([np.min(x2), np.max(x2)], slp*np.array([np.min(x2), np.max(x2)]) + intc, '--', color=color)
+                            axall2[i_m].plot(x2, y2, color+'.', markersize=2.)
+    
+                    axall2[i_m].set_xlim([-40, 40])
+                    axall2[i_m].set_ylim([-40, 40])
+                    axall2[i_m].plot([-40, 40], [-40, 40], 'k--', linewidth = 1.)
+
+                    if use_mFR_option == 'ultra_pooled':
+                        axall2[i_m].set_ylabel('Pred Mn | Command\n - mFR', fontsize=14)
+                        axall2[i_m].set_xlabel('Mn FR | Command\n - mFR', fontsize=14)        
+                    
+                    else:
+                        if use_mFR_option == 'command_spec':
+                            axall2[i_m].set_ylabel('Pred Mn | Cond, Command\n - mFR|Command', fontsize=14)
+                        elif use_mFR_option == 'command_axis_spec':
+                            axall2[i_m].set_ylabel('Pred Mn | Cond, Command\n - Pred mFR|Command', fontsize=14)
+                        axall2[i_m].set_xlabel('Mn FR | Cond, Command\n - mFR|Command', fontsize=14)
+                    
+                    VAF2 = util_fcns.get_R2(x2, y2, pop = True)
+                    VAL2.append(VAF2)
+                    R22[model, i_d, i_ds].append(VAF2)
+                    if i_ds == scatter_ds and i_d == day_i:
+                        axall2[i_m].set_title('Day %d, VAF = %.4f\n %s \n %s' %(i_d,VAF2, '$'+models_to_include_labs[i_m]+'$', use_mFR_option), fontsize=14)
+
+        #### Save the second one ########
+        fall2.savefig(fig_dir + 'scatter_%s_%s_command_cond_spec_scatterShuff%d.eps'%(animal, use_mFR_option, scatter_ds))
+
+        if use_mFR_option == 'ultra_pooled':
+            VAL = None
+        else:
+            fall.tight_layout()
+            if include_shuffs is None:
+                fall.savefig(analysis_config.config['fig_dir3'] + 'diff_scatters_%s_R2_unrolled_scatterShuff%d.eps' %(animal, scatter_ds))
+            if len(VAL) > 0:
+                VAL = np.hstack((VAL))
+
+        fall2.tight_layout()
+        if include_shuffs is None:
+            fall2.savefig(analysis_config.config['fig_dir3'] + 'cond_spec_scatters_%s_mFR_%s.eps' %(animal, use_mFR_option))
+
+        MOD = np.hstack((MOD))
+        MDI = np.hstack((MDI))
+        DAY = np.hstack((DAY))
+        VAL2 = np.hstack((VAL2))
+
+
+        for iv, (val, r2_caps, nm) in enumerate(zip([VAL, VAL2], [R2, R22], ['diffs', 'mFR_cond_command'])):
+
+            if val is None:
+                pass
+            else:
+                cont = False
+                if iv > 0:
+                    cont = True
+                else:
+                    if iv == 0 and plot_diffs:
+                        cont = True
+
+                if cont:
+                    #### R2 bar plot ####
+                    fbar, axbar = plt.subplots(figsize=(8, 8))
+
+                    if len(model_dicts) > 1:
+                        fbarsh, axbarsh = plt.subplots(figsize = (8, 8))
+                    
+                    if include_shuffs is None:
+                        ### Plot indices ###
+                        ix0 = np.nonzero(MOD < 2)[0]
+                        ix1 = np.nonzero(np.logical_and(MOD > 0, MOD <3))[0]
+
+                        pv0, slp0 = util_fcns.run_LME(DAY[ix0], MOD[ix0], val[ix0])
+                        pv1, slp1 = util_fcns.run_LME(DAY[ix1], MOD[ix1], val[ix1])
+
+                        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix0])), pv0, slp0, len(ix0)))
+                        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix1])), pv1, slp1, len(ix1)))
+
+                    ### Plot as bar plot ###
+                    all_data = {}
+                    for i_m, model in enumerate(models_to_include):
+                        for i_ds in range(len(model_dicts)):
+                            all_data[model, i_ds] = []; 
+
+                    for i_d in range(ndays):
+                        tmp = []; tmp2 = []; tmp_sh = []; tmp2_sh = []; 
+                        
                         for i_m, model in enumerate(models_to_include):
                             for i_ds in range(len(model_dicts)):
                                 r2 = np.hstack((r2_caps[model, i_d, i_ds]))
@@ -3418,7 +4001,6 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = 0.8, dat = None):
         f.tight_layout()
     f_stb.tight_layout()
 
-
 ### Check model dictionaries ####
 def check_models(model_dicts, day, model_nm, command_bins):
     
@@ -3521,6 +4103,121 @@ def check_models(model_dicts, day, model_nm, command_bins):
         assert(np.allclose(spks_pred, shuff_model.predict(shuff_act)))
 
         ### mean FR         
+
+### Putative Fig 6 -- how do dynamics help next time step predictions ###
+### What movements are dynamics capable of ###
+def plot_dyn_examples(dat, animal = 'grom', day = 0, min_obs = 15):
+
+    ##### Open up model ####
+    model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    #dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(7), 'rb'))
+    KG = util_fcns.get_decoder(animal, day)
+
+    #### Get neural push ###
+    push = dat[day, 'np']
+    spks = dat[day, 'spks']
+    pred_spks = dat[day, model][:, :, 2]
+    tsk = dat[day, 'task']
+    trg = dat[day, 'trg']
+    bin_num = dat[day, 'bin_num']
+    min_bin = np.min(bin_num)
+    T = push.shape[0]
+
+    ### Get mean spikes ###
+    mn_spks = np.mean(spks, axis=0)
+
+    ### Bin the push ###
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    commands = util_fcns.commands2bins([push], mag_boundaries, animal, day, vel_ix = [0, 1])[0]
+
+    for ang in range(8):
+        for mag in range(4):
+            
+            #### Make plot #####
+            f, ax = plt.subplots(ncols = 2, nrows = 2, figsize = (8, 8))
+
+            #### Now for each condition, add data ####
+            Dat = []; Act = []; PredAct = []; PredDat = []; Cond = []; 
+            ix_command = np.nonzero(np.logical_and(commands[:, 0] == mag, commands[:, 1] == ang))[0]
+
+            for i_tsk in range(2):
+                for i_trg in range(8):
+
+                    ### Condition ix; 
+                    ix = np.nonzero(np.logical_and(tsk[ix_command] == i_tsk, trg[ix_command] == i_trg))[0]
+                    ix_fin = ix_command[ix]
+                    ix_fin_tp1 = ix_fin + 1
+
+                    ### Remove ix > len 
+                    keep_ix2 = np.nonzero(ix_fin_tp1 < T)[0]
+                    ix_fin_tp1 = ix_fin_tp1[keep_ix2]
+                    ix_fin = ix_fin[keep_ix2]
+
+                    ### Remove ix that are min; 
+                    keep_ix = np.nonzero(bin_num[ix_fin_tp1] > min_bin)[0]
+                    ix_fin_tp1 = ix_fin_tp1[keep_ix]
+                    ix_fin = ix_fin[keep_ix]
+
+                    if len(ix_fin) > min_obs:
+
+                        #### Data / condition ####
+                        PredDat.append(pred_spks[ix_fin_tp1])
+                        Dat.append(spks[ix_fin, :])
+                        Act.append(push[ix_fin, :])
+                        PredAct.append(np.dot(KG, pred_spks[ix_fin_tp1, :].T).T)
+
+                        Cond.append(np.zeros((len(ix_fin), )) + i_tsk*10 + i_trg)
+
+                        assert(np.all(commands[ix_fin, 0] == mag))
+                        assert(np.all(commands[ix_fin, 1] == ang))
+                        assert(np.all(tsk[ix_fin] == i_tsk))
+                        assert(np.all(trg[ix_fin] == i_trg))
+
+
+            ### Now do PCA on your neural axes ###
+            Dat = np.vstack((Dat))
+            PredDat = np.vstack((PredDat))
+
+            Act = np.vstack((Act))
+            PredAct = np.vstack((PredAct))
+
+            Cond = np.hstack((Cond))
+            assert(Dat.shape[0] == len(Cond))
+            
+            ### Do PCA; 
+            transf_data, pc_model, evsort = util_fcns.PCA(Dat, 2, mean_subtract = False)
+            transf_data_tp1 = util_fcns.dat2PC(PredDat, pc_model)
+            ### For each condition, plot in PC space; 
+            for c in np.unique(Cond):
+                ix = np.nonzero(Cond == c)[0]
+                if c >= 10:
+                    ci = int(c - 10)
+                    marker = 's'
+                else:
+                    ci = int(c)
+                    marker = 'o'
+
+                ### Can we plot dynamics in this PC space, setting all other dimensions to their mean?!
+                model_ridge = dat[day, model, 0 + 2*5, 2, 'model']
+
+                ### Plot flow fields ####
+                plot_flow_field_utils.plot_dyn_in_PC_space(model_ridge, pc_model, ax[0, 0], cmax = 5., scale = 5.5, width = 0.01, lims = 10,
+                   title = '', animal = 'grom')
+                plot_flow_field_utils.plot_dyn_in_PC_space(model_ridge, pc_model, ax[0, 1], cmax = 5., scale = 5.5, width = 0.01, lims = 10,
+                   title = '', animal = 'grom')
+
+                ax[0, 0].plot(np.mean(transf_data[ix, 0]), np.mean(transf_data[ix, 1]), marker, 
+                    color = analysis_config.pref_colors[ci])
+                ax[0, 1].plot(np.mean(transf_data_tp1[ix, 0]), np.mean(transf_data_tp1[ix, 1]), marker, 
+                    color = analysis_config.pref_colors[ci])
+                ax[1, 0].plot(np.mean(Act[ix, 0]), np.mean(Act[ix, 1]), marker, color = analysis_config.pref_colors[ci])
+                ax[1, 1].plot(np.mean(PredAct[ix, 0]), np.mean(PredAct[ix, 1]), marker, color = analysis_config.pref_colors[ci])
+                for axi in ax[1,:]:
+                    axi.set_xlim([-5, 5])
+                    axi.set_ylim([-5, 5])
+
+            ax[0, 0].set_title("Mag %d, Ang %d" %(mag, ang))
+
 
 
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######
