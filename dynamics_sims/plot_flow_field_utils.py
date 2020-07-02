@@ -1,5 +1,7 @@
 import numpy as np 
+import scipy
 import matplotlib.pyplot as plt 
+from online_analysis import util_fcns
 
 def flow_field_plot_top_dim(A, dt, X = None, dim0 = 0, dim1 = 1, cmax = .1,
     scale = 1.0, width = .04, ax = None):
@@ -186,3 +188,72 @@ def chk_ev_vect(ev, evect, A):
         vct = evect[:, i]
         ## Do out the multiplication
         assert(np.allclose(np.dot(A, vct[:, np.newaxis]), evi*vct[:, np.newaxis]))
+
+
+def model_2_Amat(mod):
+    ''' Add intercept onto the end and bottom of A matrix '''
+    A = np.hstack(( mod.coef_, mod.intercept_[:, np.newaxis] ))
+    _, n = A.shape
+    A = np.vstack((A, np.hstack(( np.zeros((n-1, )), [1] )) ))
+    return A
+
+def plot_dyn_in_PC_space(model, pc_model, ax, cmax = 2., scale = 5.5, width = 0.01, lims = 2,
+                   title = '', animal = 'grom', A = None):
+    
+    ### Add offset to A
+    if A is None:
+        A = model_2_Amat(model)
+
+    ### Use the PCA model to make this work; 
+    ### Neurons x nCPCs --> eigenvector projection; 
+    trans_mat = pc_model['proj_mat']
+    nn, npcs = trans_mat.shape
+
+    ### Add offset terms; from PCs --> neurons 
+    x_mn = pc_model['x_mn'][:, np.newaxis]
+    trans_mat = np.hstack((trans_mat, x_mn)) ### N x (nPCs + 1)
+    trans_mat = np.vstack((trans_mat, np.zeros((npcs+1)))) ## (N+1) x (nPCs + 1)
+    trans_mat[-1, -1] = 1; # (N+1) x (nPCs + 1)
+    
+    ### Add offset terms; from neurons --> PCs
+    trans_mat2 = pc_model['proj_mat'].T ### nPCs x Neurons 
+
+    ### pc = U*(X-mu) = UX - Umu
+    Uu = np.dot(trans_mat2, pc_model['x_mn'][:, np.newaxis]) ## nPcs
+    trans_mat2 = np.hstack((trans_mat2, -1*Uu)) # nPCs x (Neurons + 1)
+    trans_mat2 = np.vstack((trans_mat2, np.zeros((trans_mat2.shape[1], )))) ## (nPCs+1) x (NN+1)
+    trans_mat2[-1, -1] = 1
+
+    ########################################
+    ################ Testing! ############
+    N = 100
+    test_data = np.random.randn(N, nn)
+    pc_test_data = util_fcns.dat2PC(test_data, pc_model)
+    
+    ### This will only be true if # neurons == # PCs
+    if npcs == nn:
+        tmp = np.dot(trans_mat, np.hstack((pc_test_data, np.ones((N, 1)) )).T).T
+        assert(np.allclose(tmp[:, :-1], test_data))
+    
+    tmp = np.dot(trans_mat2, np.hstack((test_data, np.ones((N, 1)))).T).T
+    assert(np.allclose(tmp[:, :npcs], pc_test_data))
+
+    ########################################
+    ########################################
+
+    ### Make modified KG: 
+    PC_Amat = np.dot(trans_mat2, np.dot(A, trans_mat))
+    ev,_ = np.linalg.eig(A)
+    ev2,_ = np.linalg.eig(PC_Amat)
+    
+    if npcs == nn:
+        assert(np.allclose(np.unique(ev), np.unique(ev2)))
+
+    ### Plot the dynamics; 
+    ax.axis('equal')
+    plot_flow(PC_Amat, ax, cmax = cmax, scale = scale, 
+                                    width = width, xmin=-lims, xmax=lims, ymin=-lims,
+                                   ymax = lims, dim0=0, dim1=1, nb_points = 40, 
+                                   setdimeq1 = True)
+    ax.vlines(0, -lims, lims, 'k')
+    ax.hlines(0, -lims, lims, 'k')
