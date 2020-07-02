@@ -287,7 +287,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     ########################################################
     ##### Here we can safely add shuffles if we want #######
     ########################################################
-    Data_temp = []; Sub_spk0_temp_all = [];
+    Data_temp = []; Sub_spk0_temp_all = []; Sub_push_all = []; 
 
     for nsi in range(nshuffs):
         if nsi % 10 == 0:
@@ -549,8 +549,9 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         else:
             Data_temp.append(copy.copy(data_temp)); 
             Sub_spk0_temp_all.append(copy.copy(sub_spk0_temp_all));
+            Sub_push_all.append(copy.copy(sub_push_all))
 
-    return Data_temp, Sub_spk0_temp_all
+    return Data_temp, Sub_spk0_temp_all, Sub_push_all
             
 ### Confirmation that extracted data looks right ###
 def plot_data_temp(data_temp, animal, use_bg = False):

@@ -707,7 +707,7 @@ def model_ind_cell_tuning_SHUFFLE():
                     KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
 
                 # Get spike data from data fcn
-                Data_temp, Sub_spikes = generate_models_utils.get_spike_kinematics(animal, day, 
+                Data_temp, Sub_spikes, Sub_push = generate_models_utils.get_spike_kinematics(animal, day, 
                     order_dict[i_d], history_bins_max, within_bin_shuffle = True,
                     day_ix = i_d, nshuffs = 100)
 
@@ -715,6 +715,7 @@ def model_ind_cell_tuning_SHUFFLE():
 
                     data_temp = Data_temp[shuffle]
                     sub_spikes = Sub_spikes[shuffle]
+                    sub_push_all = Sub_push[shuffle]
 
                     nneur = sub_spikes.shape[1]
                     variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
