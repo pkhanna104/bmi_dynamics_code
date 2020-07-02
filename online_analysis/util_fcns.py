@@ -186,6 +186,10 @@ def get_decoder(animal, day_ix):
 
 #### Linear mixed effect modeling: 
 def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
+    Days = np.hstack((Days))
+    Grp = np.hstack((Grp))
+    Metric = np.hstack((Metric))
+
     data = pd.DataFrame(dict(Days=Days, Grp=Grp, Metric=Metric))
     md = smf.mixedlm("Metric ~ Grp", data, groups=data["Days"])
     mdf = md.fit()
@@ -229,6 +233,7 @@ def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
             ax.set_xticks(np.unique(Grp))
             ax.set_xticklabels(xlabels, rotation = 45)
         ax.set_title(title)
+        ax.set_xlim([-.5, 3.5])
         f.tight_layout()
 
     return pv, slp
@@ -288,6 +293,17 @@ def plot_mean_and_sem(x , array, ax, color='b', array_axis=1,label='0',
         ax.set_yscale('log')
     return x, ax
 
+def get_pv_str(pv):
+    if pv < 0.001:
+        pv_str = '***'
+    elif pv < 0.01:
+        pv_str = '**'
+    elif pv < 0.05:
+        pv_str = '*'
+    else:
+        pv_str = 'n.s., pv=%.2f'%(pv)
+    return pv_str
+
 ### Run PCA ###
 def PCA(X, nPCs, mean_subtract = True):
     '''
@@ -336,6 +352,12 @@ def PCA(X, nPCs, mean_subtract = True):
     pc_model = dict(proj_mat = proj_mat, x_mn = x_mn)
 
     return transf_data, pc_model, evsort
+
+def dat2PC(X, pc_model):
+    assert(X.shape[1] == len(pc_model['x_mn']))
+    X_dmn = X - pc_model['x_mn'][np.newaxis, :]
+    proj_mat= pc_model['proj_mat']
+    return np.dot(proj_mat.T, X.T).T
 
 ### Double check that each eigenvlaue / vecotr is correct: 
 def chk_ev_vect(ev2, vect2, covX2):
