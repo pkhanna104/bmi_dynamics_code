@@ -15,6 +15,7 @@ from collections import defaultdict
 
 from sklearn.linear_model import Ridge
 import scipy
+import scipy.io as sio
 
 ######### STEP 1 -- Get alpha value #########
 def sweep_alpha_all(run_alphas=True, model_set_number = 3,
@@ -124,6 +125,8 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
             day, order_dict[i_d], history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle)
 
+        KG = util_fcns.get_decoder(animal, i_d)
+
         #### Assertion to match length #####
         assert(len(data_temp) == len(sub_spikes) == len(sub_spk_temp_all) == len(sub_push_all))
 
@@ -178,7 +181,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
                         ##### model name 
                         ##### data_temp_dict_test 
                         h5file, model_, _ = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=name, 
-                            test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key, 
+                            test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key, KG = KG,
                             fit_intercept = fit_intercept)
 
     h5file.close()
@@ -655,6 +658,135 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         
         else:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5), 'wb'))
+
+def model_ind_cell_tuning_SHUFFLE():
+    '''
+    models --> dynamics and dynamics conditioned on action 
+    '''
+    model_set_number = 6
+    n_folds = 5
+    model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(model_set_number)
+    models_to_include = [m[1] for m in model_var_list]
+
+    ### Place to save models: 
+    model_data = dict(); 
+
+    ### Get the ridge dict: 
+    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
+    
+    for obj in gc.get_objects():   # Browse through ALL objects
+        if isinstance(obj, tables.File):   # Just HDF5 files
+            try:
+                obj.close()
+            except:
+                pass #
+
+    for animal in ['grom', 'jeev']:
+        if animal == 'grom':
+            order_dict = analysis_config.data_params['grom_ordered_input_type']
+            input_type = analysis_config.data_params['grom_input_type']
+
+        elif animal == 'jeev':
+            order_dict = analysis_config.data_params['jeev_ordered_input_type']
+            input_type = analysis_config.data_params['jeev_input_type']
+
+        ##### For each day ####
+        for i_d, day in enumerate(input_type):
+            if animal == 'grom' and i_d < 2:
+                pass
+            else:
+                print('##############################')
+                print('########## DAY %d ##########' %(i_d) )
+                print('##############################')
+            
+                ### Get kalman gain etc. 
+                if animal == 'grom':
+                    KG, KG_null_proj, KG_potent_orth = get_KG_decoder_grom(i_d)
+
+                elif animal == 'jeev':
+                    KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
+
+                # Get spike data from data fcn
+                Data_temp, Sub_spikes = generate_models_utils.get_spike_kinematics(animal, day, 
+                    order_dict[i_d], history_bins_max, within_bin_shuffle = True,
+                    day_ix = i_d, nshuffs = 100)
+
+                for shuffle in range(100):
+
+                    data_temp = Data_temp[shuffle]
+                    sub_spikes = Sub_spikes[shuffle]
+
+                    nneur = sub_spikes.shape[1]
+                    variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
+                    
+                    #model_data = {}
+                    ### Want to save neural push, task, target 
+                    # model_data[i_d, 'spks'] = sub_spikes.copy();
+                    # model_data[i_d, 'trg'] = np.squeeze(np.array(data_temp['trg']))
+                    # model_data[i_d, 'np'] = np.squeeze(np.array(sub_push_all))
+                    # model_data[i_d, 'bin_num'] = np.squeeze(np.array(data_temp['bin_num']))
+                    # model_data[i_d, 'pos'] = np.vstack((np.array(data_temp['posx_tm0']), np.array(data_temp['posy_tm0']))).T
+                    # model_data[i_d, 'vel'] = np.vstack((np.array(data_temp['velx_tm0']), np.array(data_temp['vely_tm0']))).T
+                    # model_data[i_d, 'vel_tm1'] = np.vstack((np.array(data_temp['velx_tm1']), np.array(data_temp['vely_tm1']))).T
+                    # model_data[i_d, 'pos_tm1'] = np.vstack((np.array(data_temp['posx_tm1']), np.array(data_temp['posy_tm1']))).T
+                    # model_data[i_d, 'trl'] = np.squeeze(np.array(data_temp['trl']))
+                    # model_data[i_d, 'day_bin_ix'] = np.squeeze(np.array(data_temp['day_bin_ix']))
+                    # model_data[i_d, 'day_bin_ix_shuff'] = np.squeeze(np.array(data_temp['day_bin_ix_shuff']))
+                
+                    ### Models -- save predictions
+                    for i_m, (model_nm, variables) in enumerate(zip(models_to_include, variables_list)):
+
+                        ### Models to save ##########
+                        ### Keep spikes ####
+                        nT, nn = sub_spikes.shape
+                        model_data = np.zeros((nT, nn, 3)) 
+                    
+                        #### Get training / testing sets split up --- test on 80% one task, test on 20% same tasks 20% other task
+                        test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp,
+                            match_task_spec_n = True)
+        
+                        for i_fold, type_of_model_index in enumerate(type_of_model):
+
+                            if type_of_model_index < 0:
+                                pass
+                            else:
+                                ### TEST DATA ####
+                                data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
+                                data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
+                                data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
+                                data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
+                                data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
+
+                                ### TRAIN DATA ####
+                                data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
+                                data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
+                                data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
+                                data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
+                                data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
+
+                                ## Store the params; 
+                                alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+
+                                model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
+                                    only_potent_predictor = False, KG_pot = KG_potent_orth, 
+                                    fit_task_specific_model_test_task_spec = False,
+                                    fit_intercept = True, model_nm = model_nm)
+                                
+                                h5file, model_, pred_Y = generate_models_utils.h5_add_model(None, model_, i_d, first=i_d==0, model_nm=model_nm, 
+                                    test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
+                                    only_potent_predictor = False, KG_pot = KG_potent_orth, KG = KG,
+                                    fit_task_specific_model_test_task_spec = False,
+                                    fit_intercept = True)
+
+                                model_data[test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
+                    
+                        #### Save Animal/Day/Shuffle/Model Name ###
+                        shuff_str = str(shuffle)
+                        shuff_str = shuff_str.zfill(3)
+
+                        ### Only save the general model for space; 
+                        sio.savemat(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff%s_%s.mat' %(animal, i_d, shuff_str, model_nm), dict(model_data=model_data[:, :, 2]))
+                        plt.close('all')
 
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
