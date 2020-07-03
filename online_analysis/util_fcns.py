@@ -301,7 +301,7 @@ def get_pv_str(pv):
     elif pv < 0.05:
         pv_str = '*'
     else:
-        pv_str = 'n.s., pv=%.2f'%(pv)
+        pv_str = 'n.s.\npv=%.2f'%(pv)
     return pv_str
 
 ### Run PCA ###

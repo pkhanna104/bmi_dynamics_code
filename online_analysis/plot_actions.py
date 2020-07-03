@@ -15,6 +15,8 @@ import seaborn
 seaborn.set(font='Arial',context='talk',font_scale=1.4, style='white')
 
 ###### notebook fcns #######
+
+######## NEW FIG 5 ###########
 def extract_trans_stats(include_shuffle = True, only_potent = False):
     ''' 
     method to get accuracy of angle / magnitude
@@ -59,7 +61,39 @@ def extract_trans_stats(include_shuffle = True, only_potent = False):
 
         ##### Save this ######
         all_stats_dict[animal] = copy.deepcopy(stats_dict)
+    return all_stats_dict
 
+def extract_trans_stats_gen_vs_task_spec():
+    all_stats_dict = {}
+    save = False
+    model_set_number = 7
+    dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+
+    for animal in ['jeev', 'grom']:
+        if animal == 'grom':
+            ndays = 9
+        elif animal == 'jeev':
+            ndays = 4
+        
+        stats_dict = defaultdict(list)
+        pot_stats_dict = defaultdict(list)
+            
+        for day in range(ndays):
+            ### General (2) and task-specfic (4)
+            for mod_type in [2, 4]:
+
+                R2_dA, R2_dM, perc_corr = plot_scatters(animal, model_set_number, dyn_model, save, 
+                                                 day, minobs = 15, model_type = mod_type, only_potent = False)
+                        
+                #### Save this stuff, skip across condition ####
+                stats_dict['r2ang', 'trans', mod_type].append(R2_dA)
+                stats_dict['r2mag', 'trans', mod_type].append(R2_dM)
+
+                stats_dict['pc', 'mag', 'trans', mod_type].append(perc_corr['mag'])
+                stats_dict['pc', 'ang_pw', 'trans', mod_type].append(perc_corr['ang_pairwise'])
+        
+        ##### Save this ######
+        all_stats_dict[animal] = copy.deepcopy(stats_dict)
     return all_stats_dict
 
 def plot_barplots_new_shuff(all_stats_dict):
@@ -118,6 +152,83 @@ def plot_barplots_new_shuff(all_stats_dict):
 
             fR2.tight_layout()
             fR2.savefig(analysis_config.config['fig_dir']+'%s_PC_%s_fig5_trans_r2_ang_mag.svg'%(animal, str(pci)))
+
+def plot_barplots_gen_vs_task_spec(all_stats_dict):
+    models_colors = [[100, 100, 100], [255, 0, 0]]
+    models_colors = [np.array(m)/255. for m in models_colors]
+    xlab = ['gen. dyn.', 'tsk-spec\n dyn.']
+
+    #### Get R2 of model vs. shuffle for dAngle ####
+    fR2, axR2 = plt.subplots(ncols = 2, nrows = 2, figsize = (10, 12))    
+    vls = defaultdict(list)
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        for i_p, pci in enumerate([None, 'pc']):
+            if pci is None:
+                keys = ['ang', 'mag']
+            elif pci == 'pc':
+                keys = ['ang_pw', 'mag']
+
+            #### For each of these keys ######
+            for ik, key in enumerate(keys):
+
+                lme_dict = dict(day=[], gen_vs_tsk = [], val = [])
+                #### Values from all stats dict #######
+                if pci is None:
+                    vals_gen = np.hstack((all_stats_dict[animal]['r2'+key, 'trans', 2]))
+                    vals_tsk = np.hstack((all_stats_dict[animal]['r2'+key, 'trans', 4]))
+                
+                elif pci == 'pc':
+                    vals_gen = process_pc(all_stats_dict[animal]['pc', key, 'trans', 2])
+                    vals_gen = np.hstack((vals_gen))
+                    vals_tsk = process_pc(all_stats_dict[animal]['pc', key, 'trans', 4])
+                    vals_tsk = np.hstack((vals_tsk))
+
+                axR2[i_p, ik].bar(3*i_a, np.mean(vals_gen), width=0.9, color=models_colors[1])
+                axR2[i_p, ik].errorbar(3*i_a, np.mean(vals_gen), np.std(vals_gen)/np.sqrt(len(vals_gen)), marker = '|', color='k')
+                axR2[i_p, ik].bar(3*i_a+ 1, np.mean(vals_tsk), width=0.9, color=models_colors[1])
+                axR2[i_p, ik].errorbar(3*i_a+ 1, np.mean(vals_tsk), np.std(vals_tsk)/np.sqrt(len(vals_tsk)), marker = '|', color='k')
+
+                #### Plot each day: 
+                ndays = len(vals_gen)
+                sig = []
+                mn = []
+                
+                for i_d in range(ndays):
+                    axR2[i_p, ik].plot([3*i_a, 3*i_a+1], [vals_gen[i_d], vals_tsk[i_d]], '-', color='gray', linewidth=1.)
+                    
+                    ###### Appending for stats ##########
+                    lme_dict['day'].append([i_d, i_d])
+                    lme_dict['gen_vs_tsk'].append([0, 1])
+                    lme_dict['val'].append([vals_gen[i_d], vals_tsk[i_d]])
+
+                ##### stats ######
+                pv, slp = util_fcns.run_LME(np.hstack((lme_dict['day'])), np.hstack((lme_dict['gen_vs_tsk'])), np.hstack((lme_dict['val'])))
+                pv_str = util_fcns.get_pv_str(pv)
+
+                mx = np.hstack((vals_gen, vals_tsk))
+                axR2[i_p, ik].plot([3*i_a, 3*i_a+1], [1.1*np.max(mx), 1.1*np.max(mx)], 'k-')
+                axR2[i_p, ik].text(3*i_a + 0.5, 1.15*np.max(mx), pv_str, ha='center')
+                
+                axR2[i_p, ik].set_xlim([-.5, 4.5])
+
+                vls[i_p, ik].append(mx)
+                axR2[i_p, ik].set_ylim([np.min(np.hstack((vls[i_p, ik]))), 1.2*np.max(np.hstack((vls[i_p, ik])))])
+                
+                axR2[i_p, ik].set_xticks([0, 1, 3, 4])
+                axR2[i_p, ik].set_xticklabels(np.hstack((xlab, xlab)), rotation=45)
+    
+                if pci == 'pc':
+                    axR2[i_p, ik].set_ylabel('Perc. Corr.\n%s Change'%key[:3].capitalize())
+                else:
+                    axR2[i_p, ik].set_ylabel('VAF %s Change'%key[:3].capitalize())
+                #print('Animal %s, pc=%s, key=%s sig'%(animal, str(pci), key))
+                #print(sig)
+
+    fR2.tight_layout()
+    fR2.savefig(analysis_config.config['fig_dir']+'PC_combo_VAF_fig5_trans_r2_ang_mag.svg')
+
+
 
 def process_pc(pc_dict):
     ndays = len(pc_dict)
@@ -1616,6 +1727,7 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     method for preprocessing/extracting data from tuning model files before doing all the scatter plots 
     model_set_number and dyn_model dictate which model is used; 
     model_type: general (2) or condition specific ('cond') are options; 
+        -- added 7/4/20 --> (4) means "task-specific" so CO model for CO data, OBS model for OBS data
     minobs/minobs2 are used to set prefix; 
     only_potent is used to indicate that only potent neural data should be used to make predictions 
         at the next time step; this involves using the same model, but preprocessing the data used to predict 
@@ -1630,7 +1742,7 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
         K = util_fcns.get_jeev_decoder(day)
 
     ### Open the model type ####
-    if model_type in [0, 1, 2]:
+    if model_type in [0, 1, 2, 4]:
         ### Task spec vs. general
         if dat is None:     
             dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
@@ -1661,6 +1773,8 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
         prefix = prefix + '_gen'
     elif model_type == 'cond':
         prefix = prefix + '_cond'
+    elif model_type == 4:
+        prefix = prefix + '_tskspec'
     else:
         raise Exception('no other model types yet')
 
@@ -1680,6 +1794,18 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
                 pred_spks_shuff = plot_generated_models.get_shuffled_data(animal, day, dyn_model) #dat_shuff[day, dyn_model][:, :, model_type]
                 nShuff = pred_spks_shuff.shape[2]
 
+    elif model_type == 4:
+        assert(include_shuffle == False)
+        ix_co = np.nonzero(dat[day, 'task']==0)[0]
+        ix_ob = np.nonzero(dat[day, 'task']==1)[0]
+        pred_spks = np.zeros_like(dat[day, 'spks'])
+
+        #### CO model #####
+        pred_spks[ix_co, :] = dat[day, dyn_model][ix_co, :, 0]
+
+        ##### OBS model #####
+        pred_spks[ix_ob, :] = dat[day, dyn_model][ix_ob, :, 1]
+
     elif model_type == 'cond':
         if only_potent:
             pred_spks = dat_reconst[day, dyn_model, 'pot']
@@ -1691,6 +1817,7 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
 
     #### True spks #####
     spks = dat[day, 'spks']
+    assert(spks.shape == pred_spks.shape)
 
     ### Rest of stuff ####
     if animal == 'grom':
