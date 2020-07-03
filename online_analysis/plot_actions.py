@@ -1,17 +1,20 @@
 import analysis_config
 from online_analysis import util_fcns, generate_models_utils
+
 from matplotlib import cm
-import copy, pickle
+import matplotlib.patches as mpatches
+import matplotlib.colors as colors
 import matplotlib as mpl
+
+import copy, pickle
 import numpy as np 
 import matplotlib.pyplot as plt
 import scipy.stats
 from collections import defaultdict 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.1, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.4, style='white')
 
 ###### notebook fcns #######
-
 def scatters_and_barplots(include_shuffle = False, only_potent = False):
     ''' 
     method to get accuracy of angle / magnitude
@@ -63,6 +66,8 @@ def scatters_and_barplots(include_shuffle = False, only_potent = False):
         all_stats_dict[animal] = copy.deepcopy(stats_dict)
 
     return all_stats_dict
+
+def scatters_ang_barplots_shuff():
 
 def plot_barplots(all_stats_dict, include_shuffle):
 
@@ -193,6 +198,40 @@ def plot_barplots(all_stats_dict, include_shuffle):
         # ax.set_title("Animal %s, Gen Dyn, XTrans" %(animal))      
 
 def _notebook_dump():
+
+    def test_arc():
+        import matplotlib.patches as mpatches
+        f, ax = plt.subplots()
+
+        center = (0., 0.)         # center of the circle
+        radius = 3.
+        theta1 = -125.
+        theta2 = 125.
+        width = 2.
+
+        patch = mpatches.Wedge(center=center,
+                               r=radius,
+                               theta1=theta1,
+                               theta2=theta2,
+                               width=width,
+                               # COMMON OPTIONS:
+        #                        alpha=alpha,
+                                fill=False,)
+                                #facecolor='b')
+        #                        hatch=fill_pattern,
+        #                        ec=line_color,
+        #                        lw=line_width,
+        #                        joinstyle=join_style,
+        #                        linestyle=line_style)
+
+        ax.add_patch(patch)
+        ax.set_title("matplotlib.patches.Wedge\n(width=None)", fontsize=14)
+        ax.set_xlim([-5, 5])
+        ax.set_ylim([-5, 5])
+        ax.plot([0, 3], [0, 0], 'k-')
+        ax.plot([0, 0], [0, 1], 'k-')
+
+
     # ###### Bar Plots on stats #######
     # ### Gen vs. Condition specific plots together, 
     # ### Trans / xcond plots together; 
@@ -351,8 +390,147 @@ def make_ALL_plots(animal, model_set_number, save, scale_rad = 2.,
     data['save_dir'] = save_dir; 
     data['scale_rad'] = scale_rad; 
     data['add_ang_mag_subplots'] = True
-    
     plot_pred_across_full_day(**data)
+
+########### Plot nice example #####
+#dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(6), 'rb'))
+def plot_example_dAng_dMag(animal, day, angle_og, mag_og, minobs = 10, dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0', dat=None):
+    data = preproc(animal, 6, dyn_model, day, model_type = 2, 
+                                minobs = 0, minobs2 = minobs, dat=dat)
+
+    T = len(data['command_bins'])
+    ix_command = np.nonzero(np.logical_and(data['command_bins'][:, 0] == mag_og, data['command_bins'][:, 1] == angle_og))[0]
+    ix_com_tp1 = ix_command + 1; 
+
+    ix_keep = np.nonzero(ix_com_tp1 < T)[0]
+    ix_command = ix_command[ix_keep]
+    ix_com_tp1 = ix_com_tp1[ix_keep]
+
+    ix_keep2 = np.nonzero(data['bin_num'][ix_com_tp1] > np.min(data['bin_num']))[0]
+    ix_command = ix_command[ix_keep2]
+    ix_com_tp1 = ix_com_tp1[ix_keep2]
+
+    assert(np.all(data['command_bins'][ix_command, 0] == mag_og))
+    assert(np.all(data['command_bins'][ix_command, 1] == angle_og))
+    assert(np.all(data['bin_num'][ix_com_tp1] > np.min(data['bin_num'])))
+    assert(np.all(ix_command == ix_com_tp1 - 1))
+
+    ######## Plot 3 circles ##########
+    true_trans = dict()
+    pred_trans = dict()
+    command_mn = []
+    added_tuples = []
+
+    for _, (ix, ix_og) in enumerate(zip(ix_com_tp1, ix_command)):
+        com = data['command_bins'][ix, :]
+        if tuple(com) in added_tuples:
+            pass
+        else:
+            true_trans[tuple(com)] = []
+            pred_trans[tuple(com)] = []
+            added_tuples.append(tuple(com))
+        true_trans[tuple(com)].append(data['push'][ix, :])
+        pred_trans[tuple(com)].append(data['pred_push'][ix, :])
+        command_mn.append(data['push'][ix_og, :])
+
+    ######## Segment mean ##########
+    segment_mn = np.mean(np.vstack((command_mn)), axis=0)
+
+    dA_dM = dict(dA = [], dM = [], trans = [])
+    dA_dM_true = dict(dA = [], dM = [], trans = [])
+    cont = False
+    for it, trans in enumerate(added_tuples):
+        tmp = np.vstack((true_trans[trans]))
+        if len(tmp) > minobs:
+            true_ = np.mean(np.vstack((true_trans[trans])), axis=0)
+            pred_ = np.mean(np.vstack((pred_trans[trans])), axis=0)
+        
+            cont = True
+            dA, dM = get_diffs(true_, segment_mn)
+            cp = np.sign(np.cross(segment_mn, true_))
+            dA = cp*dA
+
+            pred_dA, pred_dM = get_diffs(pred_, segment_mn)
+            pred_cp = np.sign(np.cross(segment_mn, pred_))
+            pred_dA = pred_cp*np.abs(pred_dA)
+
+            ##### Append to end ###########
+            dA_dM['dA'].append(pred_dA)
+            dA_dM['dM'].append(pred_dM)
+            dA_dM['trans'].append(trans)
+
+            dA_dM_true['dA'].append(dA)
+            dA_dM_true['dM'].append(dM)
+            dA_dM_true['trans'].append(trans)
+
+    if cont:
+        ####### Plots ######### 
+        f, ax = plt.subplots(nrows = 2, ncols = 2, figsize = (12, 12))
+        t = np.linspace(0, 2*np.pi, 1000)
+        angles1 = np.linspace(0., 2*np.pi, 9.) - np.pi/8
+        angles2 = np.linspace(0., 2*np.pi, 9.) + np.pi/8
+        angles1 = angles1[:-1]
+        angles2 = angles2[:-1]
+
+        mag1 = np.hstack(([0], data['mag_bound']))
+        dm = data['mag_bound'][-1] - data['mag_bound'][-2]
+        mag2 = np.hstack((data['mag_bound'], data['mag_bound'][-1] + dm))
+        
+        
+        ###### Draw circles / lines #######
+        for axi in ax.reshape(-1):
+            for magi in mag2:
+                ### Plot circles + angles; 
+                axi.plot(magi*np.cos(t), magi*np.sin(t), 'k-', linewidth=1.)
+
+            ##### Angle plots ######
+            for ang in angles1:
+                axi.plot([0, magi*np.cos(ang)], [0, magi*np.sin(ang)], 'k-', linewidth=1.)
+            axi.axis('square')
+
+        angles1 = angles1 / np.pi * 180.
+        angles2 = angles2 / np.pi * 180.
+        
+        ##### Make colormaps #######
+        labs = [['True dAngle', 'True dMag'], ['Pred dAngle', 'Pred dMag']]
+        for rowi, datrow in enumerate([dA_dM_true, dA_dM]):
+
+            for coli, key in enumerate(['dA', 'dM']):
+
+                vals = datrow[key]
+                entries = datrow['trans']
+
+                cmap = plt.get_cmap('viridis')
+                cNorm = colors.Normalize(vmin=np.min(vals), vmax=np.max(vals))
+                scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
+
+                for iv, (vl, ent) in enumerate(zip(vals, entries)):
+                    
+                    mag, ang = ent; 
+                    colorVal = scalarMap.to_rgba(vl)
+                    patch = mpatches.Wedge(center=(0., 0.),
+                                           r=mag2[mag],
+                                           theta1=angles1[ang],
+                                           theta2=angles2[ang],
+                                           width=mag2[mag]-mag1[mag],
+                                           fill=True, facecolor=colorVal)
+                    ax[rowi, coli].add_patch(patch)
+
+                scalarMap.set_array([])
+                cbar = f.colorbar(scalarMap, ax = ax[rowi, coli], orientation='horizontal')
+                cbar.ax.set_title(labs[rowi][coli])
+        
+                #### Add one last wedge #####
+                patch = mpatches.Wedge(center=(0., 0.),
+                                       r=mag2[mag_og],
+                                       theta1=angles1[angle_og],
+                                       theta2=angles2[angle_og],
+                                       width=mag2[mag_og]-mag1[mag_og],
+                                       fill=False, lw= 3., ec='k')
+                ax[rowi, coli].add_patch(patch)
+
+        f.tight_layout()
+        f.savefig(analysis_config.config['fig_dir']+'%s_day%d_mag%d_ang%d_fig5_eg_disc.svg'%(animal, day, mag_og, angle_og))
 
 ########### Plot action plots #######
 def plot_pred(command_bins=None, push=None, trg=None, tsk=None, bin_num=None, mag_bound=None, targ0 = 0., targ1 = 1., min_obs = 20, min_obs2 = 3,
@@ -1327,7 +1505,7 @@ def r2a(rad):
 
 ############ Preproc #######
 def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 10, minobs2 = 3,
-    only_potent = False, include_shuffle = False):
+    only_potent = False, include_shuffle = False, dat = None):
     ''' 
     method for preprocessing/extracting data from tuning model files before doing all the scatter plots 
     model_set_number and dyn_model dictate which model is used; 
@@ -1346,8 +1524,9 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
 
     ### Open the model type ####
     if model_type in [0, 1, 2]:
-        ### Task spec vs. general 
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
+        ### Task spec vs. general
+        if dat is None:     
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(model_set_number), 'rb'))
             
         if include_shuffle:
             dat_shuff = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_within_bin_shuff0.pkl' %(model_set_number), 'rb'))
