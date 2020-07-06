@@ -318,7 +318,7 @@ def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs 
         for i_d in range(ndays):
             if plot_ex: 
                 if i_d == 0:
-                    fex, axex = plt.subplots(ncols = 4, figsize = (12, 3))
+                    fex, axex = plt.subplots(ncols = 4, figsize = (8, 2.5))
                     axex_cnt = 0; 
 
             diffs = []; diffs_cov = []; 
@@ -424,6 +424,8 @@ def plot_real_mean_diffplot_r2_bar_tg_spec_7_gens(model_set_number = 3, min_obs 
                                                             axi.set_title('A:%d, M:%d, NN%d, \nCOT: %d, OBST: %d, Monk:%s'%(ang_i, mag_i, n, targi, targi2, animal),fontsize=6)
                                                             #axi.set_ylabel('Firing Rate (Hz)')
                                                             axi.set_xlim([-.5, 1.5])
+                                                            if ang_i == 1 and mag_i == 3:
+                                                                axi.set_ylim([50, 150])
                                                             #axi.set_ylim([-1., 10*(1+np.max(np.hstack(( spks[ix_co, n], spks[ix_ob, n]))))])
                                                             axex_cnt += 1
                                                             if axex_cnt == 4:
@@ -740,44 +742,105 @@ def return_perc_diff(spks, ix0, ix1):
     assert(len(perc_diff) == spks.shape[1])
     return perc_diff
 
-def disc_plot(n_disc):
+def disc_plot(n_disc, polygon = False, wedge = True):
+    '''
+    n_disc is 4 x 8 x 2 --> mag / angle / task 
+    '''
+    if polygon:
+        bw = np.array([0., 0., 0.])
+        co_obs_cmap = [bw, bw]
+        co_obs_cmap_cm = []; 
 
-    #co_obs_cmap = [np.array([0, 103, 56])/255., np.array([46, 48, 146])/255., ]
-    bw = np.array([0., 0., 0.])
-    co_obs_cmap = [bw, bw]
-    co_obs_cmap_cm = []; 
-
-    for _, (c, cnm) in enumerate(zip(co_obs_cmap, ['co', 'obs'])):
-        colors = [[1, 1, 1], c]  # white --> color
-        cmap_name = 'my_list'
-        cm = LinearSegmentedColormap.from_list(
-            cnm, colors, N=1000)
-        co_obs_cmap_cm.append(cm)
+        for _, (c, cnm) in enumerate(zip(co_obs_cmap, ['co', 'obs'])):
+            colors = [[1, 1, 1], c]  # white --> color
+            cmap_name = 'my_list'
+            cm = LinearSegmentedColormap.from_list(
+                cnm, colors, N=1000)
+            co_obs_cmap_cm.append(cm)
 
 
-    fig, (ax1, ax2) = plt.subplots(ncols=2, subplot_kw=dict(projection='polar'))
+        fig, (ax1, ax2) = plt.subplots(ncols=2, subplot_kw=dict(projection='polar'))
 
-    # Generate some data...
-    # Note that all of these are _2D_ arrays, so that we can use meshgrid
-    # You'll need to "grid" your data to use pcolormesh if it's un-ordered points
-    theta, r = np.mgrid[-np.pi/8.:(2*np.pi-np.pi/8.):9j, 0:4:5j]
-    
-    im1 = ax1.pcolormesh(theta, r, n_disc[:, :, 0].T, cmap = co_obs_cmap_cm[0], vmin=np.min(n_disc), vmax=np.max(n_disc))
-    im2 = ax2.pcolormesh(theta, r, n_disc[:, :, 1].T, cmap = co_obs_cmap_cm[1], vmin=np.min(n_disc), vmax=np.max(n_disc))
+        # Generate some data...
+        # Note that all of these are _2D_ arrays, so that we can use meshgrid
+        # You'll need to "grid" your data to use pcolormesh if it's un-ordered points
+        theta, r = np.mgrid[-np.pi/8.:(2*np.pi-np.pi/8.):9j, 0:4:5j]
+        
+        im1 = ax1.pcolormesh(theta, r, n_disc[:, :, 0].T, cmap = co_obs_cmap_cm[0], vmin=np.min(n_disc), vmax=np.max(n_disc))
+        im2 = ax2.pcolormesh(theta, r, n_disc[:, :, 1].T, cmap = co_obs_cmap_cm[1], vmin=np.min(n_disc), vmax=np.max(n_disc))
+        for ax in [ax1, ax2]:
+            ax.set_yticklabels([])
+            ax.set_xticklabels([])
+        fig.savefig(fig_dir+'grom_day0_neur_38_targ4_targ5_dist.eps')
 
-    for ax in [ax1, ax2]:
-        ax.set_yticklabels([])
-        ax.set_xticklabels([])
-    fig.savefig(fig_dir+'grom_day0_neur_38_targ4_targ5_dist.eps')
 
-    # divider = make_axes_locatable(ax1)
-    # cax = divider.append_axes('right', size='5%', pad=0.05)
-    # fig.colorbar(im1, cax=cax, orientation='vertical')
+    elif wedge:
+        import matplotlib.colors as colors
+        from matplotlib import cm
+        import matplotlib.patches as mpatches
 
-    # divider = make_axes_locatable(ax2)
-    # cax = divider.append_axes('right', size='5%', pad=0.05)
-    # fig.colorbar(im2, cax=cax, orientation='vertical');
-    # import pdb; pdb.set_trace()
+        cmap = plt.get_cmap('binary')
+        cNorm = colors.Normalize(vmin=np.min(n_disc), vmax=np.max(n_disc))
+        scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
+
+        f, ax = plt.subplots(ncols = 2)
+
+        angles1 = np.linspace(0., 2*np.pi, 9.) - np.pi/8
+        angles2 = np.linspace(0., 2*np.pi, 9.) + np.pi/8
+        angles1 = angles1[:-1]
+        angles2 = angles2[:-1]
+        angles1 = angles1 / np.pi * 180.
+        angles2 = angles2 / np.pi * 180.
+        mag1 = range(4)
+        mag2 = range(1, 5)
+
+        for i_t in range(2):
+            axi = ax[i_t]
+            axi.axis('square')
+
+            for m in range(4):
+                for a in range(8):
+                    colorVal = scalarMap.to_rgba(n_disc[m, a, i_t])
+                    patch = mpatches.Wedge(center=(0., 0.),
+                                           r=mag2[m],
+                                           theta1=angles1[a],
+                                           theta2=angles2[a],
+                                           width=mag2[m]-mag1[m],
+                                           fill=True, facecolor=colorVal)
+                    axi.add_patch(patch)
+            axi.set_yticklabels([])
+            axi.set_xticklabels([])
+            axi.set_xlim([-5, 5])
+            axi.set_ylim([-5, 5])
+        f.savefig(fig_dir+'grom_day0_neur_38_targ4_targ5_dist_wedge.eps')
+
+def tiny_wedge_plot(mag, ang):
+    import matplotlib.patches as mpatches
+    angles1 = np.linspace(0., 2*np.pi, 9.) - np.pi/8
+    angles2 = np.linspace(0., 2*np.pi, 9.) + np.pi/8
+    angles1 = angles1[:-1]
+    angles2 = angles2[:-1]
+    angles1 = angles1 / np.pi * 180.
+    angles2 = angles2 / np.pi * 180.
+    mag1 = range(4)
+    mag2 = range(1, 5)
+
+    f, ax = plt.subplots()
+    ax.axis('square')
+    patch = mpatches.Wedge(center=(0., 0.),
+                           r=mag2[mag],
+                           theta1=angles1[ang],
+                           theta2=angles2[ang],
+                           width=mag2[mag]-mag1[mag],
+                           fill=False, ec = 'k', lw = 1.)
+    ax.add_patch(patch)
+    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+    ax.set_xlim([-5, 5])
+    ax.set_ylim([-5, 5])
+    f.savefig(fig_dir+'tiny_wedge_m%d_a%d.eps' %(mag, ang))
+
+
 
 #### Fig 4 ----- bar plots of diff models ####
 def plot_r2_bar_model_1(min_obs = 15, 
@@ -3160,7 +3223,6 @@ def fig_5_cond_spec_next_action_scatter_bars(use_mvel_option = 'command_axis_spe
             fbar.savefig(analysis_config.config['fig_dir']+'%s_fig5_cond_spec_next_time_act_gen_vs_tskspec.svg'%(animal))
         else:
             fbar.savefig(analysis_config.config['fig_dir']+'%s_fig5_cond_spec_next_time_act.svg'%(animal))
-
 
 ### Generalization of Neural dynamics across tasks #####
 ### Generalization of neural dynamics -- population R2 ### -- figure 6(?)
