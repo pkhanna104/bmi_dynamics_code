@@ -75,6 +75,8 @@ def plot_mean_diffs_all(zscore = False, plot_beh_mn_diffs = False, plot_beh_vs_n
     if plot_beh_vs_neur:
         plot_bars_beh_vs_neural(agg_dat)
 
+    return agg_dat
+
 def extract_mean_diffs(animal='grom', day=0, lags = 1, min_obs = 15, 
     comparison = 'x_conds', zscore = False):
     '''
@@ -437,17 +439,41 @@ def plot_bars_beh_vs_neural(agg_dat):
     '''
     f, ax = plt.subplots(ncols = 2)
 
+    mn_shuff = [[], []]
+
     #### Animal #####
     for i_a, animal in enumerate(['grom', 'jeev']):
 
         ##### Metrics #####
-        for i_m, met in enumerate(['slope', 'rv']): 
+        for i_m, met in enumerate(['rv']):#, 'rv']): 
 
             ##### Shuffle / true ####
             for i_x, (dat, col) in enumerate(zip(['shuff', 'true'], ['gray', 'k'])):
     
-                #### Bar plot ####
-                ax[i_m].bar(i_a*3 + i_x, np.mean( np.hstack(( agg_dat[animal, met][dat] )) ), width=.9, color=col)
+                #### RAW Bar plot ####
+                ax[0].bar(i_a*3 + i_x, np.mean( np.hstack(( agg_dat[animal, met][dat] )) ), width=.9, color=col)
+
+                #### Relative Bar plot 
+                if dat == 'shuff':
+                    ndays = len(agg_dat[animal, met][dat])
+                    shuff = []; shuff_mn = []
+                    for i_d in range(ndays):
+                        shuff_dist = agg_dat[animal, met][dat][i_d]
+
+                        #### ABS is used bc fraction greater doesnt makes sense for negative values
+                        shuff.append(shuff_dist - np.mean(np.abs(shuff_dist)))
+                        shuff_mn.append(np.mean(np.abs(shuff_dist)))
+
+                    util_fcns.draw_plot(3*i_a, np.hstack((shuff)), 'gray', 'w', ax[1], width = .9)
+                else:
+                    tmp = []
+                    for i_d in range(ndays):
+                        dat_rel = (agg_dat[animal, met][dat][i_d]  - shuff_mn[i_d])/shuff_mn[i_d]
+                        if dat_rel < -100:
+                            import pdb; pdb.set_trace()
+                        ax[1].plot([i_a*3, i_a*3 + 1], [0, dat_rel], '-', color='gray')
+                        tmp.append(dat_rel)
+                    ax[1].bar(i_a*3 + 1, np.mean(tmp), width=.9, color=col)
 
             ##### Iterate through each day #####
             for i_d in range(len(agg_dat[animal, met][dat])):
@@ -455,13 +481,15 @@ def plot_bars_beh_vs_neural(agg_dat):
                 ###### Shuffle / true #####
                 tmp_sh = np.mean(agg_dat[animal, met]['shuff'][i_d])
                 tmp_dt = agg_dat[animal, met]['true'][i_d]
-                ax[i_m].plot(i_a*3 + np.array([0, 1]), np.array([tmp_sh, tmp_dt]), '-', color='gray')
+                ax[0].plot(i_a*3 + np.array([0, 1]), np.array([tmp_sh, tmp_dt]), '-', color='gray')
             
             #### Plot ####
-            ax[i_m].set_ylabel('Metric: %s' %(met))
-            ax[i_m].set_xlim([-.5, 4.5])
+            ax[0].set_ylabel('Correlation Coeff. (r) ')
+            ax[1].set_ylabel('Frac. Increase in Correlation\n Coeff. (r) vs. Shuffle')
+            ax[1].set_xlim([-.5, 4.5])
+            ax[0].set_xlim([-.5, 4.5])
     f.tight_layout()
-
+    f.savefig(analysis_config.config['fig_dir']+'/fig3_rv_of_cc.svg')
 
 ########### HELPER FCNS #############
 def get_mean_beh_neur(ix_com, lags, push, spks, shuff = False):
