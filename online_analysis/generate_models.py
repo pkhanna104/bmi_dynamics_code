@@ -692,7 +692,7 @@ def model_ind_cell_tuning_SHUFFLE():
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'grom' and i_d < 2:
+            if animal == 'grom' and i_d < 0:
                 pass
             else:
                 print('##############################')
@@ -746,6 +746,10 @@ def model_ind_cell_tuning_SHUFFLE():
                         test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp,
                             match_task_spec_n = True)
         
+                        save_dat = dict()
+                        save_dat['model_coef'] = []
+                        save_dat['model_intc'] = []
+                        
                         for i_fold, type_of_model_index in enumerate(type_of_model):
 
                             if type_of_model_index < 0:
@@ -780,13 +784,18 @@ def model_ind_cell_tuning_SHUFFLE():
                                     fit_intercept = True)
 
                                 model_data[test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
-                    
+                                
+                                if type_of_model_index == 2:
+                                    save_dat['model_coef'].append(model_.coef_)
+                                    save_dat['model_intc'].append(model_.intercept_)
+                                
                         #### Save Animal/Day/Shuffle/Model Name ###
                         shuff_str = str(shuffle)
                         shuff_str = shuff_str.zfill(3)
 
                         ### Only save the general model for space; 
-                        sio.savemat(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff%s_%s.mat' %(animal, i_d, shuff_str, model_nm), dict(model_data=model_data[:, :, 2]))
+                        save_dat['model_data'] = model_data[:, :, 2]
+                        sio.savemat(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff%s_%s.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
                         plt.close('all')
 
 ######## Possible STEP 2 -- fit the residuals #####
