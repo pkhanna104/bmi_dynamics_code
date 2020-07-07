@@ -305,7 +305,6 @@ class Brain(object):
         inp = np.mat(input1).reshape(-1, 1)
         next = np.dot(self.A, self.state) + np.dot(self.B, inp) + np.random.multivariate_normal(
             np.zeros((self.nstates)), self.W)
-        import pdb; pdb.set_trace()
         self.state = next.copy()
 
 class NHPBrain(Brain):
@@ -812,6 +811,7 @@ class Combined_Curs_Brain_LQR_Simulation_Data_Driven(Combined_Curs_Brain_LQR_Sim
         self.setup_lqr(task, R)
 
         self.keep_offset = keep_offset
+
 
 ### Extract LDS from TEs ###
 def get_saved_LDS(day = 0, animal = 'grom', nstates = 20, zeroA = False):

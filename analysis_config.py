@@ -13,7 +13,7 @@ config['fig_dir'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_c
 config['fig_dir2'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/data/'
 config['fig_dir3'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/presentations/6_2020_presentation_figs/'
 config['shuff_fig_dir'] = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/shuffle_data/'
-
+config['lqr_sim_saved_dyn'] = '/Users/preeyakhanna/bmi_dynamics_code/dynamics_sims/exp_dynamics_models/'
 #########################################
 ############ Data paths  ################
 #########################################
