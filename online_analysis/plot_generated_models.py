@@ -840,8 +840,6 @@ def tiny_wedge_plot(mag, ang):
     ax.set_ylim([-5, 5])
     f.savefig(fig_dir+'tiny_wedge_m%d_a%d.eps' %(mag, ang))
 
-
-
 #### Fig 4 ----- bar plots of diff models ####
 def plot_r2_bar_model_1(min_obs = 15, 
     ndays = None, pt_2 = False, r2_pop = True, 
@@ -1588,11 +1586,11 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             str(plot_act),
             str(skip_shuffle)))
 
-def get_shuffled_data(animal, day, model_nm):
+def get_shuffled_data(animal, day, model_nm, get_model = False):
     pref = analysis_config.config['shuff_fig_dir']
     files = np.sort(glob.glob(pref + '%s_%d_shuff*_%s.mat' %(animal, day, model_nm)))
     files = files[:100]
-    pred_Y = []
+    pred_Y = []; coef = []; intec = []; 
     
     for i_f, fl in enumerate(files):
         tmp = sio.loadmat(fl)
@@ -1601,7 +1599,14 @@ def get_shuffled_data(animal, day, model_nm):
         else:
             pred_Y.append(tmp['model_data'])
 
-    return np.dstack((pred_Y))
+        if get_model:
+            coef.extend(tmp['model_coef'])
+            intec.extend(tmp['model_intc'])
+
+    if get_model:
+        return np.dstack((pred_Y)), coef, intec
+    else:
+        return np.dstack((pred_Y))
 
 def get_perc(dist, value):
     ix = np.nonzero(dist < value)[0]
@@ -4312,8 +4317,9 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
         ax.set_xticklabels(xl, rotation=45)
         f.tight_layout()
 
-#### Eigenvalue decomposition 
-def eigvalue_plot(dt = 0.1, plt_evs_gte = 0.8, dat = None):
+############ Eigenvalue decomposition #########
+############ Fig 6 ############################
+def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None):
 
     dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
     n_folds = 5; 
@@ -4335,16 +4341,19 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = 0.8, dat = None):
 
         ###### Using the task specific models and the general models ######
         ##### Get the one with data matched #######
-        data = dat[i_a]
-
-        f, ax = plt.subplots(ncols = 3, figsize = (9, 3))
+        data = dat[animal
+        ]
 
         ##### for each day and task -- 
         for i_d in range(analysis_config.data_params[animal+'_ndays']):
-            
-            stb = []; 
+            f, ax = plt.subplots(ncols = 3, figsize = (9, 3))
+
+            stb = []; shuf_stb = []; 
             mn = []; 
 
+            #### Get shuffles ###
+            _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True)
+            
             ### For each day, plot the eigenvalues ####
             for i_f in range(n_folds):
 
@@ -4393,8 +4402,20 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = 0.8, dat = None):
                     ax[i_m].plot(decay, hz, '.', color = analysis_config.pref_colors[i_d])
                     ax[i_m].set_xlabel('Decay in seconds')
                     ax[i_m].set_ylabel('Frequency (Hz), max=5')
-                    ax[i_m].set_xlim([-.5, .5])
+                    ax[i_m].set_xlim([-.05, .15])
                     ax[i_m].set_ylim([-.1,5.05])
+
+                    #### Plot shuffle ###
+                    if i_m == 2:
+                        for _, (A, I) in enumerate(zip(coef_shuff, intc_shuff)):
+                            ev, _ = np.linalg.eig(A)
+                            angs = np.angle(ev)
+                            hz = np.abs(angs)/(2*np.pi*dt)
+                            decay = -1./np.log(np.abs(ev))*dt
+                            ax[i_m].plot(decay, hz, '.', color='gray', alpha=.3)
+
+                            ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
+                            shuf_stb.append(np.squeeze(np.array(np.dot(ImAinv, I[:, np.newaxis]))))
 
             #### bar plots #####
             if len(stb) > 0:
@@ -4404,6 +4425,11 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = 0.8, dat = None):
 
                 #### Plot Stable Pt ###
                 ax_stb[cnt/4, cnt%4].plot(np.mean(stb, axis=0), np.mean(mn, axis=0), 'k.')
+
+                if len(shuf_stb) > 0:
+                    shuf_stb = np.vstack((shuf_stb))
+                    ax_stb[cnt/4, cnt%4].plot(np.mean(shuf_stb, axis=0), np.mean(mn, axis=0), '.', color='gray')
+
                 ax_stb[cnt/4, cnt%4].set_xlim([0., 4])
                 ax_stb[cnt/4, cnt%4].set_ylim([0., 4])
                 ax_stb[cnt/4, cnt%4].plot([0, 4], [0, 4], 'k--', alpha=.5)
@@ -4415,6 +4441,300 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = 0.8, dat = None):
 
         f.tight_layout()
     f_stb.tight_layout()
+
+def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None):
+    ##### Number of folds
+    n_folds = 5; 
+    i_m = 2 ##### General model 
+
+    dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    f, ax = plt.subplots(ncols = 2, figsize = (6, 3))
+
+    #### Get shuffles 
+    _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True)
+
+    ### Plot 1 model ###
+    for i_f in range(5):
+
+        ### True A ###
+        model = dat[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
+        A = np.mat(model.coef_)
+        hz, decay = return_ts_hz(A)
+        ax[0].plot(decay, hz, 'k.')#, markersize=2)
+
+        ### Shuffle A ###
+        A_shuff = coef_shuff[i_f]
+        assert(A.shape == A_shuff.shape)
+
+        hz, decay = return_ts_hz(A_shuff)
+        ax[1].plot(decay, hz, '.', color='gray')#, markersize=2)
+    ax[0].set_xlim([0., .1])
+    ax[1].set_xlim([0., .1])
+    ax[0].set_ylim([-0.1, 5])
+    ax[1].set_ylim([-0.1, 5])
+
+    for axi in ax.reshape(-1):
+        axi.set_xlabel("Decay Time (sec)")
+        axi.set_ylabel("Frequency (Hz)")
+        axi.vlines(.05, 0, 5, 'k', linestyle='dashed')
+    ax[0].set_title('Data')
+    ax[1].set_title('Shuffled')
+    f.tight_layout()
+    f.savefig(analysis_config.config['fig_dir']+'/fig6_%s_day%s_eg_eigspec.svg'%(animal, i_d))
+
+def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None):
+    if animal == 'grom':
+        cmax = 15
+    elif animal == 'jeev':
+        cmax = 4
+
+    ##### Number of folds
+    n_folds = 5; 
+    i_m = 2 ##### General model 
+
+    dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    f, ax = plt.subplots(ncols = 2, figsize = (6, 3))
+
+    true_hz = []; true_decay = []; shuff_hz_w_sep = []; 
+    shuff_hz = []; shuff_decay = []; shuff_decay_w_sep = []; 
+
+    #### Iterate through days ####
+    for i_d in range(analysis_config.data_params[animal+'_ndays']):
+
+        #### Get shuffles 
+        _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True)
+
+        tmp_true_hz = []; tmp_true_decay = []; 
+        tmp_shuff_hz = []; tmp_shuff_decay = []; 
+        ### Plot 1 model ###
+        for i_f in range(n_folds):
+
+            ### True A ###
+            model = dat[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
+            A = np.mat(model.coef_)
+            hz, decay = return_ts_hz(A)
+            tmp_true_hz.append(hz); tmp_true_decay.append(decay)
+
+        for A_shuff in coef_shuff:
+            assert(A.shape == A_shuff.shape)
+            hz, decay = return_ts_hz(A_shuff)
+            tmp_shuff_hz.append(hz)
+            tmp_shuff_decay.append(decay)
+
+        true_hz.append(np.hstack((tmp_true_hz)))
+        shuff_hz.append(np.hstack((tmp_shuff_hz)))
+        true_decay.append(np.hstack((tmp_true_decay)))
+        shuff_decay.append(np.hstack((tmp_shuff_decay)))
+
+        shuff_decay_w_sep.append(tmp_shuff_decay)
+        shuff_hz_w_sep.append(tmp_shuff_hz)
+
+    #### Plot the 2D histogram ##
+    bins = [np.linspace(0, .08, 20), np.linspace(0., 5., 20)]
+    ax[0].hist2d(np.hstack((true_decay)), np.hstack((true_hz)), bins=bins, cmin=0., cmax = cmax, cmap='gray')
+    _, _, _, cax = ax[1].hist2d(np.hstack((shuff_decay)), np.hstack((shuff_hz)), bins=bins, cmin = 0., cmax=cmax*10, cmap='gray')
+    for axi in ax.reshape(-1):
+        axi.set_xlabel("Decay Time (sec)")
+        axi.set_ylabel("Frequency (Hz)")
+        axi.vlines(.05, 0, 5, 'b', linestyle='dashed')
+
+    ax[0].set_title('Data')
+    ax[1].set_title('Shuffled')
+    f.colorbar(cax, ax=ax[1])
+    f.tight_layout()
+    f.savefig(analysis_config.config['fig_dir']+'/fig6_%s_eg_eigspec_2Dhist.svg'%(animal))
+
+    ########### Non oscillatory time decays ################
+    f, ax = plt.subplots(figsize=(4,5))
+    bins = np.linspace(0, .1, 30)
+    db = 0.5*(bins[1] - bins[0])
+
+    non_osci = np.nonzero(np.hstack((true_hz)) == 0)[0]
+    h, _ = np.histogram(np.hstack((true_decay))[non_osci], bins)
+    ax.plot(bins[:-1]+db, h/float(np.sum(h)), 'k-')
+
+    mx = np.max(h/float(np.sum(h)))
+    ax.vlines(np.mean(np.hstack((true_decay))[non_osci]), 0, 1.1*mx, color='k', linestyle='--', linewidth=1.)
+    
+    non_osci = np.nonzero(np.hstack((shuff_hz)) == 0.)[0]
+    h1, _ = np.histogram(np.hstack((shuff_decay))[non_osci], bins)
+    ax.plot(bins[:-1]+db, h1/float(np.sum(h1)), '-', color = 'gray')
+    mx = np.max(h1/float(np.sum(h1)))
+    ax.vlines(np.mean(np.hstack((shuff_decay))[non_osci]), 0, 1.1*mx, color='gray', linestyle='--', linewidth=1.)
+
+    ax.set_xlabel('Time Decay (sec)')
+    ax.set_ylabel('Frac. of non-oscillatory Eigenvalues')
+    f.savefig(analysis_config.config['fig_dir']+'/fig6_%s_eg_nonosci_eigs_dist.svg'%(animal))
+
+    ########### Non oscillatory time decays ################
+    # frel , axrel = plt.subplots()
+    # fraw, axraw = plt.subplots()
+
+    # real_frac = []; 
+    # real_raw = []
+    # shuff_mn_sub = []; 
+    # shuff_raw = []; 
+
+    assert(len(true_hz) == analysis_config.data_params[animal+'_ndays'])
+    assert(len(true_decay) == analysis_config.data_params[animal+'_ndays'])
+    assert(len(shuff_hz) == analysis_config.data_params[animal+'_ndays'])
+    assert(len(shuff_decay) == analysis_config.data_params[animal+'_ndays'])
+
+    for i_d in range(analysis_config.data_params[animal+'_ndays']):
+
+        ix = np.nonzero(true_hz[i_d] == 0.)[0]
+        real_tmp_dec = true_decay[i_d][ix]
+
+        # ix_shuff = np.nonzero(shuff_hz[i_d] == 0.)[0]
+        # shuff_tmp_dec = shuff_decay[i_d][ix_shuff]
+        # mn_shuff_dec = np.mean(shuff_tmp_dec)
+        
+        # #### Plot raw stuff ####
+        # axraw.plot([0, 1], [mn_shuff_dec, np.mean(real_tmp_dec)], '-', color='gray')
+        
+        # #### Plot rel stuff ####
+        # frac_real = (np.mean(real_tmp_dec) - mn_shuff_dec) / mn_shuff_dec
+        # axrel.plot([0, 1], [0, frac_real], '-', color='gray')
+
+        # ###### store stuff ######
+        # real_frac.append(frac_real)
+        # real_raw.append(np.mean(real_tmp_dec))
+        # shuff_mn_sub.append(shuff_tmp_dec - mn_shuff_dec)
+        # shuff_raw.append(mn_shuff_dec)
+
+        assert(len(shuff_decay_w_sep[i_d]) == len(shuff_hz_w_sep[i_d]) == n_folds*100)
+
+        pv = 0; 
+        ###### pv ####
+        for _, (ts_dec, ts_hz) in enumerate(zip(shuff_decay_w_sep[i_d], shuff_hz_w_sep[i_d])):
+            ixhz = np.nonzero(ts_hz==0)[0]
+            mn_shuff = np.mean(ts_dec[ixhz])
+
+            if mn_shuff >= np.mean(real_tmp_dec):
+                pv += 1; 
+        print('Day %d, PV cnt %d' %(i_d, pv))
+
+    # axraw.bar(0, np.mean(shuff_raw), color='gray', width = .9, alpha = .2)
+    # axraw.bar(1, np.mean(real_raw), color='k', width = .9, alpha = .2)
+
+    # util_fcns.draw_plot(0, np.hstack((shuff_mn_sub)), 'gray', 'white', axrel)
+    # axrel.bar(1, np.mean(real_frac), color='k', width = .9, alpha = .2)
+    
+    # axraw.set_xlim([-.5, 1.5])
+    # axrel.set_xlim([-.5, 1.5])
+
+def analze_fixed_pt(dat):
+    '''
+    for each day get mFR, then get estimated fixed point 
+    and compute mean vector diff 
+    
+    Do the same for shuffles 
+    '''
+    ###### Plot bar plot ####
+    frel, axrel = plt.subplots(figsize = (4, 5))
+    fraw, axraw = plt.subplots(figsize = (4, 5))    
+
+    dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    n_folds = 5; 
+    i_m = 2; ## General model 
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        ###### Using the task specific models and the general models ######
+        ##### Get the one with data matched #######
+        data = dat[animal]
+
+        norm_diff_true = []
+        norm_diff_true_frac_shuff = []
+        norm_diff_shuff = []
+        norm_diff_shuff_mn = []
+        norm_diff_shuff_minus_mn = []
+        all_sig = True
+
+        ##### for each day and task -- 
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+
+            #### Get mean firing rate ####
+            mFR = 10*np.mean(data[i_d, 'spks'], axis=0)
+
+            shuf_stb = []; ### Shuffled stable pt -- vector norm diff w/ mFR 
+            stb = []; ### True stable pt -- vector norm diff w/ mFR 
+            
+            #### Get shuffles ###
+            _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True)
+            
+            ### For each day, plot the eigenvalues ####
+            for i_f in range(n_folds):
+
+                #### Get the model 
+                model = data[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
+                A = model.coef_
+                #### Compute the ImAinv and stable point #####
+                ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
+                stb_i = np.squeeze(np.array(np.dot(ImAinv, 10*model.intercept_[:, np.newaxis])))
+                stb.append(np.linalg.norm(stb_i - mFR))
+        
+                for _, (A, I) in enumerate(zip(coef_shuff, intc_shuff)):
+                    ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
+                    shuf_stb_i = np.squeeze(np.array(np.dot(ImAinv, 10*I[:, np.newaxis])))
+                    shuf_stb.append(np.linalg.norm(shuf_stb_i - mFR))
+
+            pv = 0
+            for s in stb:
+                if np.any(np.hstack((shuf_stb)) >= s):
+                    all_sig = False
+
+            #### Computing norm diffs #####
+            norm_diff_true.append(stb)
+            norm_diff_shuff.append(shuf_stb)
+            mn_shuf = np.mean(np.hstack((shuf_stb)))
+            norm_diff_shuff_mn.append(mn_shuf)
+            norm_diff_shuff_minus_mn.append(np.hstack((shuf_stb)) - mn_shuf)
+            norm_diff_true_frac_shuff.append((np.hstack((stb)) - mn_shuf) / mn_shuf)
+
+        util_fcns.draw_plot(3*i_a, np.hstack((norm_diff_shuff_minus_mn)), 'gray', 'white', axrel)
+        axrel.bar(3*i_a + 1, np.mean(np.hstack((norm_diff_true_frac_shuff))), color='k', alpha=.8)
+
+        axraw.bar(3*i_a, np.mean(np.hstack((norm_diff_shuff))), color='gray', alpha=.8)
+        axraw.bar(3*i_a+1, np.mean(np.hstack((norm_diff_true))), color='k', alpha=.8)
+
+        mx = 0; mx2 = 0;
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+            axrel.plot([3*i_a, 3*i_a + 1], [np.mean(norm_diff_shuff_minus_mn[i_d]), 
+                np.mean(norm_diff_true_frac_shuff[i_d])], '-', color='gray')
+
+            axraw.plot( [3*i_a+1, 3*i_a], [np.mean(norm_diff_true[i_d]), 
+                np.mean(norm_diff_shuff[i_d])], '-', color='gray')
+        
+            mx = np.max([mx, np.mean(norm_diff_true[i_d])])
+            mx2 = np.max([mx2, np.mean(norm_diff_true_frac_shuff[i_d])])
+        
+        for axi in [axrel, axraw]:
+            axi.set_xlim([-.5, 4.5])
+            axi.set_xticks([0, 1, 3, 4])
+            axi.set_xticklabels(['shuffled', 'data', 'shuffled', 'data'], rotation=45)
+
+        if all_sig:
+            axraw.plot([3*i_a, 3*i_a+1], [1.1*mx, 1.1*mx], 'k-')
+            axraw.text(3*i_a + 0.5, 1.15*mx, '***', ha='center')
+            axrel.plot([3*i_a, 3*i_a+1], [1.1*mx2, 1.1*mx2], 'k-')
+            axrel.text(3*i_a + 0.5, 1.15*mx2, '***', ha='center')
+        axraw.set_ylabel('Norm Diff. Between mFR and Fixed Point')
+        axrel.set_ylabel('Frac. Increase in \nNorm Diff. Between mFR and Fixed Point')
+
+    frel.tight_layout()
+    fraw.tight_layout()
+
+    frel.savefig(analysis_config.config['fig_dir']+'/fig6_rel_fixedPt_mFR_diff.svg')
+    fraw.savefig(analysis_config.config['fig_dir']+'/fig6_raw_fixedPt_mFR_diff.svg')
+        
+def return_ts_hz(A, dt = 0.1):
+    ev, _ = np.linalg.eig(A)
+    angs = np.angle(ev) #np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
+    hz = np.abs(angs)/(2*np.pi*dt)
+    hz[hz==5.] = 0.
+    decay = -1./np.log(np.abs(ev))*dt # Time decay constant in
+    return hz, decay 
 
 ### Check model dictionaries ####
 def check_models(model_dicts, day, model_nm, command_bins):
@@ -4521,7 +4841,7 @@ def check_models(model_dicts, day, model_nm, command_bins):
 
 ### Putative Fig 6 -- how do dynamics help next time step predictions ###
 ### What movements are dynamics capable of ###
-def plot_dyn_examples(dat, animal = 'grom', day = 0, min_obs = 15):
+def plot_dyn_examples_for_conditions(dat, animal = 'grom', day = 0, min_obs = 15):
 
     ##### Open up model ####
     model = 'hist_1pos_0psh_0spksm_1_spksp_0'
@@ -4633,6 +4953,124 @@ def plot_dyn_examples(dat, animal = 'grom', day = 0, min_obs = 15):
 
             ax[0, 0].set_title("Mag %d, Ang %d" %(mag, ang))
 
+def plot_dyn_examples_for_transitions(dat, animal = 'grom', day = 0, min_obs = 15):
+
+    ##### Open up model ####
+    model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    #dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(7), 'rb'))
+    KG = util_fcns.get_decoder(animal, day)
+
+    #### Get neural push ###
+    push = dat[day, 'np']
+    spks = dat[day, 'spks']
+    pred_spks = dat[day, model][:, :, 2]
+    tsk = dat[day, 'task']
+    trg = dat[day, 'trg']
+    bin_num = dat[day, 'bin_num']
+    min_bin = np.min(bin_num)
+    T = push.shape[0]
+
+    ### Get mean spikes ###
+    mn_spks = np.mean(spks, axis=0)
+
+    ### Bin the push ###
+    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    commands = util_fcns.commands2bins([push], mag_boundaries, animal, day, vel_ix = [0, 1])[0]
+
+    for ang in range(8):
+        for mag in range(4):
+            
+            #### Now for each condition, add data ####
+            Dat = []; Act = []; PredAct = []; PredDat = []; Cond = []; 
+            ix_command = np.nonzero(np.logical_and(commands[:, 0] == mag, commands[:, 1] == ang))[0]
+
+            ix_fin_tp1 = ix_command + 1
+            keep_ix2 = np.nonzero(ix_fin_tp1 < T)[0]
+            ix_fin_tp1 = ix_fin_tp1[keep_ix2]
+            ix_command = ix_command[keep_ix2]
+
+            ### Remove ix that are min; 
+            keep_ix = np.nonzero(bin_num[ix_fin_tp1] > min_bin)[0]
+            ix_fin_tp1 = ix_fin_tp1[keep_ix]
+            ix_command = ix_command[keep_ix]
+
+            if len(ix_fin_tp1) > min_obs:
+
+                for ang2 in range(8):
+                    for mag2 in range(4):
+
+                        ##### Do these match tp1 ? #####
+                        ix_sub = np.nonzero(np.logical_and(commands[ix_fin_tp1, 0] == mag2, 
+                            commands[ix_fin_tp1, 1] == ang2))[0]
+
+                        if len(ix_sub) > min_obs:
+
+                            #### Data / condition ####
+                            PredDat.append(pred_spks[ix_fin_tp1[ix_sub], :])
+                            Dat.append(spks[ix_command[ix_sub], :])
+                            Act.append(push[ix_command[ix_sub], :])
+                            PredAct.append(np.dot(KG, pred_spks[ix_fin_tp1[ix_sub], :].T).T)
+
+                            Cond.append(np.zeros((len(ix_sub), )) + mag2*10 + ang2)
+
+                            assert(np.all(commands[ix_command[ix_sub], 0] == mag))
+                            assert(np.all(commands[ix_command[ix_sub], 1] == ang))
+                            assert(np.all(commands[ix_fin_tp1[ix_sub], 0] == mag2))
+                            assert(np.all(commands[ix_fin_tp1[ix_sub], 1] == ang2))
+
+            if len(Dat) > 0:
+                ### Now do PCA on your neural axes ###
+                Dat = np.vstack((Dat))
+
+                if Dat.shape[0] < Dat.shape[1]:
+                    pass
+                else:
+                    #### Make plot #####
+                    f, ax = plt.subplots(ncols = 2, nrows = 2, figsize = (8, 8))
+                    PredDat = np.vstack((PredDat))
+
+                    Act = np.vstack((Act))
+                    PredAct = np.vstack((PredAct))
+
+                    Cond = np.hstack((Cond))
+                    assert(Dat.shape[0] == len(Cond))
+                    
+                    ### Do PCA; 
+                    transf_data, pc_model, evsort = util_fcns.PCA(Dat, 2, mean_subtract = False)
+                    transf_data_tp1 = util_fcns.dat2PC(PredDat, pc_model)
+                    ### For each condition, plot in PC space; 
+                    for c in np.unique(Cond):
+                        ix = np.nonzero(Cond == c)[0]
+                        if c >= 30:
+                            marker = 'd'
+                        elif c >= 20:
+                            marker = 's'
+                        elif c >= 10:
+                            marker = 'o'
+                        else:
+                            marker = '.'
+                        ci = int(np.mod(c, 10))
+
+                        ### Can we plot dynamics in this PC space, setting all other dimensions to their mean?!
+                        model_ridge = dat[day, model, 0 + 2*5, 2, 'model']
+
+                        ### Plot flow fields ####
+                        plot_flow_field_utils.plot_dyn_in_PC_space(model_ridge, pc_model, ax[0, 0], cmax = 5., scale = 5.5, width = 0.01, lims = 10,
+                           title = '', animal = 'grom')
+                        plot_flow_field_utils.plot_dyn_in_PC_space(model_ridge, pc_model, ax[0, 1], cmax = 5., scale = 5.5, width = 0.01, lims = 10,
+                           title = '', animal = 'grom')
+
+                        ax[0, 0].plot(np.mean(transf_data[ix, 0]), np.mean(transf_data[ix, 1]), marker, 
+                            color = analysis_config.pref_colors[ci])
+                        ax[0, 1].plot(np.mean(transf_data_tp1[ix, 0]), np.mean(transf_data_tp1[ix, 1]), marker, 
+                            color = analysis_config.pref_colors[ci])
+                        ax[1, 0].plot([0, np.mean(Act[ix, 0])], [0, np.mean(Act[ix, 1])], marker+'-', color = analysis_config.pref_colors[ci])
+                        ax[1, 1].plot([0, np.mean(PredAct[ix, 0])], [0, np.mean(PredAct[ix, 1])], marker+'-', color = analysis_config.pref_colors[ci])
+                        for axi in ax[1,:]:
+                            axi.set_xlim([-5, 5])
+                            axi.set_ylim([-5, 5])
+
+                    ax[0, 0].set_title("Mag %d, Ang %d" %(mag, ang))
 
 
 ###### GIANT GENERAL PLOTTING THING with red / black dots for different conditions ######

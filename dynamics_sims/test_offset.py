@@ -3,6 +3,7 @@
 # A = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
 # A = np.array([[np.cos(theta), -np.sin(theta), 1],[np.sin(theta), np.cos(theta), 1], [0, 0, 1]])
 import numpy as np; 
+import analysis_config
 import matplotlib.pyplot as plt 
 import plot_flow_field_utils as ffu
 from sklearn.linear_model import Ridge
@@ -25,26 +26,29 @@ pref_colors = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab',
 # 	ax.plot(X[0, :], X[1, :], '-',color = pref_colors[i])
 
 
-def simulate_dyn(mean_sub = False):
+def simulate_dyn(mean_sub = False, lims = 20):
 	f, ax = plt.subplots(nrows = 4, ncols = 5, figsize = (10, 8))
-	for i_d, decay in enumerate([.8]):
+	for i_d, decay in enumerate([.8]): #.8
 		A_og = np.eye(2)*decay; 
-		A_og[0, 0] = 0.8*A_og[0, 0]
+		A_og[0, 0] = 0.75*A_og[0, 0]
 		
 		### Used later for estimating stable pt; 
 		ImAinv = np.linalg.inv(np.eye(2) - A_og)
 
-		for i_o, offs in enumerate(np.linspace(0., 3., 4)):
+		for i_o, offs in enumerate(np.arange(4)):
 			O = np.array([offs, offs])
 			A = np.hstack((A_og, O[:, np.newaxis]))
 			A = np.vstack((A, np.array([0., 0., 1])))
 
-			ffu.plot_flow(A, ax[i_o, i_d], cmax = 8., width = .12, 
-				setdimeq1 = True, xmin=-20, xmax=20, ymin=-20, ymax=20)
+			ffu.plot_flow(A, ax[i_o, i_d], cmax = 8., width = .4, 
+				setdimeq1 = True, xmin=-lims, xmax=lims, ymin=-lims, ymax=lims,
+				nb_points=10)
 
 			### Compute the stable point ###
 			stable_pt = np.squeeze(np.dot(ImAinv, np.array([offs, offs])[:, np.newaxis]))
 			ax[i_o, i_d].plot(stable_pt[0], stable_pt[1], 'k.')
+			ax[i_o, i_d].plot([-lims, lims], [0, 0], 'k--')
+			ax[i_o, i_d].plot([0, 0], [-lims, lims], 'k--')
 			ax[i_o, i_d].set_title('Decay=(%.1f, %.1f), Offs=%.1f\n Stable = (%.1f, %.1f)'%(decay, decay*.8, offs, stable_pt[0], stable_pt[1]))
 			
 			ev, _ = np.linalg.eig(A)
@@ -91,8 +95,8 @@ def simulate_dyn(mean_sub = False):
 				for ji, j in enumerate(np.arange(10)):
 					tmp = X0[(i*10)+j, :]
 					ax[i_o, i_d + 4].plot(tmp[0], tmp[1], '.',color=cols[ji], alpha=.5)
-			ax[i_o, i_d+4].set_xlim([-20, 20])
-			ax[i_o, i_d+4].set_ylim([-20, 20])
+			ax[i_o, i_d+4].set_xlim([-lims, lims])
+			ax[i_o, i_d+4].set_ylim([-lims, lims])
 
 			### Day what the mean is; 
 			ax[i_o, i_d+4].set_title('Mean: (%.1f, %.1f)' %(mu[0], mu[1]))
@@ -113,13 +117,14 @@ def simulate_dyn(mean_sub = False):
 
 			### Now plot what the dyn look like for offset vs. not; 
 			ffu.plot_flow(A_fit, ax[i_o, i_d+2], cmax = 8., width = .12, 
-				setdimeq1 = True, xmin=-20, xmax=20, ymin=-20, ymax=20)	
+				setdimeq1 = True, xmin=-lims, xmax=lims, ymin=-lims, ymax=lims)	
 			ax[i_o, i_d+2].set_title('Fit A w int\nStable Pt est = (%.1f, %.1f)' %(stable_pt_est[0], stable_pt_est[1]))
 
 			ffu.plot_flow(A_no_int, ax[i_o, i_d+3], cmax = 8., width = .12, 
-				setdimeq1 = False, xmin=-20, xmax=20, ymin=-20, ymax=20)	
+				setdimeq1 = False, xmin=-lims, xmax=lims, ymin=-lims, ymax=lims)	
 			ax[i_o, i_d+3].set_title('Fit A no int')	
 	f.tight_layout()	
+	f.savefig(analysis_config.config['fig_dir']+'/sim_dyn.svg')
 
 def plot_taus(evs, ax, offs = 1., color = 'k'):
 	for e in evs:
