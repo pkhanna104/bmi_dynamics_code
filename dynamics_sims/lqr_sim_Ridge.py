@@ -22,32 +22,54 @@ class NHPBrain_RidgeOffsDyn(object):
     Assume "B" is identity --> each input projects to eaach neural dimension 
     '''
 
-    def __init__(self, day, animal, shuffle):
+    def __init__(self, day, animal, shuffle, with_intercept = True, state_noise = 0):
 
-        A, offset, mu, cov = get_saved_RidgeOffs(day = day, animal = animal, shuffle = shuffle)
+        if with_intercept:
+            A, offset, mu, cov = get_saved_RidgeOffs(day = day, animal = animal, shuffle = shuffle,
+                with_intercept = with_intercept)
+        else:
+            A, mu, cov = get_saved_RidgeOffs(day = day, animal = animal, shuffle = shuffle,
+                with_intercept = with_intercept)
         
         ##### Append offset to A; 
         nNeur = A.shape[0]
 
-        ##### A.shape = (n+1) x (n+1)
-        A = np.hstack((A, offset))
-        A = np.vstack((A, np.hstack(( np.zeros((nNeur, )), [1] ))))
+        if with_intercept:
+            ##### A.shape = (n+1) x (n+1)
+            A = np.hstack((A, offset))
+            A = np.vstack((A, np.hstack(( np.zeros((nNeur, )), [1] ))))
+
         self.A = np.mat(A)
 
         #### Inputs to each; (n+1) x (n) #######
         B = np.eye(nNeur)
-        B = np.vstack((B, np.zeros((nNeur)), ))
+    
+        if with_intercept:
+            B = np.vstack((B, np.zeros((nNeur)), ))
+    
         self.B = np.mat(B)
 
         ##### Estimated neural observations #####
-        self.nobs = nNeur + 1
-        self.nstates = nNeur + 1 #### using this for backward compatibility
+        if with_intercept:
+            self.nobs = nNeur + 1
+            self.nstates = nNeur + 1 #### using this for backward compatibility
+            self.obs = np.mat(np.hstack(( np.zeros((nNeur)), [1] ))[:, np.newaxis])
+        else:
+            self.nobs = nNeur
+            self.nstates = nNeur  #### using this for backward compatibility
+            self.obs = np.mat(np.hstack(( np.zeros((nNeur)) ))[:, np.newaxis])
+        
+
+        self.W = np.eye(self.nstates)*state_noise
+        if with_intercept:
+            self.W[-1, -1] = 0
+
         self.nNeur = nNeur
-        self.obs = np.mat(np.hstack(( np.zeros((nNeur)), [1] ))[:, np.newaxis])
         self.ninputs = nNeur
 
         self.neural_mu = mu; 
         self.neural_cov = cov; 
+        self.with_intercept = with_intercept
 
     def get_next_state(self, input1):
         
@@ -55,7 +77,9 @@ class NHPBrain_RidgeOffsDyn(object):
         inp = np.mat(input1).reshape(-1, 1)
 
         next = np.dot(self.A, self.obs) + np.dot(self.B, inp)
+        next += np.random.multivariate_normal(np.zeros((self.nstates)), self.W)
         self.obs = next.copy()
+
 
     def get_reset_state(self):
         return np.mat(np.hstack(( self.brain_target ))[:, np.newaxis])
@@ -109,8 +133,10 @@ class ComboStateRidgeOffs(object):
     def __init__(self, cursor, brain):
 
         #### Make a Kalman gain account for neural offset;  
-        KG_offs = np.hstack((cursor.B, np.zeros((cursor.nstates, 1))))
-
+        if brain.with_intercept:
+            KG_offs = np.hstack((cursor.B, np.zeros((cursor.nstates, 1))))
+        else:
+            KG_offs = cursor.B
 
         self.A = np.block([[ brain.A, np.zeros((brain.nobs, cursor.nstates))],
                            [ np.dot(KG_offs, brain.A), cursor.A]])
@@ -124,6 +150,11 @@ class ComboStateRidgeOffs(object):
         self.cursor = cursor; 
         self.brain = brain; 
         self.nstates = self.A.shape[0]
+        self.W = np.eye(self.nstates)
+        for i_n in range(self.brain.nstates):
+            self.W[i_n, i_n] = self.brain.W[i_n, i_n]
+        for i_n in range(self.brain.nstates, self.nstates):
+            self.W[i_n, i_n] = 0.
 
     def get_curs_reset_state(self):
         return np.mat([0., 0., 0., 0., 1.]).reshape(-1,1)
@@ -145,7 +176,8 @@ class ComboStateRidgeOffs(object):
         #     noise = np.vstack(( noise, np.dot(self.cursor.B, np.dot(self.brain.C, noise))))
         
         next = np.dot(self.A, self.state) + np.dot(self.B, inp) #+ noise
-
+        next = next + np.mat(np.random.multivariate_normal(np.zeros((self.nstates)), self.W)).T
+        
         ### Update the input: 
         self.state = next.copy()
         
@@ -182,14 +214,16 @@ class Combined_Curs_SimBrain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Sim
 
 class Combined_Curs_Brain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Simulation):
 
-    def __init__(self, day, shuffle, R = 10000, task = 'co'):
+    def __init__(self, day, shuffle, R = 10000, task = 'co', with_intercept = False,
+        state_noise = 0.):
 
         ####### Get cursor ########
         keep_offset = True
         self.curs = Experiment_Cursor(day, keep_offset)
 
         ####### Get brain ######
-        self.brain = NHPBrain_RidgeOffsDyn(day, 'grom', shuffle)
+        self.brain = NHPBrain_RidgeOffsDyn(day, 'grom', shuffle, with_intercept = with_intercept,
+            state_noise = state_noise)
 
         ###### Get a combined state #####
         # Combined states: 
@@ -217,37 +251,47 @@ class Combined_Curs_Brain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Simula
         self.keep_offset = True
 
 ######### Get saved ridge regression ########
-def get_saved_RidgeOffs(day=0, animal='grom', shuffle = False):
+def get_saved_RidgeOffs(day=0, animal='grom', shuffle = False, with_intercept = True):
     
     #### Try loading from saved place ####
     if os.path.exists(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s.pkl' %(animal, day, str(shuffle))):
         dat = pickle.load(open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s.pkl' %(animal, day, str(shuffle)), 'rb'))
         
         A = np.mat(dat['A'])
-        offs = np.mat(dat['offs'])
         mu = np.mat(dat['mu'])
         cov = np.mat(dat['cov'])
 
+        if with_intercept:
+            offs = np.mat(dat['offs'])
+
     else:
         dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(7), 'rb'))
+        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_no_intc.pkl' %(6), 'rb'))
 
         if shuffle:
             ##### Load shuffled data ######
-            _, coefs, intc = plot_generated_models.get_shuffled_data(animal, day, dyn_model, get_model = True)
-            #A = np.mat(coefs[0]); 
-            offs = np.mat(intc[0][:, np.newaxis]);
-            
+            try:
+                _, coefs, intc = plot_generated_models.get_shuffled_data(animal, day, dyn_model, get_model = True, 
+                with_intercept = True)
+                A = np.mat(coefs[0]); 
+                if with_intercept:
+                    offs = np.mat(intc[0][:, np.newaxis]);
+            except:
+                print('Shuffles not accessible, zeros instead')
+                N = dat[day, 'spks'].shape[1]
+                A = np.mat(np.zeros((N, N)))
+                offs = np.mat(np.zeros((N, 1)))
+
             ###### offs = mFR #####
             #offs = np.mean(dat[day, 'spks'], axis=0)
-            A = np.mat(np.zeros((offs.shape[0], offs.shape[0])))
+            #A = np.mat(np.zeros((offs.shape[0], offs.shape[0])))
             #offs = np.zeros_like(offs)
             #offs = np.mat(offs[:, np.newaxis])
             
             ##### Still get the same info for brain target #####
             mu = np.mat(np.mean(dat[day, 'spks'], axis=0)[:, np.newaxis])
             cov = np.cov(dat[day, 'spks'].T)
-            assert(cov.shape[0] == offs.shape[0])
+            assert(cov.shape[0] == A.shape[0])
 
         else:
             ##### Load data #####
@@ -259,16 +303,24 @@ def get_saved_RidgeOffs(day=0, animal='grom', shuffle = False):
             
             model = dat[day, dyn_model, n_folds*i_m + i_f, i_m, 'model']
             A = np.mat(model.coef_)
-            offs = np.mat(model.intercept_[:, np.newaxis])
+            
+            if with_intercept:
+                offs = np.mat(model.intercept_[:, np.newaxis])
 
             ##### Still get the same info for brain target #####
             mu = np.mat(np.mean(dat[day, 'spks'], axis=0)[:, np.newaxis])
             cov = np.mat(np.cov(dat[day, 'spks'].T))
-            assert(cov.shape[0] == offs.shape[0])            
+            assert(cov.shape[0] == A.shape[0])            
 
-        params = dict(A=A, offs=offs, mu=mu, cov=cov)
+        if with_intercept:
+            params = dict(A=A, offs=offs, mu=mu, cov=cov)
+        else:
+                params = dict(A=A, mu=mu, cov=cov)
+        
         pickle.dump(params, open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s.pkl' %(animal, day, str(shuffle)), 'wb'))
 
-    return A, offs, mu, cov
-
+    if with_intercept:
+        return A, offs, mu, cov
+    else:
+        return A, mu, cov
 

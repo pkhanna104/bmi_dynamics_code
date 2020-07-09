@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 import pickle
 import tables
+import os
+
+from online_analysis import util_fcns
 
 try:
     import test_smoothness_mets
@@ -321,16 +324,11 @@ class NHPBrain(Brain):
     def __init__(self, ninputs, day = 0, animal = 'grom', state_noise_weight = 0.,
         zeroA = False, modA = None):
 
-        if zeroA: 
-            print('Testing, fix this later')
-            C = np.random.randn(44, 20)
-            #import pdb; pdb.set_trace()
-        else:
-            A, C = get_saved_LDS(day = day, animal = animal)
-            
+        A, C = get_saved_LDS(day = day, animal = animal)
+        
         if zeroA:
             #self.A = self.create_A(A.shape[0], 0., 0.)
-            self.A = self.create_A(20, 0., 0.)
+            self.A = np.mat(np.zeros_like(A))
         else:
             self.A = A.copy()
 
@@ -351,10 +349,14 @@ class NHPBrain(Brain):
             self.ninputs = ninputs
         else:
             raise Exception('Dont recognize type of inputs arg %s' %str(ninputs))
-
-        self.B = self.create_B(self.nstates, self.ninputs)
+        
+        self.B = np.eye(self.nstates)
+        assert(self.B.shape[1] == self.ninputs)
+        #self.brain_offset = False
+        #self.B = self.create_B(self.nstates, self.ninputs)
 
         self.W = np.eye(self.nstates)*state_noise_weight
+        
 
         # Initial state
         self.state = np.mat(np.zeros((self.nstates, 1))).reshape(-1, 1) 
@@ -819,6 +821,8 @@ class Combined_Curs_Brain_LQR_Simulation_Data_Driven(Combined_Curs_Brain_LQR_Sim
         self.brain = NHPBrain(ninputs, day = neural_day, zeroA = zeroA, modA = modA,
             state_noise_weight = state_noise)
 
+        self.brain_target = None
+
         # Combined states: 
         self.combostate = ComboState(self.curs, self.brain)
 
@@ -829,24 +833,51 @@ class Combined_Curs_Brain_LQR_Simulation_Data_Driven(Combined_Curs_Brain_LQR_Sim
 
 
 ### Extract LDS from TEs ###
-def get_saved_LDS(day = 0, animal = 'grom', nstates = 20, zeroA = False):
+def get_saved_LDS(day = 0, animal = 'grom', old = False):
     if animal != 'grom':
         raise Exception('Havent processed jeevs LDS yet --> fit_LDS.fit_LDS_CO_Obs')
 
-    dat = data_LDS[animal, day]
+    if old:
+        dat = data_LDS[animal, day]
 
-    ## SO far only day 1 is saved: 
-    pylds_model = dat[day]
+        ## SO far only day 1 is saved: 
+        pylds_model = dat[day]
 
-    ## Print the R2 for both tasks: 
-    for i in range(2):
-        print('Task %d: R2 smooth avg: %.2f' %(i, np.mean(dat[day, i, 'R2_smooth'])))
-        print('Task %d: R2 predic avg: %.2f' %(i, np.mean(dat[day, i, 'R2_pred'])))
-        print('')
-        print('')
+        ## Print the R2 for both tasks: 
+        for i in range(2):
+            print('Task %d: R2 smooth avg: %.2f' %(i, np.mean(dat[day, i, 'R2_smooth'])))
+            print('Task %d: R2 predic avg: %.2f' %(i, np.mean(dat[day, i, 'R2_pred'])))
+            print('')
+            print('')
+        ## Return A and C matrices
+        return pylds_model.A, pylds_model.C
+    else:
+        KG = util_fcns.get_decoder(animal, day)
+        N = KG.shape[1]
 
-    ## Return A and C matrices
-    return pylds_model.A, pylds_model.C
+        if os.path.exists(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuffFalse_latentLDS.pkl' %(animal, day)):
+            dat = pickle.load(open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuffFalse_latentLDS.pkl' %(animal, day), 'rb'))
+            A = dat['A']
+            C = dat['C']
+        else:
+            ### Load model set 11 
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_no_intc.pkl' %(11), 'rb'))
+            A = np.mat(dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelA'])
+            Cmod = dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelC']
+            keep_ix = dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelkeepix']
+
+            C = np.mat(np.zeros((N, Cmod.shape[1])))
+            for n in range(N):
+                if n in keep_ix:
+                    ixn = np.nonzero(keep_ix == n)[0]
+                    C[n, :] = Cmod[ixn, :]
+
+            d = dict(A=A, C=C)
+            pickle.dump(d, open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuffFalse_latentLDS.pkl' %(animal, day), 'wb'))
+        
+        return A, C
+            
+    
 
 ########################################################
 ### LDS tests with simulated neural dynamics to plot ###
@@ -1422,7 +1453,7 @@ def plot_all_As():
         for day in range(9):
             axi = ax[day / 3, day % 3]
 
-            A, C = get_saved_LDS(day = day)
+            A, C= get_saved_LDS(day = day)
             plot_A(A, ax = axi, kao_or_pk = nm)
 
             axi.set_xlim([0., 1500.])
