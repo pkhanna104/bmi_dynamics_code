@@ -541,7 +541,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         ### MODEL with HISTORY +FUTURE ###
         ##################################
         data_temp = pandas.DataFrame(tmp_dict)
-        if nsi == 0:
+        if nsi == 1:
             plot_data_temp(data_temp, animal, True)
 
         if nshuffs == 1:

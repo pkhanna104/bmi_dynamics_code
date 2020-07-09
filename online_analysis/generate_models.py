@@ -659,7 +659,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         else:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5), 'wb'))
 
-def model_ind_cell_tuning_SHUFFLE():
+def model_ind_cell_tuning_SHUFFLE(fit_intercept = True):
     '''
     models --> dynamics and dynamics conditioned on action 
     '''
@@ -667,6 +667,11 @@ def model_ind_cell_tuning_SHUFFLE():
     n_folds = 5
     model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(model_set_number)
     models_to_include = [m[1] for m in model_var_list]
+
+    if fit_intercept:
+        save_directory = analysis_config.config['shuff_fig_dir']
+    else:
+        save_directory = analysis_config.config['shuff_fig_dir_nointc']
 
     ### Place to save models: 
     model_data = dict(); 
@@ -775,19 +780,21 @@ def model_ind_cell_tuning_SHUFFLE():
                                 model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
                                     only_potent_predictor = False, KG_pot = KG_potent_orth, 
                                     fit_task_specific_model_test_task_spec = False,
-                                    fit_intercept = True, model_nm = model_nm)
+                                    fit_intercept = fit_intercept, model_nm = model_nm)
                                 
                                 h5file, model_, pred_Y = generate_models_utils.h5_add_model(None, model_, i_d, first=i_d==0, model_nm=model_nm, 
                                     test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
                                     only_potent_predictor = False, KG_pot = KG_potent_orth, KG = KG,
                                     fit_task_specific_model_test_task_spec = False,
-                                    fit_intercept = True)
+                                    fit_intercept = fit_intercept)
 
                                 model_data[test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
                                 
                                 if type_of_model_index == 2:
                                     save_dat['model_coef'].append(model_.coef_)
-                                    save_dat['model_intc'].append(model_.intercept_)
+
+                                    if fit_intercept:
+                                        save_dat['model_intc'].append(model_.intercept_)
                                 
                         #### Save Animal/Day/Shuffle/Model Name ###
                         shuff_str = str(shuffle)
@@ -795,7 +802,7 @@ def model_ind_cell_tuning_SHUFFLE():
 
                         ### Only save the general model for space; 
                         save_dat['model_data'] = model_data[:, :, 2]
-                        sio.savemat(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff%s_%s.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
+                        sio.savemat(save_directory+'%s_%d_shuff%s_%s.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
                         plt.close('all')
 
 ######## Possible STEP 2 -- fit the residuals #####

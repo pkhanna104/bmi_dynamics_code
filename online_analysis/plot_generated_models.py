@@ -1586,8 +1586,13 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             str(plot_act),
             str(skip_shuffle)))
 
-def get_shuffled_data(animal, day, model_nm, get_model = False):
-    pref = analysis_config.config['shuff_fig_dir']
+def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept = True):
+    
+    if with_intercept:
+        pref = analysis_config.config['shuff_fig_dir']
+    else:
+        pref = analysis_config.config['shuff_fig_dir_nointc']
+
     files = np.sort(glob.glob(pref + '%s_%d_shuff*_%s.mat' %(animal, day, model_nm)))
     files = files[:100]
     pred_Y = []; coef = []; intec = []; 
@@ -4319,19 +4324,23 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
 
 ############ Eigenvalue decomposition #########
 ############ Fig 6 ############################
-def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None):
+def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True):
 
     dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
     n_folds = 5; 
 
     #### Get data if needed #####
     if dat is None:
-        dat = []
+        dat = {}
 
         ### Iterate through the animals 
         for animal in ['grom', 'jeev']:
-            dati = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(7), 'rb'))
-            dat.append(dati)
+            # tuning_models_grom_model_set7_task_spec_pls_gen_match_tsk_N_no_intc_gen_demean.pkl
+            if with_intercept:
+                dati = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(6), 'rb'))
+            else:
+                dati = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_no_intc.pkl' %(6), 'rb'))
+            dat[animal] = dati; 
 
     #### Stable points ####
     f_stb, ax_stb = plt.subplots(ncols = 4, nrows = 4, figsize = (12, 12))
@@ -4341,8 +4350,7 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None):
 
         ###### Using the task specific models and the general models ######
         ##### Get the one with data matched #######
-        data = dat[animal
-        ]
+        data = dat[animal]
 
         ##### for each day and task -- 
         for i_d in range(analysis_config.data_params[animal+'_ndays']):
@@ -4352,7 +4360,7 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None):
             mn = []; 
 
             #### Get shuffles ###
-            _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True)
+            _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True, with_intercept = with_intercept)
             
             ### For each day, plot the eigenvalues ####
             for i_f in range(n_folds):
@@ -4385,6 +4393,9 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None):
                         intc = np.vstack((intc, [1]))
                         A = np.hstack((A, intc))
 
+                    else:
+                        print('No intercept')
+
                     ### eigenvalues; 
                     ev, evect = np.linalg.eig(A)
 
@@ -4402,7 +4413,6 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None):
                     ax[i_m].plot(decay, hz, '.', color = analysis_config.pref_colors[i_d])
                     ax[i_m].set_xlabel('Decay in seconds')
                     ax[i_m].set_ylabel('Frequency (Hz), max=5')
-                    ax[i_m].set_xlim([-.05, .15])
                     ax[i_m].set_ylim([-.1,5.05])
 
                     #### Plot shuffle ###
@@ -4436,13 +4446,12 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None):
                 ax_stb[cnt/4, cnt%4].set_xlabel('Est. Stable Pt')
                 ax_stb[cnt/4, cnt%4].set_ylabel('Est. mFR')
                 ax_stb[cnt/4, cnt%4].set_title('Anim %s, Day %d' %(animal, i_d))
-                cnt += 1
-                      
+                cnt += 1      
 
         f.tight_layout()
     f_stb.tight_layout()
 
-def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None):
+def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True):
     ##### Number of folds
     n_folds = 5; 
     i_m = 2 ##### General model 
@@ -4451,7 +4460,7 @@ def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None):
     f, ax = plt.subplots(ncols = 2, figsize = (6, 3))
 
     #### Get shuffles 
-    _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True)
+    _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True, with_intercept=with_intercept)
 
     ### Plot 1 model ###
     for i_f in range(5):
@@ -4482,7 +4491,7 @@ def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None):
     f.tight_layout()
     f.savefig(analysis_config.config['fig_dir']+'/fig6_%s_day%s_eg_eigspec.svg'%(animal, i_d))
 
-def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None):
+def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True):
     if animal == 'grom':
         cmax = 15
     elif animal == 'jeev':
@@ -4502,7 +4511,8 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None):
     for i_d in range(analysis_config.data_params[animal+'_ndays']):
 
         #### Get shuffles 
-        _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True)
+        _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True, 
+            with_intercept = with_intercept)
 
         tmp_true_hz = []; tmp_true_decay = []; 
         tmp_shuff_hz = []; tmp_shuff_decay = []; 
@@ -4530,13 +4540,17 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None):
         shuff_hz_w_sep.append(tmp_shuff_hz)
 
     #### Plot the 2D histogram ##
-    bins = [np.linspace(0, .08, 20), np.linspace(0., 5., 20)]
+    if with_intercept:
+        td_max = 0.08
+    else:
+        td_max = 1.
+    bins = [np.linspace(0, td_max, 20), np.linspace(0., 5., 20)]
     ax[0].hist2d(np.hstack((true_decay)), np.hstack((true_hz)), bins=bins, cmin=0., cmax = cmax, cmap='gray')
     _, _, _, cax = ax[1].hist2d(np.hstack((shuff_decay)), np.hstack((shuff_hz)), bins=bins, cmin = 0., cmax=cmax*10, cmap='gray')
     for axi in ax.reshape(-1):
         axi.set_xlabel("Decay Time (sec)")
         axi.set_ylabel("Frequency (Hz)")
-        axi.vlines(.05, 0, 5, 'b', linestyle='dashed')
+        #axi.vlines(.05, 0, 5, 'b', linestyle='dashed')
 
     ax[0].set_title('Data')
     ax[1].set_title('Shuffled')
@@ -4546,12 +4560,12 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None):
 
     ########### Non oscillatory time decays ################
     f, ax = plt.subplots(figsize=(4,5))
-    bins = np.linspace(0, .1, 30)
-    db = 0.5*(bins[1] - bins[0])
+    bins = np.linspace(0, td_max, 30)
+    half_db = 0.5*(bins[1] - bins[0])
 
     non_osci = np.nonzero(np.hstack((true_hz)) == 0)[0]
     h, _ = np.histogram(np.hstack((true_decay))[non_osci], bins)
-    ax.plot(bins[:-1]+db, h/float(np.sum(h)), 'k-')
+    ax.plot(bins[:-1]+half_db, h/float(np.sum(h)), 'k-')
 
     mx = np.max(h/float(np.sum(h)))
     ax.vlines(np.mean(np.hstack((true_decay))[non_osci]), 0, 1.1*mx, color='k', linestyle='--', linewidth=1.)
@@ -4940,6 +4954,18 @@ def plot_dyn_examples_for_conditions(dat, animal = 'grom', day = 0, min_obs = 15
                    title = '', animal = 'grom')
                 plot_flow_field_utils.plot_dyn_in_PC_space(model_ridge, pc_model, ax[0, 1], cmax = 5., scale = 5.5, width = 0.01, lims = 10,
                    title = '', animal = 'grom')
+
+                #### Plot the decoder axes; 
+                K = util_fcns.get_decoder('grom', day)
+
+                #### Vectors in neural space; 
+                K_trans_dat = util_fcns.dat2PC(K, pc_model)
+                K_trans_dat[0, :] = K_trans_dat[0, :] / np.linalg.norm(K_trans_dat[0, :])
+                K_trans_dat[1, :] = K_trans_dat[1, :] / np.linalg.norm(K_trans_dat[1, :])
+                
+                ax[0, 0].plot([0, K_trans_dat[0, 0]], [0, K_trans_dat[0, 1]], 'k--')
+                ax[0, 0].plot([0, K_trans_dat[1, 0]], [0, K_trans_dat[1, 1]], 'b--')
+                
 
                 ax[0, 0].plot(np.mean(transf_data[ix, 0]), np.mean(transf_data[ix, 1]), marker, 
                     color = analysis_config.pref_colors[ci])
