@@ -17,6 +17,10 @@ from sklearn.linear_model import Ridge
 import scipy
 import scipy.io as sio
 
+from pylds.models import DefaultLDS
+from pylds.states import kalman_filter
+import sklearn.decomposition as skdecomp
+
 ######### STEP 1 -- Get alpha value #########
 def sweep_alpha_all(run_alphas=True, model_set_number = 3,
     fit_intercept = True, within_bin_shuffle = False):
@@ -188,6 +192,79 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
     print 'H5 File Done: ', hdf_filename
     return hdf_filename
 
+######## IF LDS -- step 1 get x-validated dimensionality #####
+def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffle = False,
+    n_folds = 5, ):
+
+    model_var_list, predict_key, include_action_lags, _ = generate_models_list.get_model_var_list(model_set_number)
+
+    for animal in ['grom', 'jeev']:
+        max_LL_dim = dict()
+
+        if animal == 'grom':
+            order_dict = analysis_config.data_params['grom_ordered_input_type']
+            input_type = analysis_config.data_params['grom_input_type']
+
+        elif animal == 'jeev':
+            order_dict = analysis_config.data_params['jeev_ordered_input_type']
+            input_type = analysis_config.data_params['jeev_input_type']
+
+        ##### For each day ####
+        for i_d, day in enumerate(input_type):
+            
+            print('##############################')
+            print('########## DAY %d ##########' %(i_d) )
+            print('##############################')
+            
+            # Get spike data from data fcn
+            data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
+                order_dict[i_d], history_bins_max, within_bin_shuffle = within_bin_shuffle,
+                day_ix = i_d)
+
+            #### This gets trials instead of time points ###
+            trl_test_ix, trl_train_ix, type_of_model = generate_models_utils.get_training_testings_generalization_LDS_trial(n_folds, data_temp,
+                match_task_spec_n = True)
+
+            #### CO/ OBS / GEN vs. folds 
+            LL = np.zeros((3, 5, 19)) + np.nan
+
+            nneur = sub_spk_temp_all.shape[2]
+
+            for i_fold, type_of_model_index in enumerate(type_of_model):
+
+                #### Get variable names #####
+                variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
+                
+                ### For each variable in the model: 
+                for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
+
+                    ### These are teh params; 
+                    _, model_nm, _, _, _ = model_var_list_i
+
+                    print('Start dims fold %d, type %d' %(i_fold, type_of_model_index))
+                    for i_n, n_dim in enumerate(np.arange(2, 21)):
+
+                        model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = n_dim)
+
+                        ### Add to log likelihood
+                        LL[type_of_model_index, i_fold % 5, i_n] = model_.lls[-1]
+            
+            maxll = np.nanmean(LL, axis=1)
+
+            ##### max sure ####
+            assert(np.all(np.isnan(maxll) == False))
+            max_dim = np.argmax(maxll, axis=1)
+
+            max_LL_dim[i_d, 'LLs'] = LL
+            assert(len(max_dim) == 2)
+            max_LL_dim[i_d] = max_dim + 2 ### Add two becuase index 0 is actually n_dim = 2
+
+        ### Save data 
+        pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'wb'))
+
+
+
+
 ######## STEP 2 -- Fit the models ###########
 ### Main tuning function -- run this for diff animals; 
 def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs', 
@@ -301,13 +378,17 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     model_data = dict(); 
 
     ### Get the ridge dict: 
-    if fit_intercept:
-        if within_bin_shuffle:
-            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
-        else:   
-            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+    if model_set_number == 11: 
+        ### LDS model w/ latent ###
+        pass
     else:
-        ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'rb')); 
+        if fit_intercept:
+            if within_bin_shuffle:
+                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
+            else:   
+                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+        else:
+            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'rb')); 
 
     for obj in gc.get_objects():   # Browse through ALL objects
         if isinstance(obj, tables.File):   # Just HDF5 files
@@ -452,10 +533,24 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             sdFR[i_d][sdFR[i_d]==0] = 1
             sub_spikes = ( sub_spikes - mFR[i_d][np.newaxis, :] ) / sdFR[i_d][np.newaxis, :]
 
+
+        #### 
         #### Get training / testing sets split up --- test on 80% one task, test on 20% same tasks 20% other task
         if fit_task_spec_and_general:
-            test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp,
-                match_task_spec_n = match_task_spec_n)
+
+            #### LDS -- keep the trials together; 
+            if model_set_number == 11:
+                #### This gets trials instead of time points ###
+                trl_test_ix, trl_train_ix, type_of_model = generate_models_utils.get_training_testings_generalization_LDS_trial(n_folds, data_temp,
+                    match_task_spec_n = match_task_spec_n)
+                test_confirm = {}
+                for tmp in np.unique(type_of_model):
+                    test_confirm[tmp] = []
+
+            else:
+                ### Regular regression ###
+                test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp,
+                    match_task_spec_n = match_task_spec_n)
         
         elif fit_condition_spec_no_general:
             test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_condition_spec(n_folds, data_temp)
@@ -465,29 +560,32 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
             type_of_model = np.zeros((n_folds, ))
 
+        ############### Iterate through the folds ###################
         for i_fold, type_of_model_index in enumerate(type_of_model):
 
             if type_of_model_index < 0:
                 pass
             else:
-                ### TEST DATA ####
-                data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
-                data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
-                data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
-                data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
-                data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
+                if model_set_number == 11: 
+                    pass
+                else:
+                    ### TEST DATA ####
+                    data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
+                    data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
+                    data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
+                    data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
+                    data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
 
-                ### TRAIN DATA ####
-                data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
-                data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
-                data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
-                data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
-                data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
+                    ### TRAIN DATA ####
+                    data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
+                    data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
+                    data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
+                    data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
+                    data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
 
-                print('R2 train ix: %.2f' %(generate_models_utils.quick_reg(data_temp_dict['spks'], data_temp_dict['psh'])))
+                    print('R2 train ix: %.2f' %(generate_models_utils.quick_reg(data_temp_dict['spks'], data_temp_dict['psh'])))
 
                 nneur = sub_spk_temp_all.shape[2]
-
                 variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
                 
                 ### For each variable in the model: 
@@ -502,6 +600,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     if ridge:
                         if model_nm == 'identity_dyn':
                             pass
+                        
+                        elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS': 
+                            assert(fit_intercept == False)
+                            assert(only_potent_predictor == False)
+                            model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold])
 
                         else:
                             alpha_spec = ridge_dict[animal][0][i_d, model_nm]
@@ -513,7 +616,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
                                 fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
                                 fit_intercept = fit_intercept, model_nm = model_nm)
-                            save_model = True
+                        
+                        save_model = True
 
                     else:
                         raise Exception('Need to figure out teh stirng business again -- removed for clarity')
@@ -523,7 +627,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     if save_model:
                         if model_nm == 'identity_dyn':
                             pred_Y = identity_dyn(data_temp_dict_test, nneur)
-                        
+
+                        elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
+                            pred_Y, test_ix = pred_LDS(data_temp, model_, variables, trl_test_ix[i_fold], i_fold)
+                            test_confirm[type_of_model_index].append(test_ix[i_fold])
                         else:
                             h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
                                 test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
@@ -547,7 +654,6 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 r2tmp = util_fcns.get_R2(data_temp_dict_test['spks'], np.squeeze(np.array(pred_Y)))
                                 print('R2 from model: %.4f' %(r2tmp))
 
-
                         elif fit_condition_spec_no_general:
                             ### List the indices and the prediction and the fold: 
                             model_data[i_d, model_nm][type_of_model_index, 'ix'].append(test_ix[i_fold])
@@ -560,9 +666,17 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                         
                         if add_model_to_datafile:
                             if model_nm != 'identity_dyn':
-                                print('Adding model and test_indices') 
-                                model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
-                                model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
+                                if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
+                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelA'] = model_.A;
+                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelW'] = model_.sigma_states;
+                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelC'] = model_.C;
+                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelQ'] = model_.sigma_obs; 
+                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelkeepix'] = model_.keep_ix; 
+                                    
+                                else:
+                                    print('Adding model and test_indices') 
+                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
+                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
                             
                         #### Add / null potent? 
                         if include_null_pot:
@@ -610,6 +724,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
                                 model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
                             
+        #### Confirm test_confirm matches ####
+        for k in test_confirm.keys():
+            tmp = np.unique(np.hstack((test_confirm[k])))
+            assert(len(tmp) == data_temp.shape[0])
+
     h5file.close()
     print 'H5 File Done: ', hdf_filename
 
@@ -1105,6 +1224,131 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
             pred2 = None
         
         return model_2, pred, pred2
+
+def fit_LDS(data_temp_dict, x_var_names, trl_train_ix,
+    nEMiters = 30, n_dim_latent = 20):
+
+    ### Aggregate the variable name
+    x = [] #### So this is X_{t-1}, so t=0:end_trial(-1)
+    for vr in x_var_names:
+        x.append(data_temp_dict[vr][: , np.newaxis])
+    X = np.hstack((x))
+    assert(X.shape[1] == len(x_var_names))
+
+    keep_ix = np.nonzero(10*np.sum(X, axis=0)/float(X.shape[0]) > 0.1)[0]
+
+    #### Make trials #####
+    trls = data_temp_dict['trl']
+    bin_num = data_temp_dict['bin_num']
+
+    ##### Append to list ####
+    train_trls = []
+    for i_t in trl_train_ix: 
+        ix = np.nonzero(trls==i_t)[0]
+        assert(np.all(np.diff(bin_num[ix]) == 1))
+        train_trls.append(X[np.ix_(ix, keep_ix)])
+
+    #### Now get LDS based on these trials ###
+    D_obs = len(keep_ix)
+    D_input = 0; 
+    model = DefaultLDS(D_obs, n_dim_latent, D_input)
+
+    for trl in train_trls:
+        model.add_data(trl) ### T x N
+    
+    ######## Initialize matrices w/ FA #########
+    FA = skdecomp.FactorAnalysis(n_components=n_dim_latent)
+    dat = np.vstack((train_trls))
+    FA.fit(dat)
+    x_hat = FA.transform(dat)
+    # Do main shared variance to solve this issue: 
+    A = np.mat(np.linalg.lstsq(x_hat[:-1, :], x_hat[1:, :])[0])
+    err = x_hat[1:, :].T - A*x_hat[:-1, :].T
+    err_obs = dat.T - np.mat(FA.components_).T*x_hat.T
+
+    model.C = FA.components_.T
+    model.A = A
+    if n_dim_latent == 1:
+        model.sigma_states = np.array([[np.cov(err)]])
+        model.sigma_obs = np.array([[np.cov(err_obs)]])
+    else:
+        model.sigma_states = np.cov(err)
+        model.sigma_obs = np.cov(err_obs)
+
+    #############
+    # Train LDS #
+    ############# 
+    def update(model):
+        model.EM_step()
+        return model.log_likelihood()
+    
+    lls = [update(model) for i in range(nEMiters)]
+    model.keep_ix = keep_ix
+    model.lls = lls
+    return model
+
+def pred_LDS(data_temp, model, variables, trl_test_ix, i_f):
+    trls = data_temp['trl']
+    bin_num = data_temp['bin_num']
+    keep_ix = model.keep_ix
+
+    ### Aggregate the variable name
+    x = [] #### So this is X_{t-1}, so t=0:end_trial(-1)
+    for vr in variables:
+        x.append(data_temp[vr][: , np.newaxis])
+    X = np.hstack((x))
+    assert(X.shape[1] == len(variables))
+
+    ########### Append to list ###########
+    test_trls = []; 
+    test_ix = [ [] for i in range(i_f+1)]
+    
+    for i_t in trl_test_ix: 
+        ix = np.nonzero(trls==i_t)[0]
+        assert(np.all(np.diff(bin_num[ix]) == 1))
+        test_trls.append(X[np.ix_(ix, keep_ix)])
+        test_ix[i_f].append(ix)
+
+    #import pdb; pdb.set_trace()
+
+    ########## Make predictions #########
+    pred_Y = [] 
+    for trl in test_trls:
+
+        ##### Add data, pop it off again ####
+        model.add_data(trl)
+        g = model.states_list.pop()
+        
+        # Smoothed (y_t | y0...yT)
+        smoothed_trial = g.smooth()
+
+        # Smoothed (x_t | x0...xT)
+        x0 = g.smoothed_mus[0, :] # Time x ndim
+        P0 = g.smoothed_sigmas[0, :, :]
+    
+        # Filtered states (x_t | y0...y_t)
+        _, filtered_mus, _ = kalman_filter(
+        x0, P0,
+        g.A, g.B, g.sigma_states,
+        g.C, g.D, g.sigma_obs,
+        g.inputs, g.data)
+        
+        assert(filtered_mus.shape[0] == trl.shape[0])
+        #### Take filtered data, propagate fwd to get estimated next time step; 
+        pred_trl = np.dot(g.C, np.dot(g.A, filtered_mus.T)).T
+        
+        assert(pred_trl.shape == trl.shape)
+        pred_Y.append(pred_trl)
+
+    #### Stack up ####
+    test_ix[i_f] = np.hstack((test_ix[i_f]))
+    pred_Y = np.vstack((pred_Y))
+
+    pred_Y_all = np.zeros((pred_Y.shape[0], X.shape[1]))
+    for i, ix in enumerate(keep_ix):
+        pred_Y_all[:, ix] = pred_Y[:, i] 
+
+    return pred_Y_all, test_ix 
 
 def identity_dyn(data_temp_dict, nneur):
     pred_Y = []
