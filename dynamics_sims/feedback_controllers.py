@@ -99,7 +99,6 @@ class LinearFeedbackController(FeedbackController):
         Bu = self.B * self.F * (target_state - current_state)
         return Bu
 
-
 class LQRController(LinearFeedbackController):
     '''Linear feedback controller where control gains are set by optimizing a quadratic cost function'''
     def __init__(self, A, B, Q, R, **kwargs):

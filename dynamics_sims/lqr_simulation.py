@@ -122,7 +122,8 @@ class Cursor(object):
         # Added 5/26/20 #
         if self.keep_offset:
             
-            offs = np.random.randn(2, )*.05; 
+            #offs = np.random.randn(2, )*.05; 
+            offs = np.zeros((2, ))
             self.A[[2, 3], 4] = offs.copy()
             self.A[[0, 1], 4] = self.dt*offs.copy()
 
@@ -423,7 +424,8 @@ class ComboState(object):
 class Combined_Curs_Brain_LQR_Simulation(object):
 
     def __init__(self, nstates, ninputs=1, R = 10000, dyn_strength = 0.99,
-        state_noise = 0., dyn_freq = 10., task = 'co', keep_offset = False):
+        state_noise = 0., dyn_freq = 10., task = 'co', keep_offset = False,
+        brain_target = None):
         
         # 10 states :
         self.curs = Cursor(nstates, keep_offset)
@@ -437,6 +439,8 @@ class Combined_Curs_Brain_LQR_Simulation(object):
         self.setup_lqr(task, R)
 
         self.keep_offset = keep_offset
+
+        self.brain_target = brain_target
 
     def setup_lqr(self, task, R): 
         # Set task: 
@@ -548,8 +552,8 @@ class Combined_Curs_Brain_LQR_Simulation(object):
                 ax2.fill_between(np.arange(us_all_mask.shape[1]), mn-st, mn+st, 
                     color=cmap_list[it], alpha=0.5)
         
-        if plot_traj: 
-            ax2.set_ylim([0., .1])
+        #if plot_traj: 
+            #ax2.set_ylim([0., .1])
 
         if plot_traj: 
             return ax, ax2, np.hstack((trl_tm)), np.hstack((total_u)), np.hstack((mean_u))
@@ -567,7 +571,11 @@ class Combined_Curs_Brain_LQR_Simulation(object):
             state_final = np.mat(np.hstack((target_location, [0., 0.]))).reshape(-1, 1)
 
         # Add zeros for brain state: 
-        state_final = np.vstack(( np.zeros((self.brain.nstates, 1)), state_final))
+        if self.brain_target is None:
+            state_final = np.vstack(( np.zeros((self.brain.nstates, 1)), state_final))
+        else:
+            assert(len(self.brain_target) == self.brain.nstates)
+            state_final = np.vstack(( self.brain_target[:, np.newaxis], state_final))
 
         # Get a K matrix for this -- infinite time horizon: 
         K = self.lqr.dlqr(self.combostate.A, self.combostate.B, self.Q, self.R)
@@ -664,9 +672,16 @@ class Combined_Curs_Brain_LQR_Simulation(object):
                 np.array(obstacle_center)[:2], self.combostate.state[self.combostate.cursor_state_ix][:2])
 
             if self.keep_offset:
-                current_goal_state = np.vstack(( np.zeros((self.brain.nstates, 1)), current_goal, [1] ))
+                state_final = np.vstack(( current_goal, [1] ))
             else:
-                current_goal_state = np.vstack(( np.zeros((self.brain.nstates, 1)), current_goal ))
+                state_final = np.vstack(( current_goal, ))
+
+            if self.brain_target is None:
+                current_goal_state = np.vstack(( np.zeros((self.brain.nstates, 1)), state_final ))
+            else: 
+                assert(len(self.brain_target) == self.brain.nstates)
+                current_goal_state = np.vstack(( self.brain_target[:, np.newaxis], state_final ))
+
 
             # if init: 
             #     init = False
@@ -1321,7 +1336,7 @@ def plot_neural_traj(states, color, A, ax = None):
     assumes states is in format nstates x T
     '''
     ### Ignore bottom 4 states --> cursor
-    nstates = int(states.shape[0] - 4)
+    nstates = int(states.shape[0]) - 1
     state_pairs = np.vstack(([[i, i+1] for i in np.arange(0, nstates, 2)]))
 
     if ax is None:
