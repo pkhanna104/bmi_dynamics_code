@@ -135,5 +135,10 @@ def get_model_var_list(model_set_number):
         predict_key = 'spks'
         history_bins_max = 2; 
 
+    elif model_set_number == 11:
+        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 0, 1, 0]) ### only dynamics
+        predict_key = 'spks'
+        history_bins_max = 1
+
 
     return model_var_list, predict_key, include_action_lags, history_bins_max
