@@ -663,6 +663,129 @@ def get_training_testings(n_folds, data_temp):
         assert len(tmp) == len(data_temp)
     return test_ix, train_ix 
 
+def get_training_testings_generalization_LDS_trial(n_folds, data_temp, 
+    match_task_spec_n = False):
+    '''
+    same as below but match number of trials; 
+    '''
+    train_ix = dict()
+    test_ix = dict()
+    type_of_model = np.zeros((3*n_folds))
+
+    ### Get training and testing datasets: 
+    N_trls = []; N = []; 
+    all_trls = np.unique(data_temp['trl'])
+
+    ### List which points are from which task: 
+    for tsk in range(2):
+
+        ### Get task specific indices; 
+        ix = np.nonzero(data_temp['tsk'] == tsk)[0]
+        Trls = np.unique(data_temp['trl'][ix])
+
+        ### Shuffle the task indices
+        N_trls.append(Trls[np.random.permutation(len(Trls))])
+        N.append(len(Trls))
+
+    Ncomb = np.min(np.hstack((N)))
+    
+    ### Amount of training data from each task; 
+    Ncomb_train = int(0.8*Ncomb)
+    Ntot = len(np.unique(data_temp['trl']))
+
+    ##### For each fold ###
+    for i_f, fold_perc in enumerate(np.arange(0., 1., 1./n_folds)):
+
+        ### [1, 2, 3, 4, 5] ###
+        train_ix[i_f] = []; 
+        test_ix[i_f] = []; 
+
+        #### For train CO:
+        for tsk in range(2):    
+
+            if match_task_spec_n:
+
+                ### For this task, whats the amt of data thats needed for testing, if training is Ncomb_train? 
+                n_test = N[tsk] - Ncomb_train
+                
+                ### If this allows for typical testing data, do that: 
+                if int(fold_perc*N[tsk]) + n_test < N[tsk]:
+                    ### Own task; 
+                    test1 = N_trls[tsk][int(fold_perc*N[tsk]):int(fold_perc*N[tsk]) + n_test]
+                
+                else:
+                ### Do something else ###
+                    test1 = N_trls[tsk][-n_test:]
+
+                ### Training data is NOT this test data; 
+                trn = np.array([j for i, j in enumerate(N_trls[tsk]) if j not in test1])
+                assert(np.allclose(np.sort(np.hstack((trn, test1))), np.sort(N_trls[tsk])))
+
+                ### Get test data from the other task; 
+                other_task = np.mod(tsk + 1, 2); 
+                n_test_other = N[other_task] - Ncomb_train
+
+                if int(fold_perc*N[other_task]) + n_test_other < N[other_task]:
+                    test2 = N_trls[other_task][int(fold_perc*N[other_task]):int(fold_perc*N[other_task]) + n_test_other]
+                else:
+                    test2 = N_trls[other_task][-n_test_other:]
+
+                train_ix[i_f + tsk*n_folds] = trn; 
+                test_ix[i_f + tsk*n_folds] = np.hstack((test1, test2))
+                type_of_model[i_f + tsk*n_folds] = tsk
+
+            else:
+                ### Get all these points to test; 
+                tst = N_trls[tsk][int(fold_perc*N[tsk]):int((fold_perc+(1./n_folds))*N[tsk])]
+                
+                #### Also add 20% of OTHER taks to testing; 
+                other_task = np.mod(tsk + 1, 2); 
+                tst2 = N_trls[other_task][int(fold_perc*N[other_task]):int((fold_perc+(1./n_folds))*N[other_task])]
+
+                ### Add all non-testing points from this task to training; 
+                trn = np.array([j for i, j in enumerate(N_pts[tsk]) if j not in tst])
+
+                train_ix[i_f + tsk*n_folds] = trn.astype(int)
+                test_ix[i_f + tsk*n_folds] = np.hstack((tst, tst2)).astype(int)
+                type_of_model[i_f + tsk*n_folds] = tsk
+
+        ### Now do the last part -- combined models with equal data from both tasks;  
+        ### [6, 7, 8, 9, 10] ###
+        test_ix[i_f + 2*n_folds] = []
+        train_ix[i_f + 2*n_folds] = []; 
+
+        ### Match this -- 
+        if match_task_spec_n:
+            Ncomb_train_gen = int(0.5*Ncomb_train)
+        else:
+            Ncomb_train_gen = Ncomb_train
+
+        ### Task -- pull test/train points 
+        for tsk in range(2):
+
+            #### Total amount of testing data 
+            Ncomb_test_tsk = N[tsk] - Ncomb_train_gen
+
+            #### How big are the offsets for this to work? 
+            if int(fold_perc*N[tsk]) + Ncomb_test_tsk < N[tsk]:
+                test_ix[i_f + 2*n_folds].append(N_trls[tsk][int(fold_perc*N[tsk]):int(fold_perc*N[tsk]) + Ncomb_test_tsk])
+            else:
+                ### Just add the right amount of data from the end; 
+                test_ix[i_f + 2*n_folds].append(N_trls[tsk][-Ncomb_test_tsk:])
+        
+        test_ix[i_f + 2*n_folds] = np.hstack((test_ix[i_f + 2*n_folds])).astype(int)
+        train_ix[i_f + 2*n_folds] = np.array([i for i in range(Ntot) if i not in test_ix[i_f + 2*n_folds]]).astype(int)
+        type_of_model[i_f + 2*n_folds] = 2
+
+    for i_t in range(3):
+        test = []; 
+        for i_f in range(n_folds):
+            test.append(np.hstack((test_ix[i_f + i_t*n_folds])))
+        test = np.sort(np.unique(np.hstack((test))))
+        assert(np.all(test == all_trls))
+
+    return test_ix, train_ix, type_of_model.astype(int)    
+
 def get_training_testings_generalization(n_folds, data_temp, 
     match_task_spec_n = False):
     ''' same as above, but now doing this for train CO, train OBS, train both 
