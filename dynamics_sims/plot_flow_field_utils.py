@@ -192,9 +192,15 @@ def chk_ev_vect(ev, evect, A):
 
 def model_2_Amat(mod):
     ''' Add intercept onto the end and bottom of A matrix '''
-    A = np.hstack(( mod.coef_, mod.intercept_[:, np.newaxis] ))
-    _, n = A.shape
-    A = np.vstack((A, np.hstack(( np.zeros((n-1, )), [1] )) ))
+    if type(mod.intercept_) is np.ndarray:
+        A = np.hstack(( mod.coef_, mod.intercept_[:, np.newaxis] ))
+        _, n = A.shape
+        A = np.vstack((A, np.hstack(( np.zeros((n-1, )), [1] )) ))
+    else:
+        _, n = mod.coef_.shape
+        A = np.hstack(( mod.coef_, np.zeros((n, 1)) ))
+        A = np.vstack((A, np.hstack(( np.zeros((n, )), [1] )) ))
+        print('plot_flow_fields model2Amat no intc.')
     return A
 
 def plot_dyn_in_PC_space(model, pc_model, ax, cmax = 2., scale = 5.5, width = 0.01, lims = 2,
