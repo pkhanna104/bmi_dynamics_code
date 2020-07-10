@@ -8,7 +8,7 @@ import pickle
 import tables
 import os
 
-from online_analysis import util_fcns
+from online_analysis import util_fcns, plot_generated_models
 
 try:
     import test_smoothness_mets
@@ -322,9 +322,9 @@ class NHPBrain(Brain):
     need to set self.C, self.A, self.B, state noise
     '''
     def __init__(self, ninputs, day = 0, animal = 'grom', state_noise_weight = 0.,
-        zeroA = False, modA = None):
+        zeroA = False, shuffleA = None, modA = None):
 
-        A, C = get_saved_LDS(day = day, animal = animal)
+        A, C = get_saved_LDS(day = day, animal = animal, shuffleA = shuffleA)
         
         if zeroA:
             #self.A = self.create_A(A.shape[0], 0., 0.)
@@ -814,12 +814,12 @@ class Combined_Curs_Brain_LQR_Simulation(object):
 class Combined_Curs_Brain_LQR_Simulation_Data_Driven(Combined_Curs_Brain_LQR_Simulation):
 
     def __init__(self, neural_day, ninputs = 'state_matched', R = 10000, state_noise = 0., 
-        task = 'co', zeroA = False, keep_offset = True, modA = None):
+        task = 'co', zeroA = False, shuffleA = False, keep_offset = True, modA = None):
 
         self.curs = Experiment_Cursor(neural_day, keep_offset)
 
         self.brain = NHPBrain(ninputs, day = neural_day, zeroA = zeroA, modA = modA,
-            state_noise_weight = state_noise)
+            shuffleA = shuffleA, state_noise_weight = state_noise)
 
         self.brain_target = None
 
@@ -833,7 +833,7 @@ class Combined_Curs_Brain_LQR_Simulation_Data_Driven(Combined_Curs_Brain_LQR_Sim
 
 
 ### Extract LDS from TEs ###
-def get_saved_LDS(day = 0, animal = 'grom', old = False):
+def get_saved_LDS(day = 0, animal = 'grom', old = False, shuffleA = False):
     if animal != 'grom':
         raise Exception('Havent processed jeevs LDS yet --> fit_LDS.fit_LDS_CO_Obs')
 
@@ -852,19 +852,28 @@ def get_saved_LDS(day = 0, animal = 'grom', old = False):
         ## Return A and C matrices
         return pylds_model.A, pylds_model.C
     else:
+        
         KG = util_fcns.get_decoder(animal, day)
         N = KG.shape[1]
 
-        if os.path.exists(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuffFalse_latentLDS.pkl' %(animal, day)):
-            dat = pickle.load(open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuffFalse_latentLDS.pkl' %(animal, day), 'rb'))
+        if os.path.exists(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s_latentLDS.pkl' %(animal, day, str(shuffleA))):
+            dat = pickle.load(open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s_latentLDS.pkl' %(animal, day, str(shuffleA)), 'rb'))
             A = dat['A']
             C = dat['C']
         else:
-            ### Load model set 11 
-            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_no_intc.pkl' %(11), 'rb'))
-            A = np.mat(dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelA'])
-            Cmod = dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelC']
-            keep_ix = dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelkeepix']
+            if shuffleA: 
+                dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS'
+                _, coefs, coefs2, keepix = plot_generated_models.get_shuffled_data(animal, day, dyn_model, get_model = True, 
+                    with_intercept = False)
+                A = np.mat(coefs[0])
+                Cmod = np.mat(coefs2[0])
+                keep_ix = keepix[0]
+            else:
+                ### Load model set 11 
+                dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_no_intc.pkl' %(11), 'rb'))
+                A = np.mat(dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelA'])
+                Cmod = dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelC']
+                keep_ix = dat[day, 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 10, 2, 'modelkeepix']
 
             C = np.mat(np.zeros((N, Cmod.shape[1])))
             for n in range(N):
@@ -873,7 +882,7 @@ def get_saved_LDS(day = 0, animal = 'grom', old = False):
                     C[n, :] = Cmod[ixn, :]
 
             d = dict(A=A, C=C)
-            pickle.dump(d, open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuffFalse_latentLDS.pkl' %(animal, day), 'wb'))
+            pickle.dump(d, open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s_latentLDS.pkl' %(animal, day, str(shuffleA)), 'wb'))
         
         return A, C
             
