@@ -1606,7 +1606,9 @@ def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept =
 
         if get_model:
             coef.extend(tmp['model_coef'])
-            intec.extend(tmp['model_intc'])
+
+            if with_intercept:
+                intec.extend(tmp['model_intc'])
 
     if get_model:
         return np.dstack((pred_Y)), coef, intec
@@ -4324,9 +4326,12 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
 
 ############ Eigenvalue decomposition #########
 ############ Fig 6 ############################
-def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True):
+def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True, LDS = False):
 
-    dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    if LDS:
+        dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS'
+    else:
+        dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
     n_folds = 5; 
 
     #### Get data if needed #####
@@ -4346,7 +4351,7 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
     f_stb, ax_stb = plt.subplots(ncols = 4, nrows = 4, figsize = (12, 12))
     cnt = 0; 
 
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['grom']):#, 'jeev']):
 
         ###### Using the task specific models and the general models ######
         ##### Get the one with data matched #######
@@ -4360,41 +4365,55 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
             mn = []; 
 
             #### Get shuffles ###
-            _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True, with_intercept = with_intercept)
-            
+            if LDS:
+                pass
+            else:   
+                try:
+                    _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True, with_intercept = with_intercept)
+                except:
+                    print('No shuffs available')
+                    shuff_skip = True
+
             ### For each day, plot the eigenvalues ####
             for i_f in range(n_folds):
 
                 ### CO / OBS / GEN ####
                 for i_m in range(3):
 
-                    #### Get the model 
-                    model = data[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
-                    
+            
                     if i_m == 2:
                         N = data[i_d, 'spks'].shape[0]
-                        test_ix = data[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'test_ix']
-                        train_ix = np.array([i for i in np.arange(N) if i not in test_ix])
-                        mn.append(np.mean(data[i_d, 'spks'][train_ix, :], axis=0))
+
+                        if LDS:
+                            pass
+                        else:
+                            test_ix = data[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'test_ix']
+                            train_ix = np.array([i for i in np.arange(N) if i not in test_ix])
+                            mn.append(np.mean(data[i_d, 'spks'][train_ix, :], axis=0))
 
                     #### Get the A matrix; 
-                    A = np.mat(model.coef_)
-                    if type(model.intercept_) is np.ndarray:
-
-                        if i_m == 2:
-                            #### Compute the ImAinv and stable point #####
-                            ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
-                            stb.append(np.squeeze(np.array(np.dot(ImAinv, model.intercept_[:, np.newaxis]))))
-                        
-                        N = A.shape[0]
-                        # ## Add intercept to the A matrix 
-                        A = np.vstack((A, np.zeros((1, N))))
-                        intc = model.intercept_[:, np.newaxis]
-                        intc = np.vstack((intc, [1]))
-                        A = np.hstack((A, intc))
-
+                    if LDS:
+                        A = np.mat(data[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'modelA']) 
                     else:
-                        print('No intercept')
+                        #### Get the model 
+                        model = data[i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
+                        A = np.mat(model.coef_)
+                        if type(model.intercept_) is np.ndarray:
+
+                            if i_m == 2:
+                                #### Compute the ImAinv and stable point #####
+                                ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
+                                stb.append(np.squeeze(np.array(np.dot(ImAinv, model.intercept_[:, np.newaxis]))))
+                            
+                            N = A.shape[0]
+                            # ## Add intercept to the A matrix 
+                            A = np.vstack((A, np.zeros((1, N))))
+                            intc = model.intercept_[:, np.newaxis]
+                            intc = np.vstack((intc, [1]))
+                            A = np.hstack((A, intc))
+
+                        else:
+                            print('No intercept')
 
                     ### eigenvalues; 
                     ev, evect = np.linalg.eig(A)
@@ -4414,18 +4433,24 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
                     ax[i_m].set_xlabel('Decay in seconds')
                     ax[i_m].set_ylabel('Frequency (Hz), max=5')
                     ax[i_m].set_ylim([-.1,5.05])
+                    ax[i_m].set_xlim([-.1,1.5])
 
                     #### Plot shuffle ###
                     if i_m == 2:
-                        for _, (A, I) in enumerate(zip(coef_shuff, intc_shuff)):
-                            ev, _ = np.linalg.eig(A)
-                            angs = np.angle(ev)
-                            hz = np.abs(angs)/(2*np.pi*dt)
-                            decay = -1./np.log(np.abs(ev))*dt
-                            ax[i_m].plot(decay, hz, '.', color='gray', alpha=.3)
+                        if LDS:
+                            pass
+                        elif shuff_skip:
+                            pass
+                        else:
+                            for _, (A, I) in enumerate(zip(coef_shuff, intc_shuff)):
+                                ev, _ = np.linalg.eig(A)
+                                angs = np.angle(ev)
+                                hz = np.abs(angs)/(2*np.pi*dt)
+                                decay = -1./np.log(np.abs(ev))*dt
+                                ax[i_m].plot(decay, hz, '.', color='gray', alpha=.3)
 
-                            ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
-                            shuf_stb.append(np.squeeze(np.array(np.dot(ImAinv, I[:, np.newaxis]))))
+                                ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
+                                shuf_stb.append(np.squeeze(np.array(np.dot(ImAinv, I[:, np.newaxis]))))
 
             #### bar plots #####
             if len(stb) > 0:
@@ -4477,8 +4502,8 @@ def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None, with_in
 
         hz, decay = return_ts_hz(A_shuff)
         ax[1].plot(decay, hz, '.', color='gray')#, markersize=2)
-    ax[0].set_xlim([0., .1])
-    ax[1].set_xlim([0., .1])
+    #ax[0].set_xlim([0., .1])
+    #ax[1].set_xlim([0., .1])
     ax[0].set_ylim([-0.1, 5])
     ax[1].set_ylim([-0.1, 5])
 
@@ -4636,6 +4661,59 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None, with_inter
     
     # axraw.set_xlim([-.5, 1.5])
     # axrel.set_xlim([-.5, 1.5])
+
+def plot_eigs_from_LDS():
+    n_states = 15; 
+    pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
+    ndays = dict(grom=9, jeev=4)
+
+    f, ax = plt.subplots(ncols = 2, figsize = (8, 4))
+    fh, axh = plt.subplots(ncols = 2, figsize = (8, 4))
+
+    hist_bins = np.arange(0., 1.6, .1)
+    hist_bins_plt = hist_bins[:-1] + .05; 
+
+    for ia, animal in enumerate(['grom', 'jeev']):
+        fn = pref + animal + 'LDSmodels_nstates_'+str(n_states)+'_combined_models_w_dyn_inno_norms.pkl'
+        dat = pickle.load(open(fn, 'rb'))
+
+        hist_ = np.zeros_like(hist_bins)
+
+        for i_d in range(ndays[animal]):
+            model = dat[i_d]
+            A = model.A; 
+            ev, _ = np.linalg.eig(A)
+
+            angs = np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
+            hz = (angs)/(2*np.pi*.1)
+            tau = -1/np.log(np.abs(ev))*.1
+            ax[ia].plot(tau, hz, '.', color=cmap_list[i_d], label='Day'+str(i_d))
+        
+            ### histogram: 
+            dig_hist = np.digitize(tau, hist_bins)
+            dig_hist = dig_hist - 1; 
+
+            for d in dig_hist:
+                hist_[d] += 1; 
+
+        ax[ia].legend(fontsize=10)
+        ax[ia].set_title('Monk '+animal[0], fontsize=10)
+        ax[ia].set_xlabel('Tau: -1/ln(|eigvalue|) * dt', fontsize=10)
+        ax[ia].set_ylabel('Hz: angle(eigvalue) / (2*pi*dt)', fontsize=10)
+
+        ax[ia].set_xlim([0., 1.5])
+        ax[ia].set_ylim([-5.5, 5.5])
+
+        axh[ia].bar(hist_bins_plt, hist_[:-1]/ float(np.sum(hist_)), width=.1, color='lightgray')
+        axh[ia].bar(hist_bins_plt[-1] + .1, hist_[-1] / float(np.sum(hist_)), width=.1,color='lightgray')
+        axh[ia].set_xlabel('Eigenvalue Tau (secs)')
+        axh[ia].set_ylabel('Proportion of Eigs')
+        axh[ia].set_xticks(np.arange(0., 1.6, .2))
+        xlab = ['%.1f' %a for a in np.arange(0., 1.6, .2)]
+        axh[ia].set_xticklabels(xlab, fontsize=10)
+    
+    f.tight_layout()
+    fh.tight_layout()
 
 def analze_fixed_pt(dat):
     '''
