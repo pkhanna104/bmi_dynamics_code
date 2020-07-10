@@ -1592,10 +1592,12 @@ def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept =
         pref = analysis_config.config['shuff_fig_dir']
     else:
         pref = analysis_config.config['shuff_fig_dir_nointc']
+    if 'latent' in model_nm:
+        pref = analysis_config.config['shuff_fig_dir_latentLDS']
 
     files = np.sort(glob.glob(pref + '%s_%d_shuff*_%s.mat' %(animal, day, model_nm)))
-    files = files[:100]
-    pred_Y = []; coef = []; intec = []; 
+    files = files[:2]
+    pred_Y = []; coef = []; intec = []; coef2 = []; keepix = []; 
     
     for i_f, fl in enumerate(files):
         tmp = sio.loadmat(fl)
@@ -1605,13 +1607,22 @@ def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept =
             pred_Y.append(tmp['model_data'])
 
         if get_model:
-            coef.extend(tmp['model_coef'])
+            if 'latent' in model_nm:
+                coef.extend(tmp['modelA'])
+                coef2.extend(tmp['modelC'])
+                keepix.extend(tmp['modelkeepix'])
+            else:
+                coef.extend(tmp['model_coef'])
 
             if with_intercept:
                 intec.extend(tmp['model_intc'])
 
     if get_model:
-        return np.dstack((pred_Y)), coef, intec
+        if 'latent' in model_nm:
+            return np.dstack((pred_Y)), coef, coef2, keepix
+        else:
+            return np.dstack((pred_Y)), coef, intec
+        
     else:
         return np.dstack((pred_Y))
 
@@ -4370,6 +4381,7 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
             else:   
                 try:
                     _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True, with_intercept = with_intercept)
+                    shuff_skip = False
                 except:
                     print('No shuffs available')
                     shuff_skip = True
@@ -4431,9 +4443,10 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
                     decay = -1./np.log(np.abs(ev_sort_truc))*dt # Time decay constant in ms
                     ax[i_m].plot(decay, hz, '.', color = analysis_config.pref_colors[i_d])
                     ax[i_m].set_xlabel('Decay in seconds')
-                    ax[i_m].set_ylabel('Frequency (Hz), max=5')
+                    if i_m == 0:
+                        ax[i_m].set_ylabel('Frequency (Hz), max=5')
                     ax[i_m].set_ylim([-.1,5.05])
-                    ax[i_m].set_xlim([-.1,1.5])
+                    #ax[i_m].set_xlim([-.1,1.5])
 
                     #### Plot shuffle ###
                     if i_m == 2:
@@ -4442,15 +4455,17 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
                         elif shuff_skip:
                             pass
                         else:
-                            for _, (A, I) in enumerate(zip(coef_shuff, intc_shuff)):
+                            for ia, A in enumerate(coef_shuff):
                                 ev, _ = np.linalg.eig(A)
                                 angs = np.angle(ev)
                                 hz = np.abs(angs)/(2*np.pi*dt)
                                 decay = -1./np.log(np.abs(ev))*dt
                                 ax[i_m].plot(decay, hz, '.', color='gray', alpha=.3)
 
-                                ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
-                                shuf_stb.append(np.squeeze(np.array(np.dot(ImAinv, I[:, np.newaxis]))))
+                                if with_intercept:
+                                    I = intc_shuff[ia]
+                                    ImAinv = np.linalg.inv(np.eye(A.shape[0]) - A)
+                                    shuf_stb.append(np.squeeze(np.array(np.dot(ImAinv, I[:, np.newaxis]))))
 
             #### bar plots #####
             if len(stb) > 0:
