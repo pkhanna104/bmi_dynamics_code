@@ -14,8 +14,9 @@ config['fig_dir2'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_
 config['fig_dir3'] = '/Users/preeyakhanna/Dropbox/Carmena_Lab/Documentation/BMI_co_obs_paper/presentations/6_2020_presentation_figs/'
 config['shuff_fig_dir'] = '/Volumes/Elements/shuffle_data/w_intc/'
 config['shuff_fig_dir_nointc'] = '/Volumes/Elements/shuffle_data/wo_intc/'
-
+config['shuff_fig_dir_latentLDS'] = '/Volumes/Elements/shuffle_data/latent/'
 config['lqr_sim_saved_dyn'] = '/Users/preeyakhanna/bmi_dynamics_code/dynamics_sims/exp_dynamics_models/'
+
 #########################################
 ############ Data paths  ################
 #########################################
