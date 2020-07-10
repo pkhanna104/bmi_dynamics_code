@@ -22,14 +22,15 @@ class NHPBrain_RidgeOffsDyn(object):
     Assume "B" is identity --> each input projects to eaach neural dimension 
     '''
 
-    def __init__(self, day, animal, shuffle, with_intercept = True, state_noise = 0):
+    def __init__(self, day, animal, shuffle, with_intercept = True, 
+        state_noise = 0, zeroA = False, zerointc = False):
 
         if with_intercept:
             A, offset, mu, cov = get_saved_RidgeOffs(day = day, animal = animal, shuffle = shuffle,
-                with_intercept = with_intercept)
+                with_intercept = with_intercept, zeroA = zeroA, zerointc = zerointc)
         else:
             A, mu, cov = get_saved_RidgeOffs(day = day, animal = animal, shuffle = shuffle,
-                with_intercept = with_intercept)
+                with_intercept = with_intercept, zeroA = zeroA, zerointc = zerointc)
         
         ##### Append offset to A; 
         nNeur = A.shape[0]
@@ -215,7 +216,7 @@ class Combined_Curs_SimBrain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Sim
 class Combined_Curs_Brain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Simulation):
 
     def __init__(self, day, shuffle, R = 10000, task = 'co', with_intercept = False,
-        state_noise = 0.):
+        state_noise = 0., zeroA = False, zerointc = False):
 
         ####### Get cursor ########
         keep_offset = True
@@ -223,7 +224,7 @@ class Combined_Curs_Brain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Simula
 
         ####### Get brain ######
         self.brain = NHPBrain_RidgeOffsDyn(day, 'grom', shuffle, with_intercept = with_intercept,
-            state_noise = state_noise)
+            state_noise = state_noise, zeroA = zeroA, zerointc = zerointc)
 
         ###### Get a combined state #####
         # Combined states: 
@@ -251,31 +252,46 @@ class Combined_Curs_Brain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Simula
         self.keep_offset = True
 
 ######### Get saved ridge regression ########
-def get_saved_RidgeOffs(day=0, animal='grom', shuffle = False, with_intercept = True):
+def get_saved_RidgeOffs(day=0, animal='grom', shuffle = False, with_intercept = True, zeroA = False, zerointc = False):
     
+    if zerointc: assert(with_intercept == True)
+
     #### Try loading from saved place ####
-    if os.path.exists(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s.pkl' %(animal, day, str(shuffle))):
-        dat = pickle.load(open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s.pkl' %(animal, day, str(shuffle)), 'rb'))
-        
+    fname = analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s_wintc%s.pkl' %(animal, day, str(shuffle), str(with_intercept))
+    
+    if os.path.exists(fname):
+        dat = pickle.load(open(fname, 'rb'))
         A = np.mat(dat['A'])
         mu = np.mat(dat['mu'])
         cov = np.mat(dat['cov'])
 
         if with_intercept:
             offs = np.mat(dat['offs'])
-
+    
     else:
         dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_no_intc.pkl' %(6), 'rb'))
+        if with_intercept:
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %(6), 'rb'))
+        else:
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N_no_intc.pkl' %(6), 'rb'))
 
         if shuffle:
             ##### Load shuffled data ######
             try:
                 _, coefs, intc = plot_generated_models.get_shuffled_data(animal, day, dyn_model, get_model = True, 
                 with_intercept = True)
-                A = np.mat(coefs[0]); 
+
+                if day == 2:
+                    ix = 1; 
+                else: 
+                    ix = 0; 
+
+                A = np.mat(coefs[ix]); 
+                print('True shuffle...')
                 if with_intercept:
-                    offs = np.mat(intc[0][:, np.newaxis]);
+                    print('with offset!')
+                    offs = np.mat(intc[ix][:, np.newaxis]);
+
             except:
                 print('Shuffles not accessible, zeros instead')
                 N = dat[day, 'spks'].shape[1]
@@ -315,11 +331,15 @@ def get_saved_RidgeOffs(day=0, animal='grom', shuffle = False, with_intercept = 
         if with_intercept:
             params = dict(A=A, offs=offs, mu=mu, cov=cov)
         else:
-                params = dict(A=A, mu=mu, cov=cov)
+            params = dict(A=A, mu=mu, cov=cov)
         
-        pickle.dump(params, open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s.pkl' %(animal, day, str(shuffle)), 'wb'))
+        pickle.dump(params, open(analysis_config.config['lqr_sim_saved_dyn'] + '%s_%d_shuff%s_wintc%s.pkl' %(animal, day, str(shuffle), str(with_intercept)), 'wb'))
 
+    if zeroA: 
+        A = np.mat(np.zeros_like(A))
     if with_intercept:
+        if zerointc:
+            offs = np.mat(np.zeros_like(offs))
         return A, offs, mu, cov
     else:
         return A, mu, cov
