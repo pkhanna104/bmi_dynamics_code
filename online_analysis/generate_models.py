@@ -194,11 +194,15 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
 
 ######## IF LDS -- step 1 get x-validated dimensionality #####
 def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffle = False,
-    n_folds = 5, ):
+    n_folds = 5, highDsweep = False):
 
     model_var_list, predict_key, include_action_lags, _ = generate_models_list.get_model_var_list(model_set_number)
+    if highDsweep:
+        animals = ['grom']
+    else:
+        animals = ['jeev', 'grom']
 
-    for animal in ['grom', 'jeev']:
+    for animal in animals:
         max_LL_dim = dict()
 
         if animal == 'grom':
@@ -226,9 +230,16 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
                 match_task_spec_n = True)
 
             #### CO/ OBS / GEN vs. folds 
-            LL = np.zeros((3, 5, 19)) + np.nan
-
             nneur = sub_spk_temp_all.shape[2]
+
+            if highDsweep:
+                maxDim = np.min([nneur - 2, 36])
+                dims = np.arange(22, maxDim, 2)
+                LL = np.zeros((3, 5, len(dims) )) + np.nan
+            else:
+                maxDim = np.min([nneur-2, 20])
+                dims = np.arange(2, maxDim)
+                LL = np.zeros((3, 5, len(dims) )) + np.nan
 
             for i_fold, type_of_model_index in enumerate(type_of_model):
 
@@ -238,11 +249,13 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
                 ### For each variable in the model: 
                 for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
 
+                    check_variables_order(variables, nneur)
+
                     ### These are teh params; 
                     _, model_nm, _, _, _ = model_var_list_i
 
                     print('Start dims fold %d, type %d' %(i_fold, type_of_model_index))
-                    for i_n, n_dim in enumerate(np.arange(2, 21)):
+                    for i_n, n_dim in enumerate(dims):
 
                         model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = n_dim)
 
@@ -256,11 +269,14 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
             max_dim = np.argmax(maxll, axis=1)
 
             max_LL_dim[i_d, 'LLs'] = LL.copy()
+            max_LL_dim[i_d, 'dims'] = dims.copy()
+
             assert(len(max_dim) == 3)
-            max_LL_dim[i_d] = max_dim + 2 ### Add two becuase index 0 is actually n_dim = 2
+            max_LL_dim[i_d] = dims[max_dim]
 
         ### Save data 
-        pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'wb'))
+        if highDsweep:
+            pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'wb'))
 
 ######## STEP 2 -- Fit the models ###########
 ### Main tuning function -- run this for diff animals; 
@@ -375,7 +391,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     ### Get the ridge dict: 
     if model_set_number == 11: 
         ### LDS model w/ latent ###
-        dim_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'rb'))
+        dim_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims_lowD.pkl', 'rb'))
 
     else:
         if fit_intercept:
@@ -551,6 +567,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         elif fit_condition_spec_no_general:
             test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_condition_spec(n_folds, data_temp)
             model_data[i_d, 'type_of_model'] = type_of_model
+        
         ####### Get the test / train indices balanced over both tasks; 
         else:
             test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
@@ -587,6 +604,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                 
                 ### For each variable in the model: 
                 for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
+
+                    check_variables_order(variables, nneur)
 
                     ### These are teh params; 
                     _, model_nm, _, _, _ = model_var_list_i
@@ -722,9 +741,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
                             
         #### Confirm test_confirm matches ####
-        for k in test_confirm.keys():
-            tmp = np.unique(np.hstack((test_confirm[k])))
-            assert(len(tmp) == data_temp.shape[0])
+        if model_set_number == 11:
+            for k in test_confirm.keys():
+                tmp = np.unique(np.hstack((test_confirm[k])))
+                assert(len(tmp) == data_temp.shape[0])
 
     h5file.close()
     print 'H5 File Done: ', hdf_filename
@@ -786,7 +806,6 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True):
     
     else:
         model_set_number = 6
-        
         if fit_intercept:
             save_directory = analysis_config.config['shuff_fig_dir']
         else:
@@ -802,8 +821,8 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True):
     #### Get the dim dict ###
     if latent_LDS:
         dim_dict = {}
-        for animal in ['grom','jeev']:
-            dim_dict[animal] = pickle.load(open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'rb'))
+        for animal in ['grom']:#,'jeev']:
+            dim_dict[animal] = pickle.load(open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims_lowD.pkl', 'rb'))
     
     ### Get the ridge dict:
     else:   
@@ -816,7 +835,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True):
             except:
                 pass #
 
-    for animal in ['grom', 'jeev']:
+    for animal in ['grom']:#, 'jeev']:
         if animal == 'grom':
             order_dict = analysis_config.data_params['grom_ordered_input_type']
             input_type = analysis_config.data_params['grom_input_type']
@@ -844,9 +863,9 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True):
                 # Get spike data from data fcn
                 Data_temp, Sub_spikes, Sub_push = generate_models_utils.get_spike_kinematics(animal, day, 
                     order_dict[i_d], history_bins_max, within_bin_shuffle = True,
-                    day_ix = i_d, nshuffs = 100)
+                    day_ix = i_d, nshuffs = 2)
 
-                for shuffle in range(100):
+                for shuffle in range(2):
 
                     data_temp = Data_temp[shuffle]
                     sub_spikes = Sub_spikes[shuffle]
@@ -860,14 +879,14 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True):
 
                         ### Models to save ##########
                         ### Keep spikes ####
-                        nT, nn = sub_spikes.shape
-                        model_data = np.zeros((nT, nn, 3)) 
+                        nT, nneur = sub_spikes.shape
+                        model_data = np.zeros((nT, nneur, 3)) 
                     
                         ######### Ridge #########
                         if latent_LDS: 
                             #### This gets trials instead of time points ###
                             trl_test_ix, trl_train_ix, type_of_model = generate_models_utils.get_training_testings_generalization_LDS_trial(n_folds, data_temp,
-                                match_task_spec_n = match_task_spec_n)
+                                match_task_spec_n = True)
                             test_confirm = {}
                             for tmp in np.unique(type_of_model):
                                 test_confirm[tmp] = []
@@ -896,8 +915,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True):
                             else:
                                 if latent_LDS:
                                     assert(type_of_model_index in [0, 1, 2])
-                                    ndims = dim_dict[i_d][type_of_model_index]
-                                    nneur = sub_spk_temp_all.shape[2]
+                                    ndims = dim_dict[animal][i_d][type_of_model_index]
                                     
                                     ####### Fit the model ##########
                                     model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = ndims)
@@ -960,11 +978,12 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True):
                         sio.savemat(save_directory+'%s_%d_shuff%s_%s.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
                         plt.close('all')
                     
-                        #### Confirm test_confirm matches ####
-                        for k in test_confirm.keys():
-                            tmp = np.unique(np.hstack((test_confirm[k])))
-                            assert(len(tmp) == data_temp.shape[0])
-                        
+                        if latent_LDS:
+                            #### Confirm test_confirm matches ####
+                            for k in test_confirm.keys():
+                                tmp = np.unique(np.hstack((test_confirm[k])))
+                                assert(len(tmp) == data_temp.shape[0])
+
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
     model = 'hist_1pos_0psh_0spksm_1_spksp_0', n_folds = 5, fit_intercept = True):
@@ -1069,7 +1088,6 @@ def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 
                 variables.append(['tsk'])
 
         variables = np.hstack((variables))
-        import pdb; pdb.set_trace()
 
         ###### Add relevant stuff to rez dict
         rez_dict[i_d]['trg'] = data_temp['trg']
@@ -1457,7 +1475,19 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
 
         ### Get all the variables together ###
         variables = np.hstack(( [vel_model_nms, pos_model_nms, tg_model_nms, tsk_model_nms, push_model_nms, neur_nms1, neur_nms2] ))
-        variables_list.append(np.unique(variables))
+
+        #### Unique without resorting the neurons for dynamics models 
+        variables_keep = []
+        for v in variables:
+            if v in variables_keep:
+                pass
+            else:
+                variables_keep.append(v)
+        variables_keep = np.hstack((variables_keep))
+
+        ############ Double check that neurons are in the right order; ###############
+        check_variables_order(variables_keep, nneur)
+        variables_list.append(np.hstack((variables_keep)))
     return variables_list
 
 def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, 
@@ -1564,6 +1594,13 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                 max_alpha[i_d, model_nm] = alp[ix_max, 0]
 
     return max_alpha
+
+def check_variables_order(variables, nneur):
+    for spk in ['spks_tm0_n0', 'spks_tm1_n0', 'spks_tm2_n0', 'spks_tp1_n0', 'spks_tp2_n0']:
+        if spk in variables:
+            ix = np.nonzero(variables == spk)[0]
+            for n in range(nneur):
+                assert(variables[ix+n] == spk[:-1] + '%d'%(n))
 
 #### Decoder UTILS ####
 def get_KG_decoder_grom(day_ix):
