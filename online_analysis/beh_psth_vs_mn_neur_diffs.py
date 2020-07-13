@@ -18,7 +18,7 @@ def plot_mean_diffs_all(zscore = False, plot_beh_mn_diffs = False, plot_beh_vs_n
     if plot_beh_vs_neur:
         agg_dat = dict()
     
-    nShuff = 100; 
+    nShuff = 200; 
 
     for i_a, animal in enumerate(['grom', 'jeev']): 
         d_beh = []
@@ -74,8 +74,7 @@ def plot_mean_diffs_all(zscore = False, plot_beh_mn_diffs = False, plot_beh_vs_n
     ##### Bar plots for mean slope / rv ###
     if plot_beh_vs_neur:
         plot_bars_beh_vs_neural(agg_dat)
-
-    return agg_dat
+        return agg_dat
 
 def extract_mean_diffs(animal='grom', day=0, lags = 1, min_obs = 15, 
     comparison = 'x_conds', zscore = False):
@@ -300,7 +299,7 @@ def plot_mean_diffs_w_shuff(axraw, axrel, animal, a_off, d_abs_neur, d_abs_neur_
         assert(len(day_shuff) == nShuff)
         pv_ix = np.nonzero(day_shuff >= day_mn)[0]
         pv = float(len(pv_ix))/float(len(day_shuff))
-        print('Day %d, pv = %.4f'%(i_d, pv))
+        print('Day %d, pv = %.4f, tot_shuff %d'%(i_d, pv, len(day_shuff)))
         pvs.append(pv)
 
         ##### Plot single day lines 
@@ -318,22 +317,36 @@ def plot_mean_diffs_w_shuff(axraw, axrel, animal, a_off, d_abs_neur, d_abs_neur_
         color='k', marker='|')
 
     #### Raw plot with bars ###
-    axraw.bar(0 + 3*a_off, np.mean(np.hstack((tmp_shuff_mn))), color='gray', width=.9, alpha=.5)
+    axraw.bar(0 + 3*a_off, np.mean(np.hstack((tmp_shuff_mn))), color='gray', width=.9, alpha=.8)
     axraw.errorbar(0 + 3*a_off, np.mean(np.hstack((tmp_shuff_mn))), np.std(np.hstack((tmp_shuff_mn)))/np.sqrt(len(np.hstack((tmp_shuff_mn)))),
         color='k', marker='|')
     
-    axraw.bar(1 + 3*a_off, np.mean(np.hstack((tmp))), color='k', width=.9, alpha=.5)
+    axraw.bar(1 + 3*a_off, np.mean(np.hstack((tmp))), color='k', width=.9, alpha=.8)
     axraw.errorbar(1 + 3*a_off, np.mean(np.hstack((tmp))), np.std(np.hstack((tmp)))/np.sqrt(len(np.hstack((tmp)))),
         color='k', marker='|')
     
-    if np.all(np.hstack((pvs)) < 0.05):
-        axrel.plot([3*a_off, 1 + 3*a_off], [1.1*np.max(tmp_frac), 1.1*np.max(tmp_frac)], 'k-', linewidth=1.)
-        axrel.text(3*a_off + .5, 1.15*np.max(tmp_frac), '***', ha='center')
-        #axrel.set_ylim([0., -1.2*np.min(tmp_frac)])
-        yax = axrel.get_ylim()
-        axrel.set_ylim([yax[0],  1.2*np.max(tmp_frac)])
-    else:
-        import pdb; pdb.set_trace()
+    ##### Do LME for raw data ####
+    tmp_shuff_mn = np.hstack((tmp_shuff_mn))
+    tmp = np.hstack((tmp))
+    
+    vals = np.hstack((tmp_shuff_mn, tmp ))
+    grp = np.hstack(( np.zeros((len(tmp_shuff_mn),)), np.ones((len(tmp), )) ))
+    day = np.hstack((np.arange(len(tmp_shuff_mn)), np.arange(len(tmp))))
+
+    pv, slp = util_fcns.run_LME(day, grp, vals)
+    pv_str = util_fcns.get_pv_str(pv)
+
+    axraw.plot([3*a_off, 3*a_off + 1], [1.1*np.max(tmp), 1.1*np.max(tmp)], 'k-', linewidth=1.)
+    axraw.text(3*a_off + .5, 1.15*np.max(tmp), pv_str, ha='center')
+
+    # if np.all(np.hstack((pvs)) < 0.05):
+    #     axrel.plot([3*a_off, 1 + 3*a_off], [1.1*np.max(tmp_frac), 1.1*np.max(tmp_frac)], 'k-', linewidth=1.)
+    #     axrel.text(3*a_off + .5, 1.15*np.max(tmp_frac), '***', ha='center')
+    #     #axrel.set_ylim([0., -1.2*np.min(tmp_frac)])
+    #     yax = axrel.get_ylim()
+    #     axrel.set_ylim([yax[0],  1.2*np.max(tmp_frac)])
+    # else:
+    #     import pdb; pdb.set_trace()
 
 def plot_beh_diff_vs_neur_vect_diff(animal, d_beh, d_neur, d_neur_shuff, plot_days, zscore):
 
@@ -444,6 +457,9 @@ def plot_bars_beh_vs_neural(agg_dat):
     #### Animal #####
     for i_a, animal in enumerate(['grom', 'jeev']):
 
+        lme_test = dict(day = [], grp = [], val = [])
+
+        ##### For each animal track LME and % of days that are sig; 
         ##### Metrics #####
         for i_m, met in enumerate(['rv']):#, 'rv']): 
 
@@ -469,11 +485,22 @@ def plot_bars_beh_vs_neural(agg_dat):
                     tmp = []
                     for i_d in range(ndays):
                         dat_rel = (agg_dat[animal, met][dat][i_d]  - shuff_mn[i_d])/shuff_mn[i_d]
-                        if dat_rel < -100:
-                            import pdb; pdb.set_trace()
                         ax[1].plot([i_a*3, i_a*3 + 1], [0, dat_rel], '-', color='gray')
                         tmp.append(dat_rel)
                     ax[1].bar(i_a*3 + 1, np.mean(tmp), width=.9, color=col)
+
+                    #### Plot real p-values ####
+                    assert(len(agg_dat[animal, met]['true']) == len(agg_dat[animal, met]['shuff']))
+
+                    ### Plot effect ######
+                    for i_d, (t, s) in enumerate(zip(agg_dat[animal, met]['true'], agg_dat[animal, met]['shuff'])):
+                        assert(len(s) == 200)
+                        pv = float(len(np.nonzero(s >= t)[0])) / float(len(s))
+                        print('Animal %s, Day %d, pv %.4f' %(animal, i_d, pv))
+
+                        lme_test['day'].append([i_d, i_d])
+                        lme_test['grp'].append([0, 1])
+                        lme_test['val'].append([np.mean(s), t])
 
             ##### Iterate through each day #####
             for i_d in range(len(agg_dat[animal, met][dat])):
@@ -488,6 +515,15 @@ def plot_bars_beh_vs_neural(agg_dat):
             ax[1].set_ylabel('Frac. Increase in Correlation\n Coeff. (r) vs. Shuffle')
             ax[1].set_xlim([-.5, 4.5])
             ax[0].set_xlim([-.5, 4.5])
+
+        ###### Plot ######
+        print('Animal %s' %animal)
+        pv, slp = util_fcns.run_LME(lme_test['day'], lme_test['grp'], lme_test['val']) 
+        pv_str = util_fcns.get_pv_str(pv)
+        vl = np.hstack((lme_test['val']))
+        ax[0].plot([i_a*3, i_a*3 + 1], [1.1*np.max(vl), 1.1*np.max(vl)], 'k-')
+        ax[0].text(3*i_a + .5, 1.15*np.max(vl), pv_str, ha='center')
+
     f.tight_layout()
     f.savefig(analysis_config.config['fig_dir']+'/fig3_rv_of_cc.svg')
 
@@ -524,7 +560,7 @@ def return_valid_ix(ix_com, lags, bin_num):
     else:
         return np.hstack(( ix_keep ))
 
-def get_shuffled_spikes(spks, command_bins, animal, day, nShuff=100, save=False, load=False):
+def get_shuffled_spikes(spks, command_bins, animal, day, nShuff=200, save=False, load=False):
     
     if load:
         spks_shuff = sio.loadmat(analysis_config.config['shuff_fig_dir']+'%s_%d_shuffall_spks.mat'%(animal, day))
