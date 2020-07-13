@@ -81,7 +81,6 @@ class NHPBrain_RidgeOffsDyn(object):
         next += np.random.multivariate_normal(np.zeros((self.nstates)), self.W)
         self.obs = next.copy()
 
-
     def get_reset_state(self):
         return np.mat(np.hstack(( self.brain_target ))[:, np.newaxis])
 
@@ -93,6 +92,7 @@ class SimBrain_RidgeOffsDyn(object):
     def __init__(self, nNeur, eig_decay, freq, offset):
         
         # Assign:
+        self.with_intercept = True
         self.nobs = self.nstates = nNeur + 1
         self.nNeur = nNeur
         self.ninputs = nNeur
@@ -108,6 +108,12 @@ class SimBrain_RidgeOffsDyn(object):
         self.B = np.mat(np.vstack((B, np.zeros((nNeur)) )))
 
         assert(self.B.shape[0] == self.A.shape[1] == self.nstates)
+
+        # Get W 
+        self.W = np.eye(self.nstates)*0.#state_noise
+        if self.with_intercept:
+            self.W[-1, -1] = 0
+
 
     def create_A(self, nstates, decay, ang_frequency, offset):
         ### ang_frequency --> in degrees
@@ -152,14 +158,18 @@ class ComboStateRidgeOffs(object):
         self.brain = brain; 
         self.nstates = self.A.shape[0]
         self.W = np.eye(self.nstates)
+
         for i_n in range(self.brain.nstates):
             self.W[i_n, i_n] = self.brain.W[i_n, i_n]
+        
         for i_n in range(self.brain.nstates, self.nstates):
             self.W[i_n, i_n] = 0.
 
     def get_curs_reset_state(self):
-        return np.mat([0., 0., 0., 0., 1.]).reshape(-1,1)
-    
+        if self.cursor.keep_offset:
+            return np.mat([0., 0., 0., 0., 1.]).reshape(-1,1)
+        else:
+            return np.mat([0., 0., 0., 0.]).reshape(-1, 1)
     def get_next_state(self, input1):
         
         inp = np.mat(input1)
@@ -195,6 +205,7 @@ class Combined_Curs_SimBrain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Sim
         # 10 states :
         #self.curs = Cursor(nNeur, True)
         self.curs = Cursor(2, keep_offset = True)
+        self.keep_offset = True
 
         # 10 states, 10 inputs, no noise, reasonable dynamics
         offset = 1+np.zeros((2, ))
@@ -204,54 +215,46 @@ class Combined_Curs_SimBrain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Sim
         #ImA = np.linalg.inv(np.eye(self.brain.nNeur) - self.brain.A[:-1, :-1])
         #fix_pt = np.dot(ImA, self.brain.A[:-1, -1])
         #self.brain_target = np.hstack(( np.squeeze(np.array(fix_pt)), [1] ))
-        self.brain_target = None; 
+        self.brain.brain_target = None; 
 
         # Combined states: 
         self.combostate = ComboStateRidgeOffs(self.curs, self.brain)
 
         self.setup_lqr(task, R)
 
-        self.keep_offset = True
-
 class Combined_Curs_Brain_LQR_Data_ModelRidgeOffs(Combined_Curs_Brain_LQR_Simulation):
 
     def __init__(self, day, shuffle, R = 10000, task = 'co', with_intercept = False,
-        state_noise = 0., zeroA = False, zerointc = False):
+        state_noise = 0., zeroA = False, zerointc = False, animal = 'grom'):
 
         ####### Get cursor ########
         keep_offset = True
-        self.curs = Experiment_Cursor(day, keep_offset)
+        self.curs = Experiment_Cursor(day, keep_offset, animal = animal)
+        
+        #### Set keep-offset ###### So target location has offset too 
+        self.keep_offset = keep_offset
+
 
         ####### Get brain ######
-        self.brain = NHPBrain_RidgeOffsDyn(day, 'grom', shuffle, with_intercept = with_intercept,
+        self.brain = NHPBrain_RidgeOffsDyn(day, animal, shuffle, with_intercept = with_intercept,
             state_noise = state_noise, zeroA = zeroA, zerointc = zerointc)
 
         ###### Get a combined state #####
         # Combined states: 
         self.combostate = ComboStateRidgeOffs(self.curs, self.brain)
-
-        ###### Get the brain target ######
-        KalmanGain = self.curs.B[[2, 3], :]; ### 2 x N
-        Neural_Mu = self.brain.neural_mu
-        Neural_Cov = self.brain.neural_cov
-
-        ##### Get the expected value of neural activity conditioned on action = 0 ####
-        ### E(x | a) = x + (KC)'(KCK')-1(a - Kx)
-        ### E(x | a=0) = x + (KC)'(KCK')-1(-Kx)
-        KCT_ = np.dot(KalmanGain, Neural_Cov).T
-        KCK_inv_ = np.linalg.inv(np.dot(KalmanGain, np.dot(Neural_Cov, KalmanGain.T)))
-        E_n_a0 = Neural_Mu + np.dot(KCT_, np.dot(KCK_inv_, -1*np.dot(KalmanGain, Neural_Mu)))
-        assert(np.allclose(np.dot(KalmanGain, E_n_a0), np.mat([[0],[0]])))
-        self.brain_target = None; #np.hstack(( np.squeeze(np.array(E_n_a0)), [1]))
+        
         self.brain.brain_target = np.zeros((self.brain.nstates)) #self.brain_target; 
+        
+        if with_intercept:
+            self.brain.brain_target[-1] = 1.
 
         # Now setup the LQR: 
         self.setup_lqr(task, R)
 
-        #### Set keep-offset ###### So target location has offset too 
-        self.keep_offset = True
+        
 
 ######### Get saved ridge regression ########
+
 def get_saved_RidgeOffs(day=0, animal='grom', shuffle = False, with_intercept = True, zeroA = False, zerointc = False):
     
     if zerointc: assert(with_intercept == True)

@@ -126,7 +126,7 @@ class Cursor(object):
         if self.keep_offset:
             
             #offs = np.random.randn(2, )*.05; 
-            offs = np.zeros((2, ))
+            offs = np.zeros((2, )) + 1
             self.A[[2, 3], 4] = offs.copy()
             self.A[[0, 1], 4] = self.dt*offs.copy()
 
@@ -149,27 +149,41 @@ class Experiment_Cursor(Cursor):
 
     def __init__(self, day, keep_offset, animal = 'grom'): 
 
-        if animal != 'grom':
-            raise Exception('Dont have decoders from %s' %animal)
-
         ### Run init from above
         super(Experiment_Cursor, self).__init__(keep_offset = keep_offset)
 
         ### Load up the dictionary of hdf files / decoders.
         ### Use this to overwrite the A and B matrices
 
-        # Get a te_num for day: 
-        te_num = grom_input_type[day][0][0]
+        if animal == 'grom':
+            # Get a te_num for day: 
+            te_num = grom_input_type[day][0][0]
 
-        pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
-        co_obs_dict = pickle.load(open(pref+'co_obs_file_dict.pkl'))
-        
-        dec = co_obs_dict[te_num, 'dec']
-        decix = dec.rfind('/')
+            pref = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
+            co_obs_dict = pickle.load(open(pref+'co_obs_file_dict.pkl'))
+            
+            dec = co_obs_dict[te_num, 'dec']
+            decix = dec.rfind('/')
 
-        ## Load the decoder
-        decoder = pickle.load(open(pref+dec[decix:]))
-        F, KG = decoder.filt.get_sskf()
+            ## Load the decoder
+            decoder = pickle.load(open(pref+dec[decix:]))
+            F, KG = decoder.filt.get_sskf()
+
+        elif animal == 'jeev':
+            
+            KG = util_fcns.get_decoder(animal, day)
+            
+            N = KG.shape[1]
+            KG = np.vstack(( np.zeros((3, N)), KG[0, :], np.zeros((1, N)), KG[1, :], np.zeros((1, N)) ))
+
+
+            F = np.array([[1., 0., 0., .1, 0., 0., 0.], 
+                          [0., 0., 0., 0., 0., 0., 0.],
+                          [0., 0., 1., 0., 0., .1, 0.],
+                          [0., 0., 0.,.8,  0., 0., 0.],
+                          [0., 0., 0., 0., 0., 0., 0.],
+                          [0., 0., 0., 0., 0., .8, 0.],
+                          [0., 0., 0., 0., 0., 0., 1.]])
 
         if keep_offset:
             ### Get "input" matrix: 
@@ -455,6 +469,7 @@ class Combined_Curs_Brain_LQR_Simulation(object):
         ### error should always be 1. 
         qDiag[self.brain.nstates:] = np.mat(np.ones(self.curs.nstates))
         self.Q = np.diag(qDiag)
+        self.Q = self.Q
 
         # R --> not really sure what to make this: 
         rDiag = np.zeros(( self.brain.ninputs )) + R
@@ -495,7 +510,8 @@ class Combined_Curs_Brain_LQR_Simulation(object):
 
         for it, (xi, yi) in enumerate(zip(x, y)):
             us_all = []; us_max = 0; 
-
+            print('Starting target: x %.1f, y %.1f' %(xi, yi))
+            
             for rep in range(nreps):
                 print('Starting rep: %d' %rep)
 
@@ -573,11 +589,11 @@ class Combined_Curs_Brain_LQR_Simulation(object):
             state_final = np.mat(np.hstack((target_location, [0., 0.]))).reshape(-1, 1)
 
         # Add zeros for brain state: 
-        if self.brain_target is None:
+        if self.brain.brain_target is None:
             state_final = np.vstack(( np.zeros((self.brain.nstates, 1)), state_final))
         else:
-            assert(len(self.brain_target) == self.brain.nstates)
-            state_final = np.vstack(( self.brain_target[:, np.newaxis], state_final))
+            assert(len(self.brain.brain_target) == self.brain.nstates)
+            state_final = np.vstack(( self.brain.brain_target[:, np.newaxis], state_final))
 
         # Get a K matrix for this -- infinite time horizon: 
         K = self.lqr.dlqr(self.combostate.A, self.combostate.B, self.Q, self.R)
@@ -596,6 +612,14 @@ class Combined_Curs_Brain_LQR_Simulation(object):
 
             state_err = self.combostate.state - state_final; 
             
+            # Make the offsets equal to 1
+            if self.keep_offset: ### #Refers to cursor offset: 
+                state_err[-1] = 1.
+
+            # Brain offset: 
+            if self.brain.with_intercept:
+                state_err[self.brain.nstates-1] = 1.
+
             # Get input: 
             u = -1*np.dot(K, state_err)
 
@@ -678,11 +702,11 @@ class Combined_Curs_Brain_LQR_Simulation(object):
             else:
                 state_final = np.vstack(( current_goal, ))
 
-            if self.brain_target is None:
+            if self.brain.brain_target is None:
                 current_goal_state = np.vstack(( np.zeros((self.brain.nstates, 1)), state_final ))
             else: 
-                assert(len(self.brain_target) == self.brain.nstates)
-                current_goal_state = np.vstack(( self.brain_target[:, np.newaxis], state_final ))
+                assert(len(self.brain.brain_target) == self.brain.nstates)
+                current_goal_state = np.vstack(( self.brain.brain_target[:, np.newaxis], state_final ))
 
 
             # if init: 
@@ -695,6 +719,14 @@ class Combined_Curs_Brain_LQR_Simulation(object):
             ### Get current error: 
             state_err = self.combostate.state - current_goal_state; 
             
+            # Make the offsets equal to 1
+            if self.keep_offset: ### #Refers to cursor offset: 
+                state_err[-1] = 1.
+
+            # Brain offset: 
+            if self.brain.with_intercept:
+                state_err[self.brain.nstates-1] = 1.
+
             # Compute input: 
             u = -1*np.dot(K, state_err)
 
@@ -887,7 +919,6 @@ def get_saved_LDS(day = 0, animal = 'grom', old = False, shuffleA = False):
         return A, C
             
     
-
 ########################################################
 ### LDS tests with simulated neural dynamics to plot ###
 ########################################################
