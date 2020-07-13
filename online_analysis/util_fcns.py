@@ -195,6 +195,8 @@ def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
     mdf = md.fit()
     pv = mdf.pvalues['Grp']
     slp = mdf.params['Grp']
+    print('PV = {:.3e}'.format(pv)) 
+    print('SLP %.5f, N = %d, t(%d) = %.3f' %(slp, len(Days), mdf.df_resid, mdf.tvalues['Grp']))
 
     if bar_plot:
         f, ax = plt.subplots(figsize = (4, 4))
@@ -266,7 +268,8 @@ def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
 
 ### Plotting ###
 def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):
-    bp = ax.boxplot(data, patch_artist=True, positions = [xax], widths=[width])
+    bp = ax.boxplot(data, patch_artist=True, positions = [xax], widths=[width],
+        whis = [5, 95])
 
     for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
         plt.setp(bp[element], color=edge_color)
