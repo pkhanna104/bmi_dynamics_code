@@ -9,8 +9,8 @@ import pickle, os
 from db import dbfunctions as dbfn
 from statsmodels.formula.api import ols
 import pandas
-import co_obs_tuning_matrices
 import analysis_config
+from online_analysis import util_fcns
 import fit_LDS
 from resim_ppf import file_key 
 import prelim_analysis as pa
@@ -56,7 +56,6 @@ for _, (c, cnm) in enumerate(zip(co_obs_cmap, ['co', 'obs'])):
         cnm, colors, N=1000)
     co_obs_cmap_cm.append(cm)
 
-import co_obs_tuning_matrices, subspace_overlap
 from resim_ppf import file_key 
 grom_input_type = analysis_config.data_params['grom_input_type']
 jeev_input_type = file_key.task_filelist
@@ -113,14 +112,14 @@ def task_dict_add_model(task_dict_file, data_temp_dict, model_nms, pos_model_nms
     return task_dict_file
 
 def get_KG_decoder_grom(day_ix):
-    co_obs_dict = pickle.load(open(co_obs_tuning_matrices.pref+'co_obs_file_dict.pkl'))
+    co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
     input_type = analysis_config.data_params['grom_input_type']
 
     ### First CO task for that day: 
     te_num = input_type[day_ix][0][0]
     dec = co_obs_dict[te_num, 'dec']
     decix = dec.rfind('/')
-    decoder = pickle.load(open(co_obs_tuning_matrices.pref+dec[decix:]))
+    decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
     F, KG = decoder.filt.get_sskf()
     KG_potent = KG[[3, 5], :]; # 2 x N
     KG_null = scipy.linalg.null_space(KG_potent) # N x (N-2)
@@ -151,14 +150,19 @@ def generate_KG_decoder_jeev():
         # Get bin spikes for this task entry:
         bin_spk_all = []
         cursor_KG_all = []
+        
+        bin_spk_all_t = []
+        cursor_kin_all_t = []
+        cursor_kin_all_tm1 = []
+        
         P_mats = []
 
         for task in range(2):
             te_nums = filelist[day][task]
             
             for te_num in te_nums:
-                bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, unbinned, exclude = ppf_pa.get_jeev_trials_from_task_data(te_num, 
-                    binsize=binsize_ms/1000.)
+                bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, cursor_kin, unbinned, exclude = ppf_pa.get_jeev_trials_from_task_data(te_num, 
+                    binsize=binsize_ms/1000., include_pos = True)
 
                 indices = []
                 for j, (i0, i1) in enumerate(unbinned['ixs']):
@@ -171,26 +175,44 @@ def generate_KG_decoder_jeev():
 
                 bin_spk_all.extend([bs for ib, bs in enumerate(bin_spk) if ib not in exclude])
                 cursor_KG_all.extend([kg for ik, kg in enumerate(decoder_all) if ik not in exclude])
+                
+                cursor_kin_all_t.extend([ck[1:, :] for ic, ck in enumerate(unbinned['cursor_kin']) if ic not in exclude])
+                cursor_kin_all_tm1.extend([ck[:-1, :] for ic, ck in enumerate(unbinned['cursor_kin']) if ic not in exclude])
+                bin_spk_all_t.extend([bs[1:, :] for ib, bs in enumerate(bin_spk) if ib not in exclude])
 
         bin_spk_all = np.vstack((bin_spk_all))
         P_mats = np.dstack((P_mats))
 
         cursor_KG_all = np.vstack((cursor_KG_all))[:, [3, 5]]
         
-        # De-meaned cursor: 
-        cursor_KG_all_demean = (cursor_KG_all - np.mean(cursor_KG_all, axis=0)[np.newaxis, :]).T
-        
         # Fit a matrix that predicts cursor KG all from binned spike counts
         KG = np.mat(np.linalg.lstsq(bin_spk_all, cursor_KG_all)[0]).T
-        
-        cursor_KG_all_reconst = KG*bin_spk_all.T
-        vx = np.sum(np.array(cursor_KG_all[:, 0] - cursor_KG_all_reconst[0, :])**2)
-        vy = np.sum(np.array(cursor_KG_all[:, 1] - cursor_KG_all_reconst[1, :])**2)
-        R2_best = 1 - ((vx + vy)/np.sum(cursor_KG_all_demean**2))
+        cursor_KG_all_reconst = np.dot(KG, bin_spk_all.T).T
+        R2_best = util_fcns.get_R2(cursor_KG_all, cursor_KG_all_reconst, pop=True)
         print 'KG est: shape: ', KG.shape, ', R2: ', R2_best
-
         KG_approx[day] = KG.copy();
         KG_approx[day, 'R2'] = R2_best;
+
+        ### now estimate F matrix;
+        cursor_kin_all_t = np.vstack((cursor_kin_all_t))[:, [0, 2, 3, 5, 6]]
+        cursor_kin_all_tm1 = np.vstack((cursor_kin_all_tm1))[:, [0, 2, 3, 5, 6]]
+
+        bin_spk_all_t = np.vstack((bin_spk_all_t))
+
+        _, N = KG.shape
+        KG_tmp = np.vstack((np.zeros((2, N)), KG, np.zeros((1, N)) ))
+
+        ### Compute residuals 
+        rez = cursor_kin_all_t - np.dot(KG_tmp, bin_spk_all_t.T).T
+        
+        ## Compute F matrix; Fest_pos is perfect -- integration of velocity 
+        Fest_pos = np.mat(np.linalg.lstsq(cursor_kin_all_tm1, rez[:, [0, 1]])[0]).T
+
+        ## Cannot reasonably estimate velocity; 
+        Fest_vel = np.mat(np.linalg.lstsq(cursor_kin_all_tm1[:, [2, 3, 4]], rez[:, [2, 3]])[0]).T
+
+        rez_vel_est = np.dot(Fest_vel, cursor_kin_all_tm1[:, [2, 3, 4].T).T
+        R2_f_vel = util_fcns.get_R2(cursor_kin_all_t[:, [2, 3, 4]], rez_vel_est)
 
     ### Save this: 
     pickle.dump(KG_approx, open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/jeev_KG_approx_fit.pkl', 'wb'))
@@ -377,7 +399,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
     tuning_dict = {}
     if animal == 'grom':
-        order_dict = co_obs_tuning_matrices.ordered_input_type
+        order_dict = analysis_config.data_params['grom_ordered_input_type']
         input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
@@ -903,7 +925,7 @@ def model_individual_cell_tuning_curves_task_spec_input(hdf_filename='_models_to
 
     tuning_dict = {}
     if animal == 'grom':
-        order_dict = co_obs_tuning_matrices.ordered_input_type
+        order_dict = analysis_config.data_params['grom_ordered_input_type']
         input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
@@ -1147,7 +1169,7 @@ def model_individual_cell_tuning_curves_co_obs_spec_dyn(hdf_filename='_models_to
 
     tuning_dict = {}
     if animal == 'grom':
-        order_dict = co_obs_tuning_matrices.ordered_input_type
+        order_dict = analysis_config.data_params['grom_ordered_input_type']
         input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
@@ -1453,7 +1475,7 @@ def model_individual_cell_tuning_curves_co_obs_tsk_tg_dyn(hdf_filename='_models_
 
     tuning_dict = {}
     if animal == 'grom':
-        order_dict = co_obs_tuning_matrices.ordered_input_type
+        order_dict = analysis_config.data_params['grom_ordered_input_type']
         input_type = analysis_config.data_params['grom_input_type']
 
     elif animal == 'jeev':
@@ -1758,7 +1780,7 @@ def mean_diffs_plot(animal = 'grom', min_obs = 15, load_file = 'default', dt = 1
         neural_push = model_dict[i_d, 'np']
 
         ### Commands
-        commands = subspace_overlap.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+        commands = util_fcns.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
         
         ### Get task / target
         tsk = model_dict[i_d, 'task']
@@ -2379,7 +2401,7 @@ def mean_diffs_plot_x_condition(animal = 'grom', min_obs = 15, load_file = 'defa
         neural_push = model_dict[i_d, 'np'][model_dict[i_d, 'keep_ix_pos'], :]
 
         ### Commands
-        commands = subspace_overlap.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+        commands = util_fcns.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
         
         ### Get task / target
         tsk = model_dict[i_d, 'task'][model_dict[i_d, 'keep_ix_pos']]
@@ -2989,7 +3011,7 @@ def mean_diffs_plot_x_condition_state_limited(animal = 'grom', min_obs = 15,
             vel_tm1 = model_dict[i_d, 'vel_tm1']; 
 
             ### Get angles out from this velocity: 
-            vel_disc = subspace_overlap.commands2bins([vel_tm1], mag_boundaries, animal, i_d, vel_ix = [0, 1], ndiv = ndiv)[0]
+            vel_disc = util_fcns.commands2bins([vel_tm1], mag_boundaries, animal, i_d, vel_ix = [0, 1], ndiv = ndiv)[0]
 
             ### Here, the second column (vel_disc[:, 1]) has info on the angle: 
             for ang_i in range(int(ndiv)): 
@@ -3043,7 +3065,7 @@ def mean_diffs_plot_x_condition_state_limited(animal = 'grom', min_obs = 15,
                 neural_push = model_dict[i_d, 'np'][ix_keeping, :]
 
                 ### Commands
-                commands = subspace_overlap.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                commands = util_fcns.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
             
                 ### Get task / target
                 tsk = model_dict[i_d, 'task'][ix_keeping]
@@ -3793,7 +3815,7 @@ def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True, perc_increase = Fals
             task = model_dict[i_d, 'task']
 
             ### Get commands: 
-            commands_disc = subspace_overlap.commands2bins([np_data], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+            commands_disc = util_fcns.commands2bins([np_data], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
             bin_num = model_dict[i_d, 'bin_num']
             min_bin = np.min(bin_num)
@@ -3877,7 +3899,7 @@ def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True, perc_increase = Fals
                         vel_tm1 = model_dict[i_d, 'vel_tm1']; 
 
                         ### Get angles out from this velocity: 
-                        vel_disc = subspace_overlap.commands2bins([vel_tm1], mag_boundaries, animal, i_d, vel_ix = [0, 1], ndiv = ndiv)[0]
+                        vel_disc = util_fcns.commands2bins([vel_tm1], mag_boundaries, animal, i_d, vel_ix = [0, 1], ndiv = ndiv)[0]
 
                         ### Here, the second column (vel_disc[:, 1]) has info on the angle: 
                         for ang_i in range(int(ndiv)): 
@@ -4164,7 +4186,7 @@ def plot_r2_bar_model_1(min_obs = 15, ndays = None, pt_2 = False, r2_pop = True,
                 neural_push = model_dict[i_d, 'np']
 
                 ### Commands
-                commands = subspace_overlap.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                commands = util_fcns.commands2bins([neural_push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
                 
                 ### Get task / target
                 tsk = model_dict[i_d, 'task']
@@ -4305,7 +4327,7 @@ def plot_r2_bar_model_5_gen(model_set_number = 5, ndays = None):
                 KG, _, _ = get_KG_decoder_jeev(i_d)
 
             ### convert this to discrete commands
-            commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+            commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
             for i_m, mod in enumerate(models_to_include):
 
@@ -4425,7 +4447,7 @@ def plot_r2_bar_model_7_gen(model_set_number = 7, ndays = None, use_action = Fal
                     KG = np.squeeze(np.array(KG))
 
                 ### convert this to discrete commands
-                commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, nd, vel_ix = [0, 1])[0]
+                commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, nd, vel_ix = [0, 1])[0]
 
                 for i_m, mod in enumerate(models_to_include):
 
@@ -4594,7 +4616,7 @@ def plot_yt_given_st(animal='grom', model_set_number = 8, min_obs = 15):
     tsk  = model_dict[i_d, 'task']
     targ = model_dict[i_d, 'trg']
     push = model_dict[i_d, 'np']
-    commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+    commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
 
     plot_ylab = ['y_t', 'y_t|s_t', 'y_t - y_t|s_t', 'y_t_mean_all', 'y_t_mean_command']
@@ -4694,7 +4716,7 @@ def plot_real_mean_diffs(model_set_number = 3, min_obs = 15, plot_ex = False, pl
             targ = model_dict[i_d, 'trg']
             push = model_dict[i_d, 'np']
 
-            commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+            commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
             ##################################
             ######### SNR / DISC THING #######
@@ -4830,7 +4852,7 @@ def plot_real_mean_diffs_wi_vs_x(model_set_number = 3, min_obs = 15, cov = False
             targ = model_dict[i_d, 'trg']
             push = model_dict[i_d, 'np']
 
-            commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+            commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
             ### Now go through combos and plot 
             for mag_i in range(4):
@@ -5011,7 +5033,7 @@ def plot_real_mean_diffs_x_null_vs_potent(model_set_number = 3, min_obs = 15, co
             targ = model_dict[i_d, 'trg']
             push = model_dict[i_d, 'np']
 
-            commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+            commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
             ### Now go through combos and plot 
             for mag_i in range(4):
@@ -5214,7 +5236,7 @@ def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
             min_bin = np.min(bin_num)
             print('min bin: %d'%min_bin)
 
-            commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+            commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
             ### Now go through combos and plot 
             for mag_i in range(4):
@@ -5395,7 +5417,7 @@ def plot_real_vs_pred(model_set_number = 1, min_obs = 15, cov = True):
                 pred_sig_diffs[model, i_d] = []
 
                 ### Get the discretized commands
-                commands_disc = subspace_overlap.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                commands_disc = util_fcns.commands2bins([push], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
 
                 ### Now go through combos and plot 
                 for mag_i in range(4):
@@ -5498,7 +5520,7 @@ def print_num_trials_per_day_CO_OBS():
 
     for i_a, animal in enumerate(['grom', 'jeev']):
         if animal == 'grom':
-            order_dict = co_obs_tuning_matrices.ordered_input_type
+            order_dict = analysis_config.data_params['grom_ordered_input_type']
             input_type = analysis_config.data_params['grom_input_type']
 
         elif animal == 'jeev':
@@ -6729,7 +6751,6 @@ def plot_new_linear_tuning_w_action_neural(plot_days = True):
         f2.tight_layout()
         
 def test():
-    import co_obs_tuning_matrices
     from resim_ppf import file_key 
     grom_input_type = analysis_config.data_params['grom_input_type']
     jeev_input_type = file_key.task_filelist
@@ -6817,7 +6838,7 @@ def plot_a_t_given_a_tm1(min_obs = 10):
                     trl_cnt += np.max(trial_ix_all) + 1; 
 
                 ### Convert to commands via subspace overlap
-                commands_disc = subspace_overlap.commands2bins(commands, mag_boundaries, animal, i_d, vel_ix = [3, 5])
+                commands_disc = util_fcns.commands2bins(commands, mag_boundaries, animal, i_d, vel_ix = [3, 5])
                 targets = np.hstack((targets))
                 trials = np.hstack((trials))
 
@@ -6889,7 +6910,7 @@ def plot_y_t_for_conds():
     mag_boundaries = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
 
     ### Convert to commands via subspace overlap
-    commands_disc = subspace_overlap.commands2bins([model_dict[i_d, 'np']], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+    commands_disc = util_fcns.commands2bins([model_dict[i_d, 'np']], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
     tsk = model_dict[i_d, 'task']
     trg = model_dict[i_d, 'trg']
 
