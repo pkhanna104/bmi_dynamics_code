@@ -1596,7 +1596,7 @@ def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept =
         pref = analysis_config.config['shuff_fig_dir_latentLDS']
 
     files = np.sort(glob.glob(pref + '%s_%d_shuff*_%s.mat' %(animal, day, model_nm)))
-    files = files[:2]
+    files = files[:200]
     pred_Y = []; coef = []; intec = []; coef2 = []; keepix = []; 
     
     for i_f, fl in enumerate(files):
@@ -4491,7 +4491,7 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
         f.tight_layout()
     f_stb.tight_layout()
 
-def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True):
+def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .9999, dat = None, with_intercept = True):
     ##### Number of folds
     n_folds = 5; 
     i_m = 2 ##### General model 
@@ -4501,7 +4501,7 @@ def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None, with_in
 
     #### Get shuffles 
     _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True, with_intercept=with_intercept)
-
+    print('len shuff %d'%(len(coef_shuff)))
     ### Plot 1 model ###
     for i_f in range(5):
 
@@ -4512,20 +4512,20 @@ def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .99, dat = None, with_in
         ax[0].plot(decay, hz, 'k.')#, markersize=2)
 
         ### Shuffle A ###
-        A_shuff = coef_shuff[i_f]
+        A_shuff = coef_shuff[i_f*2]
         assert(A.shape == A_shuff.shape)
 
         hz, decay = return_ts_hz(A_shuff)
         ax[1].plot(decay, hz, '.', color='gray')#, markersize=2)
-    #ax[0].set_xlim([0., .1])
-    #ax[1].set_xlim([0., .1])
+    ax[0].set_xlim([0., .3])
+    ax[1].set_xlim([0., .3])
     ax[0].set_ylim([-0.1, 5])
     ax[1].set_ylim([-0.1, 5])
 
     for axi in ax.reshape(-1):
         axi.set_xlabel("Decay Time (sec)")
         axi.set_ylabel("Frequency (Hz)")
-        axi.vlines(.05, 0, 5, 'k', linestyle='dashed')
+        axi.vlines(.1, 0, 5, 'k', linestyle='dashed')
     ax[0].set_title('Data')
     ax[1].set_title('Shuffled')
     f.tight_layout()
@@ -4584,7 +4584,7 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None, with_inter
         td_max = 0.08
     else:
         td_max = 1.
-    bins = [np.linspace(0, td_max, 20), np.linspace(0., 5., 20)]
+    bins = [np.linspace(0, .3, 20), np.linspace(0., 5., 20)]
     ax[0].hist2d(np.hstack((true_decay)), np.hstack((true_hz)), bins=bins, cmin=0., cmax = cmax, cmap='gray')
     _, _, _, cax = ax[1].hist2d(np.hstack((shuff_decay)), np.hstack((shuff_hz)), bins=bins, cmin = 0., cmax=cmax*10, cmap='gray')
     for axi in ax.reshape(-1):
@@ -4612,7 +4612,7 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None, with_inter
     
     non_osci = np.nonzero(np.hstack((shuff_hz)) == 0.)[0]
     h1, _ = np.histogram(np.hstack((shuff_decay))[non_osci], bins)
-    ax.plot(bins[:-1]+db, h1/float(np.sum(h1)), '-', color = 'gray')
+    ax.plot(bins[:-1]+half_db, h1/float(np.sum(h1)), '-', color = 'gray')
     mx = np.max(h1/float(np.sum(h1)))
     ax.vlines(np.mean(np.hstack((shuff_decay))[non_osci]), 0, 1.1*mx, color='gray', linestyle='--', linewidth=1.)
 
@@ -4656,7 +4656,7 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None, with_inter
         # shuff_mn_sub.append(shuff_tmp_dec - mn_shuff_dec)
         # shuff_raw.append(mn_shuff_dec)
 
-        assert(len(shuff_decay_w_sep[i_d]) == len(shuff_hz_w_sep[i_d]) == n_folds*100)
+        assert(len(shuff_decay_w_sep[i_d]) == len(shuff_hz_w_sep[i_d]))# == n_folds*100)
 
         pv = 0; 
         ###### pv ####
@@ -4676,6 +4676,93 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None, with_inter
     
     # axraw.set_xlim([-.5, 1.5])
     # axrel.set_xlim([-.5, 1.5])
+
+def eigvalue_perc_gte_binsize(dt = 0.1, dat = None, with_intercept = True):
+    dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    f, ax = plt.subplots(figsize = (4, 4))
+    ax = [None, None, ax]
+    i_m = 2; 
+    n_folds = 5
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        eigs = dict(); eigs_perc = dict(); 
+        shuff_eigs = dict(); shuff_eigs_perc = dict(); 
+
+        #### Iterate through days ####
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+
+            #### Get shuffles 
+            _, coef_shuff, intc_shuff = get_shuffled_data(animal, i_d, dyn_model, get_model = True, 
+                with_intercept = with_intercept)
+
+            #### List eigenvalues ####
+            eigs[i_d] = []
+            shuff_eigs[i_d] = []
+            eigs_perc[i_d] = []
+            shuff_eigs_perc[i_d] = []
+
+            #### Iterate through coefficient shuffles ###
+            for c in coef_shuff:
+
+                #### Dynamics ####
+                A = np.mat(c)
+                _, decay = return_ts_hz(A)
+
+                #### Number of eigs > .1
+                shuff_eigs[i_d].append(len(np.nonzero(decay > dt)[0]))
+                shuff_eigs_perc[i_d].append(float(len(np.nonzero(decay > dt)[0])) / float(len(decay)))
+
+            #### Iterate through folds ####
+            for i_f in range(n_folds):
+                model_ = dat[animal][i_d, dyn_model, n_folds*i_m + i_f, i_m, 'model']
+                A = np.mat(model_.coef_)
+                _, decay = return_ts_hz(A)
+                eigs[i_d].append(len(np.nonzero(decay > dt)[0]))
+                eigs_perc[i_d].append(float(len(np.nonzero(decay > dt)[0])) / float(len(decay)))
+
+        #### Box plot ####
+        shf = [];           egs = []; 
+        shf_perc = [];      egs_perc = []; 
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+            shf.append(shuff_eigs[i_d])
+            egs.append(eigs[i_d])
+            shf_perc.append(shuff_eigs_perc[i_d])
+            egs_perc.append(eigs_perc[i_d])
+
+            shuff_day = np.hstack((shuff_eigs[i_d]))
+            day = np.hstack((eigs[i_d]))
+
+            shuff_perc = np.hstack((shuff_eigs_perc[i_d]))
+            day_perc = np.hstack((eigs_perc[i_d]))
+
+            #### Shuffle Eigs Raw number #####
+            # ax[0].plot([3*i_a, 3*i_a + 1], [np.mean(shuff_day), np.mean(day)], 
+            #     '-', color = 'gray')
+
+            #### Percent increase in EVs gte shuff #####
+            # ax[1].plot([3*i_a, 3*i_a + 1], [0, (np.mean(day) - np.mean(shuff_day)) / np.mean(shuff_day)], 
+            #     '-', color = 'gray')
+
+            ### Frac EVs > .1 ####
+            ax[2].plot([3*i_a, 3*i_a + 1], [np.mean(shuff_perc), np.mean(day_perc)], 
+                '-', color = 'gray')
+
+        #### Plot all ####
+        # util_fcns.draw_plot(3*i_a, np.hstack((shf)), 'gray', 'white', ax[0], width = 0.9)
+        # ax[0].bar(3*i_a + 1, np.hstack((egs)), width = 0.9, color = 'k')          
+
+        #### Plot number of eigs > and fraction of eigs > and fraction increase in eigs > .1; 
+        # util_fcns.draw_plot(3*i_a, np.hstack((shf)) - np.mean(shf), 'gray', 'white', ax[1], width = 0.9)
+        # ax[1].bar(3*i_a + 1, (np.hstack((egs)) - np.mean(shf)) /np.mean(shf), width = 0.9, color = 'k')          
+
+        util_fcns.draw_plot(3*i_a, np.hstack((shf_perc)), 'gray', 'white', ax[2], width = 0.9)
+        ax[2].bar(3*i_a + 1, np.hstack((egs_perc)), width = 0.9, color = 'k')          
+
+    ax[2].set_xlim([-.5, 4.5])
+    ax[2].set_ylabel('% Eigenvalues \n w. Time Decay > 0.1sec')
+    f.tight_layout()
+    f.savefig(analysis_config.config['fig_dir'] + 'fig6_perc_eigs_gte_binsize.svg')
 
 def plot_eigs_from_LDS():
     n_states = 15; 
