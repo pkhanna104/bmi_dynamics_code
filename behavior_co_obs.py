@@ -42,15 +42,16 @@ def traj_signed_area_about_target_axis(traj_x, traj_y, target_pos):
 
     #2)
     a_traj = np.hstack((0, np.diff(t_proj)*to_proj[1:]))
-    a = np.sum(a_traj)
+    sa = np.sum(a_traj)
+    a = np.sum(np.abs(a_traj))
     d_dic = {'kin_px':traj_x, 'kin_py':traj_y, 
     'kin_pt':t_proj, 'kin_pto':to_proj, 
-    'kin_pt_area':a_traj, 'kin_pt_cum_area':np.cumsum(a_traj)}
+    'kin_pto_area':a_traj, 'kin_pto_cum_area':np.cumsum(a_traj)}
     df = pd.DataFrame(data=d_dic)
 
     #Return a dataframe for traj, proj, area
     #Return the area as a
-    return a, df
+    return sa, a, df   
 
 def target_axes(target_pos):
     """
@@ -79,6 +80,8 @@ def cartesian2polar(y,x):
     angle = np.arctan2(y,x)
     return mag, angle
 
+#COMMENT: I don't think this works in general, it worked for the case I was using in notebook:
+#'psth_polar_interp_separate_cw_ccw.ipynb'
 def center_angle(angle, ctr_orig, ctr_new):
     """
     ctr_orig: the center angle of angle data.  
@@ -86,7 +89,18 @@ def center_angle(angle, ctr_orig, ctr_new):
     if angle ranges from (-pi,pi) then the center is 0.
     """
     angle_center = (angle+(np.pi-ctr_orig)-ctr_new)%(2*np.pi)-(np.pi-ctr_orig)
-    return angle_center
+    return angle_center   
+
+#COMMENT: This code is the one to use... not center_angle...
+def center_angle_v2(angle, ctr):
+    """
+    angle: array-like
+    ctr: the center angle of angle data.  
+    e.g. if you want angle to range from (0,2*pi) then the center is pi.  
+    if you want angle to range from (-pi,pi) then the center is 0.
+    """
+    angle_center = angle+np.matrix.round((ctr-angle)/(2*np.pi))*2*np.pi
+    return angle_center       
 
 def bin_data_pt(data_pt, bins): 
     #assumes: 
