@@ -331,6 +331,34 @@ def polar_heat_map(heat_data, mag_bin, angle_bin, cmap, vmin, vmax):
 
     return fig, ax
 
+def plot_polar_bins(angle_bin_edges, mag_bin_edges, angle_bin_colors):
+    """
+    8.20.2020
+    INPUT: 
+    bin_edges (for angle and mag): 2xnum_bins.  top row = lower bin edge, bot row = upper bin edge
+    angle_colors = colors for each angle bin
+    """
+    mag_max = mag_bin_edges[-1,-1]
+    angle_bin_c = np.mean(angle_bin_edges,axis=0)
+    mag_bin = np.hstack((mag_bin_edges[0,:], mag_max))
+    for i,b in enumerate(angle_bin_edges.T):
+        x1 = np.cos(b[0])*mag_max
+        y1 = np.sin(b[0])*mag_max
+#         plt.plot([0, x1], [0, y1], color=target_color[i])
+        plt.plot([0, x1], [0, y1], '--', color=np.ones(3)*0.8,zorder=0)#'k')  
+    
+    for i,a in enumerate(angle_bin_c): 
+        x1 = np.cos(a)*mag_max
+        y1 = np.sin(a)*mag_max
+        plt.plot([0, x1], [0, y1], color=angle_bin_colors[i], linewidth=3,zorder=0)
+
+    for b in mag_bin:
+        theta = np.linspace(0,2*np.pi,1000)
+        plt.plot(b*np.cos(theta), b*np.sin(theta), 'k',zorder=0)
+    plt.axis('square')
+    plt.xlabel('x')
+    plt.ylabel('y')        
+
 def calc_command_trials_dic_da(df, win, num_var, num_tasks, num_targets, num_mag_bins, num_angle_bins):
     """
     fills out a dictionary with key: (task, target, mag_bin, angle_bin)
@@ -387,6 +415,7 @@ def calc_command_psth(task_target_bin_dic, psth_var, min_trials, num_tasks, num_
                     num_trials = task_target_bin_dic[task,target,bm,ba,'num']
                     if num_trials >= min_trials:
                         psth = da.loc[psth_var,:,:].mean(axis=2)
+
                         task_target_bin_dic[task,target,bm,ba,'psth'] = psth
 
                         #Split into two halves for within-movement comparison: 
@@ -404,6 +433,55 @@ def calc_command_psth(task_target_bin_dic, psth_var, min_trials, num_tasks, num_
                         task_target_bin_dic[task,target,bm,ba,'psth_trials',1] = rnd1
                         task_target_bin_dic[task,target,bm,ba,'psth',0] = psth0
                         task_target_bin_dic[task,target,bm,ba,'psth',1] = psth1
+
+def calc_command_psth_center_at_lag(task_target_bin_dic, psth_var, lag_idx_c, min_trials, num_tasks, num_targets, num_mag_bins, num_angle_bins):
+    for task in range(num_tasks): #[0]: 
+        for target in range(num_targets): #[0]:
+            for bm in range(num_mag_bins):
+                for ba in range(num_angle_bins):
+                    da = task_target_bin_dic[task,target,bm,ba]
+                    num_trials = task_target_bin_dic[task,target,bm,ba,'num']
+                    if num_trials >= min_trials:
+                        data = da.loc[psth_var,:,:]
+                        data_c = center_by_data_at_lag(data, lag_idx_c, lag_axis=1)
+                        psth = data_c.mean(axis=2)
+
+                        task_target_bin_dic[task,target,bm,ba,'psth'] = psth
+
+                        #Split into two halves for within-movement comparison: 
+                        #get two random halves of trials
+                        rnd_order = np.arange(num_trials)
+                        np.random.shuffle(rnd_order)
+                        half = int(round(num_trials/2))
+                        rnd0 = np.sort(rnd_order[:half])
+                        rnd1 = np.sort(rnd_order[half:])
+                        #
+                        data0 = da.loc[psth_var,:,rnd0]
+                        data0_c = center_by_data_at_lag(data0, lag_idx_c, lag_axis=1)
+                        psth0 = data0.mean(axis=2)
+
+                        data1 = da.loc[psth_var,:,rnd1]
+                        data1_c = center_by_data_at_lag(data1, lag_idx_c, lag_axis=1)
+                        psth1 = data0.mean(axis=2)
+
+                        #
+                        task_target_bin_dic[task,target,bm,ba,'psth_trials',0] = rnd0
+                        task_target_bin_dic[task,target,bm,ba,'psth_trials',1] = rnd1
+                        task_target_bin_dic[task,target,bm,ba,'psth',0] = psth0
+                        task_target_bin_dic[task,target,bm,ba,'psth',1] = psth1                        
+
+def center_by_data_at_lag(data, lag, lag_axis=1):
+    """
+    Centers a data matrix by data at a specific lag (i.e. index) along a specific axis
+    """
+    orig_shape = list(data.shape)
+    sel_shape=copy.copy(orig_shape)
+    sel_shape[lag_axis] = 1
+    sel = np.reshape(np.take(np.array(data), lag, lag_axis), sel_shape)
+    sel_expand = np.repeat(sel,orig_shape[lag_axis], axis=lag_axis)
+    data_c = data-sel_expand
+    return data_c
+
 
 # def calc_command_psth(task_target_bin_dic, psth_var, min_trials, num_tasks, num_targets, num_mag_bins, num_angle_bins):
 #     for task in range(num_tasks): #[0]: 
