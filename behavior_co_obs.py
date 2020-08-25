@@ -493,10 +493,11 @@ def center_by_data_at_lag(data, lag, lag_axis=1):
 #                         psth = da.loc[psth_var,:,:].mean(axis=2)
 #                         task_target_bin_dic[task,target,bm,ba,'psth'] = psth
 
-def calc_command_psth_diff(task_target_bin_dic, task_pairs, zero_lag_idx, min_trials, num_targets, num_mag_bins, num_angle_bins):
+def calc_command_psth_diff(task_target_bin_dic, psth_var, task_pairs, zero_lag_idx, min_trials, num_targets, num_mag_bins, num_angle_bins):
     """
     This code calculates the difference between psth's locked to a command. 
     ASSUMES two tasks
+    REQUIRES task_target_bin_dic was modified by method 'calc_command_psth' to have the 'psth' entry
     INPUT:
     'task_target_bin_dic' computed from 'calc_command_psth'
     'task_pairs' - list of tuples, each tuple contains the two tasks to compare.  common use would be: [(0,0), (0,1), (1,1)]
@@ -511,6 +512,7 @@ def calc_command_psth_diff(task_target_bin_dic, task_pairs, zero_lag_idx, min_tr
     nan_df = pd.DataFrame(np.ones((1,num_col))*np.nan, columns=columns)
     df_list = []
     task_pairs = [(0,0), (0,1), (1,1)]
+    vec_diff_dic = {}
 
     for task0, task1 in task_pairs:
         for t0 in range(num_targets):
@@ -530,13 +532,18 @@ def calc_command_psth_diff(task_target_bin_dic, task_pairs, zero_lag_idx, min_tr
                             #Check if same movement: 
                             if (task0==task1)&(t0==t1):
                                 #if same movement, compare psth's on different splits of data: 
-                                d0 = task_target_bin_dic[task0,t0,bm,ba,'psth',0]
-                                d1 = task_target_bin_dic[task0,t0,bm,ba,'psth',1]
+                                d0_a = task_target_bin_dic[task0,t0,bm,ba,'psth',0]
+                                d0 = d0_a.loc[psth_var,:]
+                                d1_a = task_target_bin_dic[task0,t0,bm,ba,'psth',1]
+                                d1 = d1_a.loc[psth_var,:]
                             else:
-                                d0 = task_target_bin_dic[task0,t0,bm,ba,'psth']
-                                d1 = task_target_bin_dic[task1,t1,bm,ba,'psth']
+                                d0_a = task_target_bin_dic[task0,t0,bm,ba,'psth']
+                                d0 = d0_a.loc[psth_var,:]
+                                d1_a = task_target_bin_dic[task1,t1,bm,ba,'psth']
+                                d1 = d1_a.loc[psth_var,:]
 
                             #ASSIGN:
+                            vec_diff_dic[bm, ba, task0, t0, task1, t1] = d0-d1
                             df_i = copy.copy(nan_df)
                             df_i['diff_norm'] = np.linalg.norm(d0-d1)
                             df_i['mag_bin'] = bm
@@ -545,19 +552,19 @@ def calc_command_psth_diff(task_target_bin_dic, task_pairs, zero_lag_idx, min_tr
                             df_i['task0'] = task0
                             df_i['target0'] = t0
                             df_i['num_trials0'] = num_trials0
-                            df_i['u_vx0'] = float(d0.loc['u_vx',zero_lag_idx])
-                            df_i['u_vy0'] = float(d0.loc['u_vy',zero_lag_idx])
+                            df_i['u_vx0'] = float(d0_a.loc['u_vx',zero_lag_idx])
+                            df_i['u_vy0'] = float(d0_a.loc['u_vy',zero_lag_idx])
                             
                             df_i['task1'] = task1
                             df_i['target1'] = t1
                             df_i['num_trials1'] = num_trials1
-                            df_i['u_vx1'] = float(d1.loc['u_vx',zero_lag_idx])
-                            df_i['u_vy1'] = float(d1.loc['u_vy',zero_lag_idx])
+                            df_i['u_vx1'] = float(d1_a.loc['u_vx',zero_lag_idx])
+                            df_i['u_vy1'] = float(d1_a.loc['u_vy',zero_lag_idx])
                             #APPEND:
                             df_list.append(df_i)
 
     diff_df = pd.concat(df_list, ignore_index=True)
-    return diff_df
+    return diff_df, vec_diff_dic
 
 # def calc_command_psth_diff(task_target_bin_dic, min_trials, num_targets, num_mag_bins, num_angle_bins):
 #     """
