@@ -1,5 +1,6 @@
-import scipy.stats as sio_stat
 import scipy.io as sio
+import scipy.stats as sio_stat
+import scipy.interpolate
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -936,4 +937,119 @@ def subsample_2datasets_to_match_mean(match_var, d_list, pval_sig, max_iter=5):
     return kept_list, discard_list, df, ttest_r, mean_r
 
 
+def diff_n_lag0_b_psth_for_command_condition_pair(\
+    task_target_bin_dic, task_pairs, num_tasks, num_targets, num_mag_bins, num_angle_bins, min_trials, n_list):
+    """
+    Code calculates for each (command, condition pair) the difference between neural activity for the command
+    and the difference in behavior psth
+    """
+    columns = ['n_diff_norm', 'b_diff_norm', 'b_diff_norm_lag0',
+                'mag_bin', 'angle_bin', 
+                'task0', 'target0', 'num_trials0', 'u_vx0', 'u_vy0',
+                'task1', 'target1', 'num_trials1', 'u_vx1', 'u_vy1',
+                'u_vx_diff_p', 'u_vx_diff_tstat',
+                'u_vy_diff_p', 'u_vy_diff_tstat',
+                'u_v_mag_diff_p', 'u_v_mag_diff_tstat', 
+                'u_v_angle_diff_p', 'u_v_angle_diff_tstat']
 
+    num_col = len(columns)
+    nan_df = pd.DataFrame(np.ones((1,num_col))*np.nan, columns=columns)
+    df_list = []
+    # task_pairs = [(0,0), (0,1), (1,1)]
+    vec_diff_dic = {}
+
+    for task0, task1 in task_pairs:
+        for t0 in range(num_targets):
+            if task0 == task1:
+                t1_set = range(t0, num_targets)
+            else:
+                t1_set = range(0,num_targets)
+            for t1 in t1_set:
+                print(task0, t0, task1, t1)
+                for bm in range(num_mag_bins):
+                    for ba in range(num_angle_bins):
+                        num_trials0 = task_target_bin_dic[task0,t0,bm,ba,'num']
+                        d0_valid = num_trials0 >= min_trials
+                        num_trials1 = task_target_bin_dic[task1,t1,bm,ba,'num']
+                        d1_valid = num_trials1 >= min_trials                        
+                        if d0_valid&d1_valid:
+                            #Check if same movement: 
+                            if (task0==task1)&(t0==t1):
+                                #if same movement, compare psth's on different splits of data: 
+                                d0 = task_target_bin_dic[task0,t0,bm,ba,'psth',0]
+                                d1 = task_target_bin_dic[task0,t0,bm,ba,'psth',1]
+                                
+                                sel0 = task_target_bin_dic[task0,t0,bm,ba,'psth_trials', 0]
+                                dd0 = task_target_bin_dic[task0,t0,bm,ba].loc[:,0,sel0]
+                                sel1 = task_target_bin_dic[task0,t0,bm,ba,'psth_trials', 1]
+                                dd1 = task_target_bin_dic[task1,t1,bm,ba].loc[:,0,sel1]
+                            else:
+                                d0 = task_target_bin_dic[task0,t0,bm,ba,'psth']
+                                d1 = task_target_bin_dic[task1,t1,bm,ba,'psth']
+                                                        
+                                dd0 = task_target_bin_dic[task0,t0,bm,ba].loc[:,0,:]
+                                dd1 = task_target_bin_dic[task1,t1,bm,ba].loc[:,0,:]                          
+                                
+                            #ASSIGN:
+                            vec_diff_dic[bm, ba, task0, t0, task1, t1] = d0-d1
+                            df_i = copy.copy(nan_df)                        
+                            
+                            #neural diff is over lag 0: 
+                            df_i['n_diff_norm'] = np.linalg.norm(d0.loc[n_list,0]-d1.loc[n_list,0])
+                            
+                            #behavior diff is over all lags: 
+                            df_i['b_diff_norm'] = np.linalg.norm(d0.loc[['u_vx', 'u_vy'],:]-d1.loc[['u_vx', 'u_vy'],:])
+                            
+                            #behavior diff is over all lags: 
+                            df_i['b_diff_norm_lag0'] = np.linalg.norm(d0.loc[['u_vx', 'u_vy'],0]-d1.loc[['u_vx', 'u_vy'],0])                        
+                            
+                            df_i['mag_bin'] = bm
+                            df_i['angle_bin'] = ba                 
+                            
+                            df_i['task0'] = task0
+                            df_i['target0'] = t0
+                            df_i['num_trials0'] = num_trials0
+                            df_i['u_vx0'] = float(d0.loc['u_vx',0])
+                            df_i['u_vy0'] = float(d0.loc['u_vy',0])
+
+                            df_i['task1'] = task1
+                            df_i['target1'] = t1
+                            df_i['num_trials1'] = num_trials1
+                            df_i['u_vx1'] = float(d1.loc['u_vx',0])
+                            df_i['u_vy1'] = float(d1.loc['u_vy',0])
+                            
+                            #Check if behavior is significantly different within bin: 
+                            #XY:
+                            #X:
+                            x0 = np.array(dd0.loc['u_vx', :])
+                            x1 = np.array(dd1.loc['u_vx', :])
+    #                         print(x0.shape, x1.shape)
+                            (tstat,pval) = scipy.stats.ttest_ind(x0, x1, equal_var=True)
+                            df_i['u_vx_diff_p'] = pval
+                            df_i['u_vx_diff_tstat'] = tstat
+                            #Y:
+                            y0 = np.array(dd0.loc['u_vy', :])
+                            y1 = np.array(dd1.loc['u_vy', :])
+                            (tstat,pval) = scipy.stats.ttest_ind(y0, y1, equal_var=True)
+                            df_i['u_vy_diff_p'] = pval
+                            df_i['u_vy_diff_tstat'] = tstat                          
+                            
+                            #mag,angle:
+                            #X:
+                            x0 = np.array(dd0.loc['u_v_mag', :])
+                            x1 = np.array(dd1.loc['u_v_mag', :])
+    #                         print(x0.shape, x1.shape)
+                            (tstat,pval) = scipy.stats.ttest_ind(x0, x1, equal_var=True)
+                            df_i['u_v_mag_diff_p'] = pval
+                            df_i['u_v_mag_diff_tstat'] = tstat
+                            #Y:
+                            y0 = np.array(dd0.loc['u_v_angle_ctr_bin', :])
+                            y1 = np.array(dd1.loc['u_v_angle_ctr_bin', :])
+                            (tstat,pval) = scipy.stats.ttest_ind(y0, y1, equal_var=True)
+                            df_i['u_v_angle_diff_p'] = pval
+                            df_i['u_v_angle_diff_tstat'] = tstat                         
+                            
+                            #APPEND:
+                            df_list.append(df_i)
+
+    diff_df = pd.concat(df_list, ignore_index=True)    
