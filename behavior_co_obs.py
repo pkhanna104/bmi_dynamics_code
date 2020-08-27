@@ -780,7 +780,7 @@ def plot_hist_stair(bin_edges, data, label=''):
     else:
         plt.plot(x,y)
 
-def subsample_2datasets_to_match_mean(match_var, d_list, pval_sig):
+def subsample_2datasets_to_match_mean(match_var, d_list, pval_sig, max_iter=5):
     """
     This code subsamples data from two data sets so that their means are matched for all chosen variables
     In future maybe this can be modified to handle more than 2 data sets
@@ -875,7 +875,6 @@ def subsample_2datasets_to_match_mean(match_var, d_list, pval_sig):
     complete = False
     success = False
     num_iter = 0
-    max_iter = 1
     while not complete: 
         mean_equal = []
         for var in match_var:
@@ -912,13 +911,13 @@ def subsample_2datasets_to_match_mean(match_var, d_list, pval_sig):
         if all(mean_equal):
             complete = True
             success = True
-            print('Mean Matching Succeded :)')
+            print('Mean Matching Succeeded :)')
         elif num_iter == max_iter:
             complete = True
             print('Max Iter Reached')
         num_iter+=1
-        print('num iterations:', num_iter)
-        print('discard_list', discard_list)
+        # print('num iterations:', num_iter)
+        # print('discard_list', discard_list)
 
     #-----------------------------------------------------------------------------------------------------------------------------
     #Calculate stats after mean matching: 
