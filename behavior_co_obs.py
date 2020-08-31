@@ -85,17 +85,17 @@ def cartesian2polar(y,x):
 
 #COMMENT: I don't think this works in general, it worked for the case I was using in notebook:
 #'psth_polar_interp_separate_cw_ccw.ipynb'
-def center_angle(angle, ctr_orig, ctr_new):
-    """
-    ctr_orig: the center angle of angle data.  
-    e.g. if angle ranges from (0,2*pi) then the center is pi.  
-    if angle ranges from (-pi,pi) then the center is 0.
-    """
-    angle_center = (angle+(np.pi-ctr_orig)-ctr_new)%(2*np.pi)-(np.pi-ctr_orig)
-    return angle_center   
+# def center_angle(angle, ctr_orig, ctr_new):
+#     """
+#     ctr_orig: the center angle of angle data.  
+#     e.g. if angle ranges from (0,2*pi) then the center is pi.  
+#     if angle ranges from (-pi,pi) then the center is 0.
+#     """
+#     angle_center = (angle+(np.pi-ctr_orig)-ctr_new)%(2*np.pi)-(np.pi-ctr_orig)
+#     return angle_center   
 
 #COMMENT: This code is the one to use... not center_angle...
-def center_angle_v2(angle, ctr):
+def center_angle(angle, ctr):
     """
     angle: array-like
     ctr: the center angle of angle data.  
@@ -659,7 +659,7 @@ def calc_command_triggered_psth_diff_at_lag(lags, task_target_bin_dic, min_trial
                                 d1_angle = np.arctan2(y1,x1)
                                                         
                                 l_diff_mag = d0_mag-d1_mag
-                                l_diff_angle = center_angle_v2(d1_angle-d0_angle, 0) 
+                                l_diff_angle = center_angle(d1_angle-d0_angle, 0) 
                                 l_diff_norm = np.linalg.norm(np.array([x0-x1, y0-y1]))                           
                                 
                                 #ASSIGN:
@@ -735,7 +735,7 @@ def calc_command_triggered_psth_diff_at_lag_across_task(lags, task_target_bin_di
                                 d1_angle = np.arctan2(y1,x1)
                                                         
                                 l_diff_mag = d0_mag-d1_mag
-                                l_diff_angle = center_angle_v2(d1_angle-d0_angle, 0)                            
+                                l_diff_angle = center_angle(d1_angle-d0_angle, 0)                            
                                 
                                 #ASSIGN:
                                 df_i = copy.copy(nan_df)
@@ -1052,4 +1052,231 @@ def diff_n_lag0_b_psth_for_command_condition_pair(\
                             #APPEND:
                             df_list.append(df_i)
 
-    diff_df = pd.concat(df_list, ignore_index=True)    
+    diff_df = pd.concat(df_list, ignore_index=True)
+    return diff_df    
+
+def diff_df_sel(diff_df, min_trials_analyze, num_mag_bins, p_sig=0.05):
+    """
+    takes the output of 'diff_n_lag0_b_psth_for_command_condition_pair'
+    and calculates selection filters on the dataframe for use in analysis
+
+    Assumes task 0 = 'co' (center-out)
+    Assumes task 1 = 'obs' (obstacle)
+
+    """
+
+    sel_dic = {}
+
+    #TRIALS:
+    num_trials0_sel = (diff_df['num_trials0']>=min_trials_analyze) #5
+    num_trials1_sel = (diff_df['num_trials1']>=min_trials_analyze) #5
+    sel_dic['num_trials'] = \
+        num_trials0_sel\
+        &num_trials1_sel\
+
+    
+    #MOVEMENT:
+    move_list = ['within_move', 'within_task', 'within_co', 'within_obs', 'across_task', 'across_move']
+    sel_dic['within_move'] = (diff_df['target0']==diff_df['target1'])&(diff_df['task0']==diff_df['task1'])
+    sel_dic['within_task'] = (diff_df['target0']!=diff_df['target1'])&(diff_df['task0']==diff_df['task1'])
+    sel_dic['within_co'] = (diff_df['target0']!=diff_df['target1'])&(diff_df['task0']==diff_df['task1'])&(diff_df['task0']==0)
+    sel_dic['within_obs'] = (diff_df['target0']!=diff_df['target1'])&(diff_df['task0']==diff_df['task1'])&(diff_df['task0']==1)
+    sel_dic['across_task'] = (diff_df['task0']!=diff_df['task1'])
+    sel_dic['across_move'] = (diff_df['task0']!=diff_df['task1'])|(diff_df['target0']!=diff_df['target1'])
+
+    #MAGNITUDE
+    mag_list = range(num_mag_bins) #[0,1,2,3]
+    for bm in mag_list:
+        sel_dic['mag', bm] = (diff_df['mag_bin']==bm)
+        
+    #SIGNIFANCE
+    # p_sig = 0.05
+    sel_dic['x_y_sig'] = \
+    (diff_df['u_vx_diff_p'] <= p_sig)\
+    |(diff_df['u_vy_diff_p'] <= p_sig)
+
+    sel_dic['mag_angle_sig'] = \
+    (diff_df['u_v_mag_diff_p'] <= p_sig)\
+    |(diff_df['u_v_angle_diff_p'] <= p_sig)
+
+    return sel_dic
+
+def preprocess_bmi_df(df, target_pos, num_prefix, num_tasks, num_targets):
+    """
+    adds the following "preprocessing" columns to the data frame: 
+
+    'bin_end': number of samples till you reach the last sample of the trial
+    'prog': progress till end of trial (ranges from 0 to 1)
+    'trial_cond': 
+    POLAR:
+    p_mag, p_angle, v_mag, v_angle, u_p_mag, u_p_angle, u_v_mag, u_v_angle
+    
+    """
+    #Pre-processing: 
+
+    #Trial boundaries:
+    trial_start = np.where((df['bin']==-10.0))[0]
+    trial_stop = np.where((df['trial_stop']==1))[0]
+    trial_bound = np.vstack((trial_start,trial_stop)).T
+    num_trials = trial_bound.shape[0]
+
+    #-----------------------------------------------------------------------------------------------
+    #Time till end of trial: 
+    df['bin_end'] = 0
+    df['prog'] = 0
+
+    for bnd in trial_bound:
+        bin_data = df.loc[bnd[0]:bnd[1], 'bin']
+        last_bin = bin_data.iloc[-1]
+        bin_end = last_bin-bin_data
+        prog = bin_data/last_bin
+        #ASSIGN:
+        df.loc[bnd[0]:bnd[1], 'bin_end'] = bin_end
+        df.loc[bnd[0]:bnd[1], 'prog'] = prog
+    
+    #-----------------------------------------------------------------------------------------------    
+    #Cond Trial number
+    for task in range(num_tasks):
+        for target in range(num_targets):
+            cond_sel = (df['task']==task) & (df['target']==target)
+            trial_start = (df['bin']==0) & cond_sel 
+            trial_stop = (df['bin_end']==0) & cond_sel
+            trial_bnd = np.vstack((np.where(trial_start)[0], np.where(trial_stop)[0]))
+            for i,bnd in enumerate(trial_bnd.T):
+                # print(i, bnd)
+                df.loc[bnd[0]:bnd[1], 'trial_cond'] = i
+    
+    #-----------------------------------------------------------------------------------------------    
+    #Polar coordinates: 
+    # 1) Convert stuff to polar, 2) calculate distance to target
+    # 1) Convert stuff to polar
+    df['p_mag'], df['p_angle'] = cartesian2polar(df['kin_py'], df['kin_px'])
+    df['v_mag'], df['v_angle'] = cartesian2polar(df['kin_vy'], df['kin_vx'])
+    df['u_p_mag'], df['u_p_angle'] = cartesian2polar(df['u_py'], df['u_px'])
+    df['u_v_mag'], df['u_v_angle'] = cartesian2polar(df['u_vy'], df['u_vx'])
+
+    # 2) distance to target
+    error = df.loc[:, 'kin_px':'kin_py']-target_pos[df['target'].astype(int),:]
+    df['d2target'] = np.linalg.norm(error,ord=2,axis=1)
+    df['x_error'] = error.loc[:,'kin_px']
+    df['y_error'] = error.loc[:,'kin_py']    
+
+def def_command_bin(df, mag_bin_perc=np.array([0,25,50,75,100]), num_angle_bins=8, T0_angle=-3*(2*np.pi)/8):
+    """
+    FUNCTION:
+    defines bins for commands ('u_vx', 'u_vy')
+    INPUT:
+    mag_bin_perc: numpy array of length num_mag_bins+1
+    boundaries of command magnitude (percentiles over all data)
+    num_angle_bins: number of angle bins
+    T0_angle: the angle corresponding to target 0.  function places the 0th angle bin at this angle.
+    """
+
+    #1) magnitude bins: 
+    #USUAL:
+    mag_data = df['u_v_mag']
+    #mag_data = df['u_v_mag'][df['bin']>=0] - we didn't do this, because we want to be able to bin all data, negative bins
+    mag_bin = np.percentile(mag_data, mag_bin_perc)
+    mag_bin_edges = np.vstack((mag_bin[0:-1], mag_bin[1:]))
+    mag_bin_c = mag_bin_edges.mean(axis=0)
+
+    #2) angle bins: 
+    angle_bin_c = np.linspace(T0_angle, T0_angle+np.pi*2, num=num_angle_bins+1, endpoint=True)
+    angle_bin = angle_bin_c-np.pi*2/16.0
+    angle_bin_edges = np.vstack((angle_bin[0:-1], angle_bin[1:]))
+
+    return mag_bin, mag_bin_edges, mag_bin_c, angle_bin_c, angle_bin, angle_bin_edges
+
+def df_center_angle_for_binning(df, angle_bin):
+    """
+    FUNCTION:
+    centers angle variables based on the start and end angle of angle bins
+
+    INPUT:
+    OUTPUT:
+    """
+    #center angles for binning: 
+    angle_center_for_binning = (angle_bin[-1]+angle_bin[0])/2.0
+    print('angle_center:', angle_center_for_binning*180/np.pi)
+
+    angle_vars = ['p_angle', 'v_angle', 'u_p_angle', 'u_v_angle']
+    for d in angle_vars:
+        df[d] = center_angle(np.array(df[d]), angle_center_for_binning)
+    print('min centered angle:', np.min(df['u_v_angle'])*180/np.pi)
+    print('max centered angle:', np.max(df['u_v_angle'])*180/np.pi)
+    return angle_center_for_binning
+
+def df_bin_command(df, mag_bin_edges, angle_bin_edges):
+    """
+    FUNCTION:
+    bins the commands ['u_v_mag', 'u_v_angle']
+
+    """
+    bin_dic = {}
+    bin_dic[0] = mag_bin_edges
+    bin_dic[1] = angle_bin_edges
+
+    data2bin = np.array(df[['u_v_mag','u_v_angle']])
+    bin_r, hist_r = bin_vec_data(data2bin, bin_dic)
+    df['u_v_mag_bin']=bin_r[:,0]
+    df['u_v_angle_bin']=bin_r[:,1]
+
+def center_df_angle(df, angle_bin_c, target_angle):
+
+        # 2) Center @ target angle: 
+    d_list = ['p_angle', 'v_angle', 'u_p_angle', 'u_v_angle']
+    for d in d_list:
+        data = df[d]
+        t_angle = target_angle[df['target'].astype(int)]
+        df[d+'_ctr_t'] = center_angle(df[d], t_angle)
+
+    #-----------------------------------------------------------------------------------------------
+    #Center Angle to Bin Angle: 
+    d_list = ['u_v_angle']
+    for d in d_list:
+        data = df[d]
+        bin_angle = angle_bin_c[df['u_v_angle_bin'].astype(int)]
+        df[d+'_ctr_bin'] = center_angle(df[d], bin_angle)    
+
+
+
+# def df_command_bin():
+#     #-----------------------------------------------------------------------------------------------
+# #BINNING: 
+# #1) magnitude bins: 
+# num_mag_bins = 4
+# mag_bin_perc = np.array([0,25,50,75,100])
+# mag_data = df['u_v_mag']
+# #mag_data = df['u_v_mag'][df['bin']>=0] - we didn't do this, because we want to be able to bin all data, negative bins
+# mag_bin = np.percentile(mag_data, mag_bin_perc)
+# mag_bin_edges = np.vstack((mag_bin[0:-1], mag_bin[1:]))
+# mag_bin_c = mag_bin_edges.mean(axis=0)
+
+# #2) angle bins: 
+# num_angle_bins = 8
+# T0_angle = -3*(2*np.pi)/8
+# angle_bin_c = np.linspace(T0_angle, T0_angle+np.pi*2, num=num_angle_bins+1, endpoint=True)
+# # angle_bin_c[angle_bin_c > np.pi] = angle_bin_c[angle_bin_c > np.pi] - 2*np.pi #center at angle 0 instead of 180
+# angle_bin = angle_bin_c-np.pi*2/16.0
+# # angle_bin[angle_bin < -np.pi] = angle_bin[angle_bin < -np.pi] + 2*np.pi
+# angle_bin_edges = np.vstack((angle_bin[0:-1], angle_bin[1:]))
+
+# #center angles for binning: 
+# angle_center_for_binning = (angle_bin[-1]+angle_bin[0])/2.0
+# print('angle_center:', angle_center_for_binning*180/np.pi)
+
+# angle_vars = ['p_angle', 'v_angle', 'u_p_angle', 'u_v_angle']
+# for d in angle_vars:
+#     df[d] = bmi_b.center_angle_v2(np.array(df[d]), angle_center_for_binning)
+# print('min centered angle:', np.min(df['u_v_angle'])*180/np.pi)
+# print('max centered angle:', np.max(df['u_v_angle'])*180/np.pi)
+
+# #BIN DATA: 
+# bin_dic = {}
+# bin_dic[0] = mag_bin_edges
+# bin_dic[1] = angle_bin_edges
+
+# data2bin = np.array(df[['u_v_mag','u_v_angle']])
+# bin_r, hist_r = bmi_b.bin_vec_data(data2bin, bin_dic)
+# df['u_v_mag_bin']=bin_r[:,0]
+# df['u_v_angle_bin']=bin_r[:,1]
