@@ -1099,7 +1099,7 @@ def diff_df_sel(diff_df, min_trials_analyze, num_mag_bins, p_sig=0.05):
     (diff_df['u_v_mag_diff_p'] <= p_sig)\
     |(diff_df['u_v_angle_diff_p'] <= p_sig)
 
-    return sel_dic
+    return sel_dic, move_list
 
 def preprocess_bmi_df(df, target_pos, num_prefix, num_tasks, num_targets):
     """
@@ -1238,7 +1238,20 @@ def center_df_angle(df, angle_bin_c, target_angle):
         bin_angle = angle_bin_c[df['u_v_angle_bin'].astype(int)]
         df[d+'_ctr_bin'] = center_angle(df[d], bin_angle)    
 
+def shuffle_df_by_command(df, var_shuffle, num_mag_bins, num_angle_bins, angle_bin_c, target_angle):
+    df_S = copy.deepcopy(df)
+    for bm in range(num_mag_bins):
+        for ba in range(num_angle_bins):
+            sel = \
+            (df_S.loc[:,'u_v_mag_bin']==bm)\
+            &(df_S.loc[:,'u_v_angle_bin']==ba)\
+            &(df_S.loc[:,'bin']>=0)
+            temp = df_S.loc[sel, var_shuffle].sample(frac=1).reset_index(drop=True)
+            df_S.loc[sel, var_shuffle] = np.array(temp)
 
+    #Need to recalculate after shuffle: 
+    center_df_angle(df_S, angle_bin_c, target_angle)
+    return df_S
 
 # def df_command_bin():
 #     #-----------------------------------------------------------------------------------------------
