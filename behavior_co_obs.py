@@ -333,7 +333,7 @@ def polar_heat_map(heat_data, mag_bin, angle_bin, cmap, vmin, vmax):
 
     return fig, ax
 
-def plot_polar_bins(angle_bin_edges, mag_bin_edges, angle_bin_colors):
+def plot_polar_bins(angle_bin_edges, mag_bin_edges, angle_bin_colors, angle_linewidth=3):
     """
     8.20.2020
     INPUT: 
@@ -352,7 +352,7 @@ def plot_polar_bins(angle_bin_edges, mag_bin_edges, angle_bin_colors):
     for i,a in enumerate(angle_bin_c): 
         x1 = np.cos(a)*mag_max
         y1 = np.sin(a)*mag_max
-        plt.plot([0, x1], [0, y1], color=angle_bin_colors[i], linewidth=3,zorder=0)
+        plt.plot([0, x1], [0, y1], color=angle_bin_colors[i], linewidth=angle_linewidth,zorder=0)
 
     for b in mag_bin:
         theta = np.linspace(0,2*np.pi,1000)
