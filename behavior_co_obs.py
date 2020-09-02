@@ -1055,7 +1055,7 @@ def diff_n_lag0_b_psth_for_command_condition_pair(\
     diff_df = pd.concat(df_list, ignore_index=True)
     return diff_df    
 
-def diff_df_sel(diff_df, min_trials_analyze, num_mag_bins, p_sig=0.05):
+def diff_df_sel(diff_df, min_trials_list, num_mag_bins, p_sig=0.05):
     """
     takes the output of 'diff_n_lag0_b_psth_for_command_condition_pair'
     and calculates selection filters on the dataframe for use in analysis
@@ -1068,11 +1068,12 @@ def diff_df_sel(diff_df, min_trials_analyze, num_mag_bins, p_sig=0.05):
     sel_dic = {}
 
     #TRIALS:
-    num_trials0_sel = (diff_df['num_trials0']>=min_trials_analyze) #5
-    num_trials1_sel = (diff_df['num_trials1']>=min_trials_analyze) #5
-    sel_dic['num_trials'] = \
-        num_trials0_sel\
-        &num_trials1_sel\
+    for min_trials in min_trials_list:
+        num_trials0_sel = (diff_df['num_trials0']>=min_trials) #5
+        num_trials1_sel = (diff_df['num_trials1']>=min_trials) #5
+        sel_dic['num_trials',min_trials] = \
+            num_trials0_sel\
+            &num_trials1_sel\
 
     
     #MOVEMENT:
@@ -1238,16 +1239,32 @@ def center_df_angle(df, angle_bin_c, target_angle):
         bin_angle = angle_bin_c[df['u_v_angle_bin'].astype(int)]
         df[d+'_ctr_bin'] = center_angle(df[d], bin_angle)    
 
-def shuffle_df_by_command(df, var_shuffle, num_mag_bins, num_angle_bins, angle_bin_c, target_angle):
+def shuffle_df_by_command(df, var_shuffle, var_shuffle_src, num_mag_bins, num_angle_bins, angle_bin_c, target_angle):
+    """
+    shuffles 'var_shuffle'
+    saves where the shuffled data came from 'var_shuffle_src'
+    """
     df_S = copy.deepcopy(df)
+
+    var_src_assign = [i+'_shuffle' for i in var_shuffle_src]
+    df2concat = pd.DataFrame(columns=var_src_assign)
+    df_S = pd.concat([df_S, df2concat], sort=False)
+
     for bm in range(num_mag_bins):
         for ba in range(num_angle_bins):
             sel = \
             (df_S.loc[:,'u_v_mag_bin']==bm)\
             &(df_S.loc[:,'u_v_angle_bin']==ba)\
             &(df_S.loc[:,'bin']>=0)
-            temp = df_S.loc[sel, var_shuffle].sample(frac=1).reset_index(drop=True)
-            df_S.loc[sel, var_shuffle] = np.array(temp)
+
+            var = var_shuffle+var_shuffle_src
+            temp = df_S.loc[sel, var].sample(frac=1).reset_index(drop=True)
+
+            df_S.loc[sel, var_shuffle] = np.array(temp.loc[:,var_shuffle])
+
+            test_assign = np.array(temp.loc[:,var_shuffle_src])
+            print(test_assign.shape)
+            df_S.loc[sel, var_src_assign] = test_assign
 
     #Need to recalculate after shuffle: 
     center_df_angle(df_S, angle_bin_c, target_angle)
