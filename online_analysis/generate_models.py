@@ -1531,11 +1531,16 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
                 pass
             else:
                 variables_keep.append(v)
-        variables_keep = np.hstack((variables_keep))
+    
+        if len(variables_keep) > 0:
+            variables_keep = np.hstack((variables_keep))
 
-        ############ Double check that neurons are in the right order; ###############
-        check_variables_order(variables_keep, nneur)
-        variables_list.append(np.hstack((variables_keep)))
+            ############ Double check that neurons are in the right order; ###############
+            check_variables_order(variables_keep, nneur)
+            variables_list.append(np.hstack((variables_keep)))
+        else:
+            check_variables_order(variables_keep, nneur)
+            variables_list.append(variables_keep)
         
     return variables_list
 
@@ -1654,8 +1659,12 @@ def check_variables_order(variables, nneur):
                 assert(variables[ix+n] == spk[:-1] + '%d'%(n))
     if checked:
         pass
+    elif len(variables) == 0:
+        print('Identity dynamcis')
     else:
+        import pdb; pdb.set_trace()
         raise Exception('No spikes in this model')
+
 #### Decoder UTILS ####
 def get_KG_decoder_grom(day_ix):
     co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
