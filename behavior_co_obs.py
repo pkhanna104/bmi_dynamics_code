@@ -1111,6 +1111,7 @@ def preprocess_bmi_df(df, target_pos, num_prefix, num_tasks, num_targets):
     'trial_cond': 
     POLAR:
     p_mag, p_angle, v_mag, v_angle, u_p_mag, u_p_angle, u_v_mag, u_v_angle
+    CW vs CCW
     
     """
     #Pre-processing: 
@@ -1160,7 +1161,53 @@ def preprocess_bmi_df(df, target_pos, num_prefix, num_tasks, num_targets):
     error = df.loc[:, 'kin_px':'kin_py']-target_pos[df['target'].astype(int),:]
     df['d2target'] = np.linalg.norm(error,ord=2,axis=1)
     df['x_error'] = error.loc[:,'kin_px']
-    df['y_error'] = error.loc[:,'kin_py']    
+    df['y_error'] = error.loc[:,'kin_py']
+
+    #-----------------------------------------------------------------------------------------------    
+    #CW vs CCW:
+    df_determine_cw_ccw(df, target_pos)     
+
+
+def df_determine_cw_ccw(df, target_pos):
+    #Identify if each trajectory is more clockwise or counterclockwise around the axis from center to target: 
+
+    df['task_rot'] = df['task']#0:co, 1.1: obs, cw, 1.2: obs,ccw
+    df['cw'] = np.zeros((df.shape[0])) #cw = positive signed area
+    df['target_axis_signed_area'] = np.zeros((df.shape[0]))
+    df['target_axis_area'] = np.zeros((df.shape[0]))
+
+    trial_start = np.where((df['trial_start']==1))[0]
+    trial_stop = np.where((df['trial_stop']==1))[0]
+    trial_bound = np.vstack((trial_start,trial_stop)).T
+    num_trials = trial_bound.shape[0]
+
+    for bnd in trial_bound: 
+        x = df['kin_px'][bnd[0]:bnd[1]+1]
+        y = df['kin_py'][bnd[0]:bnd[1]+1]
+        t = int(df['target'][bnd[0]])
+        t_pos = target_pos[t,:]
+        sa, a, df_a = traj_signed_area_about_target_axis(x, y, t_pos)
+        if sa>0:
+            cw=1
+        else:
+            cw=0
+        # #debug: 
+        # tsk = task_list[int(df['task'][bnd[0]])]
+        # trl = df['trial'][bnd[0]]
+        # trl_len = bnd[1]+1-bnd[0]
+        # print(bnd[0], bnd[1], trl_len, tsk, t, trl, sa, cw, a)
+        #Insert the data: 
+        df['target_axis_signed_area'][bnd[0]:bnd[1]+1] = sa
+        df['cw'][bnd[0]:bnd[1]+1] = cw
+        df['target_axis_area'][bnd[0]:bnd[1]+1] = a
+    
+    sel_obs_cw = (df['task']==1)&(df['cw']==0)
+    df.loc[sel_obs_cw, 'task_rot'] = 1.1
+    sel_obs_cw = (df['task']==1)&(df['cw']==1)
+    df.loc[sel_obs_cw, 'task_rot'] = 1.2
+
+
+
 
 def def_command_bin(df, mag_bin_perc=np.array([0,25,50,75,100]), num_angle_bins=8, T0_angle=-3*(2*np.pi)/8):
     """
