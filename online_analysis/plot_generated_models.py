@@ -1,7 +1,7 @@
 ############## Methods to plot models generated in 'generate models' ###########
 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.4, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -1340,8 +1340,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 def plot_r2_bar_model_dynamics_only(min_obs = 15, 
     r2_pop = True, perc_increase = True, model_dicts = None, 
     cond_on_act = True, plot_act = False, skip_task_spec = False, 
-    skip_shuffle = False
-    ):
+    skip_shuffle = False, fig4_opt = False):
 
     '''
     inputs: min_obs -- number of obs need to count as worthy of comparison; 
@@ -1350,6 +1349,9 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
     r2_pop -- assume its population vs. indivdual 
     model_set_number -- which models to plot from which set; 
     include_shuffs -- Number of shuffles to include (will search for range(include_shuffs)). Right now code is just programmed to get index "0"
+    
+    fig4_opt -- 
+        bar w/ [0, 1, 3, 4] -- 0 = shuff, 1 = R2 dyn, 3 = R2 dyn split by task, 4 = R2 task-spec dyn split by task 
     '''
 
     ### For stats each neuron is an observation ##
@@ -1367,13 +1369,26 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
     if plot_act:
         assert(cond_on_act == False)
 
+    f, ax = plt.subplots(figsize = (5, 5))
+    
     for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
         
-        xlab = ['shuffled', 
-                'general\ndynamics', 
-                'task-spec\ndynamics',
-                'identity\ndynamics']
-        xkeys = ['shuffled', 'dyn_gen', 'dyn_tsk', 'identity_dyn']
+        if fig4_opt:
+            xlab = ['shuffled', 
+                    'general\ndynamics', 
+                    'general\ndynamics by tsk',
+                    'task-spec\ndynamics',
+                    'identity_dyn']
+            xkeys = ['shuffled', 'dyn_gen', 'dyn_gen_by_tsk', 'dyn_tsk_by_tsk', 'identity_dyn']
+            nbars = 4
+
+        else:
+            xlab = ['shuffled', 
+                    'general\ndynamics', 
+                    'task-spec\ndynamics',
+                    'identity\ndynamics']
+            xkeys = ['shuffled', 'dyn_gen', 'dyn_tsk', 'identity_dyn']
+            nbars = 3
 
         if plot_act:
             models_colors = [[100, 100, 100], 
@@ -1386,7 +1401,20 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
                          [39, 169, 225], 
                          [100, 100, 100]]
 
+        if fig4_opt:
+            models_colors = [[100, 100, 100], 
+                         [39, 169, 225], 
+                         [39, 169, 225], 
+                         [39, 169, 225], 
+                         [100, 100, 100]]            
+
         models_to_compare = []
+        if skip_shuffle:
+            nbars -= 1
+        if skip_task_spec:
+            nbars -= 1
+
+        ax_offset = (nbars + 1)*ia
 
         #### Number of models ######
         M = len(xlab)
@@ -1419,8 +1447,8 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
         Mod = []; # Model Number 
 
         ######### R2 for each neuron if not doing population R2  #######
-        f, ax = plt.subplots(figsize = (5, 5))
         R2s = dict()
+        R2s_task_spec = dict()
 
         ####### Iterate through each day #########
         for i_d in range(ndays[animal]):
@@ -1435,16 +1463,27 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             pred_Y['dyn_gen'] =  model_dict[i_d, model_name][:, :, 2]
 
             ######### Get task specific #########
-            tsk_spec = np.zeros_like(model_dict[i_d, model_name][:, :, 2])
+            if fig4_opt:
+                pred_Y['dyn_gen_by_tsk'] = []
+                pred_Y['dyn_tsk_by_tsk'] = []
 
-            for tsk in range(2):
-                ix_tsk = np.nonzero(model_dict[i_d, 'task'] == tsk)[0]
-                tsk_spec[ix_tsk, :] = model_dict[i_d, model_name][ix_tsk, :, tsk]
+                for tsk in range(2):
+                    ix_tsk = np.nonzero(model_dict[i_d, 'task'] == tsk)[0]
+                    pred_Y['dyn_gen_by_tsk'].append(model_dict[i_d, model_name][ix_tsk, :, 2])
+                    pred_Y['dyn_tsk_by_tsk'].append(model_dict[i_d, model_name][ix_tsk, :, tsk])
 
-            pred_Y['dyn_tsk'] = tsk_spec.copy()
+            else:
+                tsk_spec = np.zeros_like(model_dict[i_d, model_name][:, :, 2])
+                for tsk in range(2):
+                    ix_tsk = np.nonzero(model_dict[i_d, 'task'] == tsk)[0]
+                    tsk_spec[ix_tsk, :] = model_dict[i_d, model_name][ix_tsk, :, tsk]
+                pred_Y['dyn_tsk'] = tsk_spec.copy()
 
             ######### Get shuffled ###############
-            pred_Y['shuffled'] = get_shuffled_data(animal, i_d, model_name)
+            if skip_shuffle:
+                pass
+            else:
+                pred_Y['shuffled'] = get_shuffled_data(animal, i_d, model_name)
 
             ######## Get zero order hold #########
             pred_Y['identity_dyn'] = model_dict[i_d, 'identity_dyn'][:, :, 2]
@@ -1456,12 +1495,15 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
                 if plot_act:
                     tdata = model_dict[i_d, 'np']
                     if mod == 'shuffled':
-                        pdata = []
-                        for ns in range(pred_Y['shuffled'].shape[2]):
-                            pdata.append(np.dot(KG, pred_Y['shuffled'][:, :, ns].T).T)
-                        pdata = np.dstack((pdata))
-                        assert(tdata.shape[0] == pdata.shape[0])  
-                        assert(tdata.shape[1] == pdata.shape[1])  
+                        if skip_shuffle:
+                            pass
+                        else:
+                            pdata = []
+                            for ns in range(pred_Y['shuffled'].shape[2]):
+                                pdata.append(np.dot(KG, pred_Y['shuffled'][:, :, ns].T).T)
+                            pdata = np.dstack((pdata))
+                            assert(tdata.shape[0] == pdata.shape[0])  
+                            assert(tdata.shape[1] == pdata.shape[1])  
                     else:
                         pdata = np.dot(KG, pred_Y[mod].T).T
                         assert(tdata.shape == pdata.shape)       
@@ -1472,63 +1514,134 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
                 ### Get population R2 ### 
                 if mod != 'shuffled':
-                    R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
-                else:
-                    R2 = []
-                    for shuffi in range(pdata.shape[2]):
-                        R2.append(util_fcns.get_R2(tdata, pdata[:, :, shuffi], pop = r2_pop))
-                    R2 = np.hstack((R2))
-                    R2mn = np.mean(R2)
-                if perc_increase:
-                    R2s[i_d, mod] = (R2 - R2mn)/R2mn
-                else:
-                    R2s[i_d, mod] = R2
+                    if fig4_opt and 'tsk' in mod: 
+                        R2 = []
+                        for tsk in range(2):
+                            ix_tsk = np.nonzero(model_dict[i_d, 'task'] == tsk)[0]
+                            r2 = util_fcns.get_R2(tdata[ix_tsk, :], pred_Y[mod][tsk])
+                            R2.append(r2)
+                    else:
+                        R2 = util_fcns.get_R2(tdata, pdata, pop = r2_pop)
+                        if fig4_opt:
+                            R2 = [R2]
 
-        R2_shuff = [R2s[i_d, 'shuffled'] for i_d in range(ndays[animal])]
-        
+                else:
+                    if skip_shuffle:
+                        pass
+                    else:
+                        R2 = []
+                        for shuffi in range(pdata.shape[2]):
+                            R2.append(util_fcns.get_R2(tdata, pdata[:, :, shuffi], pop = r2_pop))
+                        R2 = np.hstack((R2))
+                        R2mn = np.mean(R2)
+                
+                if fig4_opt:
+                    if perc_increase: 
+                        R2s[i_d, mod] = (np.hstack((R2)) - R2mn) / R2mn
+                    else:
+                        R2s[i_d, mod] = np.hstack((R2))
+
+                if skip_shuffle and mod == 'shuffled':
+                    pass
+                else:
+                    if perc_increase:
+                        R2s[i_d, mod] = (R2 - R2mn)/R2mn
+                    else:
+                        R2s[i_d, mod] = R2
+
         ### Bar plot w/ distribution at beginning ###
         if skip_shuffle:
             pass
         else:
-            util_fcns.draw_plot(0, np.hstack((R2_shuff)), models_colors[0], 'white', ax, width = 0.9)
+            R2_shuff = [R2s[i_d, 'shuffled'] for i_d in range(ndays[animal])]
+            util_fcns.draw_plot(0 + ax_offset, np.hstack((R2_shuff)), models_colors[0], 'white', ax, width = 0.9)
     
+        #### Print percent of days > shuffle for general dynamics #####
+
+        ###### Mean R2 values to be aggregated here; 
         day_r2 = np.zeros((ndays[animal], len(xkeys)))
+
+        if fig4_opt:
+            day_r2 = np.zeros((ndays[animal], len(xkeys), 2))
         
+        ###### Go through all the xkey possibilities ####
         for i_mod, mod in enumerate(xkeys):
+
+            #### Don't plot shuffle, already did that 
             if mod == 'shuffled':
-                pass
-            else:
-                if mod == 'identity_dyn':
-                    pass
-                elif skip_task_spec and mod == 'dyn_tsk':
+                if skip_shuffle:
                     pass
                 else:
+                    print('Animal %s' %(animal))
+                    print('Avg R2 of Shuffle %.4f' %(np.mean(np.hstack((R2_shuff)))))
+
+            else:
+            ####### don't plot identity, looks terrible 
+                if mod == 'identity_dyn':
                     r2_tmp = [R2s[i_d, mod] for i_d in range(ndays[animal])]
-                    ax.bar(i_mod, np.mean(r2_tmp), width=.9, color = models_colors[i_mod])
-                    ax.errorbar(i_mod, np.mean(r2_tmp), np.std(r2_tmp), marker = '|', color = 'k')
+                    print('Animal %s' %(animal))
+                    print('Avg. R2 of Identity dynamics %.4f' %(np.mean(r2_tmp)))
+
+            ###### dont' plot task if requested to skip it #####
+                elif skip_task_spec and mod == 'dyn_tsk':
+                    pass
+
+            ###### Plot mean ####
+                else:
+                    r2_tmp = [R2s[i_d, mod] for i_d in range(ndays[animal])]
+                    ax.bar(i_mod + ax_offset, np.mean(r2_tmp), width=.9, color = models_colors[i_mod])
+                    ax.errorbar(i_mod + ax_offset, np.mean(r2_tmp), np.std(r2_tmp), marker = '|', color = 'k')
 
             #### For each day ####
             for i_d in range(ndays[animal]):
                 if mod == 'shuffled':
-                    day_r2[i_d, i_mod] = np.mean(R2s[i_d, mod])
+                    if skip_shuffle:
+                        pass
+                    else:
+                        day_r2[i_d, i_mod] = np.mean(R2s[i_d, mod])
+                elif fig4_opt and 'by_tsk' in mod:
+                    day_r2[i_d, i_mod, :] = R2s[i_d, mod]
                 else:
                     day_r2[i_d, i_mod] = R2s[i_d, mod]
 
-        ##### Plot the individual line #####
+        ##### Plot the individual lines for each day #####
         shuff_vs_dyn = np.zeros((ndays[animal]))
         
         if skip_task_spec:
             ax.set_xticks(np.arange(len(xlab)-2))
             ax.set_xticklabels(xlab[:-2], rotation = 45)
+            lme_shuff_vs_gen = dict(day = [], shuf_vs_gen = [], r2 = [])
+
             for i_d in range(ndays[animal]):
-                ax.plot(np.arange(len(xkeys)-2), day_r2[i_d, :-2], '-', color='gray', linewidth=1.)
+                ax.plot(np.arange(len(xkeys)-2) + ax_offset, day_r2[i_d, :-2], '-', color='gray', linewidth=1.)
                 shuff_vs_dyn[i_d] = get_perc(R2s[i_d, 'shuffled'], R2s[i_d, 'dyn_gen'])
+                lme_shuff_vs_gen['day'].append([i_d, i_d])
+                lme_shuff_vs_gen['shuf_vs_gen'].append([0, 1])                
+                assert(xkeys[0] == 'shuffled')
+                assert(xkeys[1] == 'dyn_gen')
+                assert(len(day_r2.shape) == 2)
+                lme_shuff_vs_gen['r2'].append(np.squeeze(day_r2[i_d, [0, 1]]))
+        
+            print('Shuffle vs. General ! Animal %s' %(animal))
+            pv1, slp1 = util_fcns.run_LME(lme_shuff_vs_gen['day'], lme_shuff_vs_gen['shuf_vs_gen'],
+                lme_shuff_vs_gen['r2'])
+            pv1_str = util_fcns.get_pv_str(pv1)
+            
+            ########### LME for shuff vs. general #######
+            mx = np.max(day_r2[:, [0, 1]])
+            ax.plot(np.array([0, 1]) + ax_offset, [1.1*mx, 1.1*mx], 'k-')
+            ax.text(.5 + ax_offset, 1.15*mx, pv1_str, ha='center')
+
+            print('Individual Day Shuffle vs. Generla Animal %s' %(animal))
+            for itmpday, itmp in enumerate(shuff_vs_dyn):
+                print('Day %d, perc shuff gte data = %.5f' %(itmpday, itmp))
+
         elif skip_shuffle:
             lme_gen_vs_tsk = dict(day=[], gen_vs_tsk=[], r2 = [])
             ax.set_xticks(np.arange(1, len(xlab)-1))
             ax.set_xticklabels(xlab[1:-1], rotation = 45)
             for i_d in range(ndays[animal]):
-                ax.plot(np.arange(1, len(xkeys)-1), day_r2[i_d, 1:-1], '-', color='gray', linewidth=1.)
+                ax.plot(np.arange(1, len(xkeys)-1) + ax_offset, day_r2[i_d, 1:-1], '-', color='gray', linewidth=1.)
                 lme_gen_vs_tsk['day'].append([i_d, i_d])
                 lme_gen_vs_tsk['gen_vs_tsk'].append([0, 1])
                 lme_gen_vs_tsk['r2'].append([R2s[i_d, 'dyn_gen'], R2s[i_d, 'dyn_tsk']])                
@@ -1538,42 +1651,106 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
                 lme_gen_vs_tsk['r2'])
             pv0_str = util_fcns.get_pv_str(pv0)
             mx = np.max(day_r2[:, [1, 2]])
-            ax.plot([1, 2], [1.1*mx, 1.1*mx], 'k-')
-            ax.text(1.5, 1.15*mx, pv0_str, ha='center')
+            ax.plot(np.array([1, 2]) + ax_offset, [1.1*mx, 1.1*mx], 'k-')
+            ax.text(1.5 + ax_offset, 1.15*mx, pv0_str, ha='center')
 
+        ##### Most general #######
         else:
             lme_gen_vs_tsk = dict(day=[], gen_vs_tsk=[], r2 = [])
+            lme_shuff_vs_gen = dict(day = [], shuf_vs_gen = [], r2 = [])
+
             for i_d in range(ndays[animal]):
-                ax.plot(np.arange(len(xkeys)-1), day_r2[i_d, :-1], '-', color='gray', linewidth=1.)
+            
+                if fig4_opt:
+                    ax.plot(np.array([0, 1]) + ax_offset, day_r2[i_d, [0, 1]], '-', color='gray', linewidth = 1.)
+                    lme_shuff_vs_gen['day'].append([i_d, i_d])
+                    lme_shuff_vs_gen['shuf_vs_gen'].append([0, 1])
+                    lme_shuff_vs_gen['r2'].append(np.squeeze(day_r2[i_d, [0, 1], 0]))
 
-                #### Compare model 1 to shuffle #####
-                shuff_vs_dyn[i_d] = get_perc(R2s[i_d, 'shuffled'], R2s[i_d, 'dyn_gen'])
+                    ### Centerout and obstacle day line #####
+                    ax.plot(np.array([2, 3]) + ax_offset, day_r2[i_d, [2, 3], 0], '-', color='gray', linewidth = 1.)
+                    ax.plot(np.array([2, 3]) + ax_offset, day_r2[i_d, [2, 3], 1], '-', color='gray', linewidth = 1.)
 
-                #### Compare model 1 to model 2 #####
-                lme_gen_vs_tsk['day'].append([i_d, i_d])
-                lme_gen_vs_tsk['gen_vs_tsk'].append([0, 1])
-                lme_gen_vs_tsk['r2'].append([R2s[i_d, 'dyn_gen'], R2s[i_d, 'dyn_tsk']])
+                    lme_gen_vs_tsk['day'].append([i_d, i_d])
+                    lme_gen_vs_tsk['gen_vs_tsk'].append([0, 1])
+                    lme_gen_vs_tsk['r2'].append(day_r2[i_d, [2, 3], 0])
+                    
+                    lme_gen_vs_tsk['day'].append([i_d, i_d])
+                    lme_gen_vs_tsk['gen_vs_tsk'].append([0, 1])
+                    lme_gen_vs_tsk['r2'].append(day_r2[i_d, [2, 3], 1])
+                    
+                    ### Get something about R2s for shuffled vs. dyn gen ####
+                    shuff_vs_dyn[i_d] = get_perc(R2s[i_d, 'shuffled'], R2s[i_d, 'dyn_gen'])
+
+                else:
+
+                    ax.plot(np.arange(len(xkeys)-1) + ax_offset, day_r2[i_d, :-1], '-', color='gray', linewidth=1.)
+
+                    #### Compare model 1 to shuffle #####
+                    shuff_vs_dyn[i_d] = get_perc(R2s[i_d, 'shuffled'], R2s[i_d, 'dyn_gen'])
+
+                    #### Compare model 1 to model 2 #####
+                    lme_gen_vs_tsk['day'].append([i_d, i_d])
+                    lme_gen_vs_tsk['gen_vs_tsk'].append([0, 1])
+                    lme_gen_vs_tsk['r2'].append([R2s[i_d, 'dyn_gen'], R2s[i_d, 'dyn_tsk']])
+
+                    lme_shuff_vs_gen['day'].append([i_d, i_d])
+                    lme_shuff_vs_gen['shuf_vs_gen'].append([0, 1])
+                    assert(xkeys[0] == 'shuffled')
+                    assert(xkeys[1] == 'dyn_gen')
+                    assert(len(day_r2.shape) == 2)
+                    lme_shuff_vs_gen['r2'].append(np.squeeze(day_r2[i_d, [0, 1]]))
+
 
             ###### Run LME for tsk spec vs. general #####
+            print('General vs. Task Specific! Animal %s' %(animal))
             pv0, slp0 = util_fcns.run_LME(lme_gen_vs_tsk['day'], lme_gen_vs_tsk['gen_vs_tsk'],
                 lme_gen_vs_tsk['r2'])
             pv0_str = util_fcns.get_pv_str(pv0)
 
-            mx = np.max(day_r2[:, [1, 2]])
-            ax.plot([1, 2], [1.1*mx, 1.1*mx], 'k-')
-            ax.text(1.5, 1.15*mx, pv0_str, ha='center')
-            ax.set_xticks(np.arange(len(xlab)-1))
-            ax.set_xticklabels(xlab[:-1], rotation = 45)
+            print('Shuffle vs. General ! Animal %s' %(animal))
+            pv1, slp1 = util_fcns.run_LME(lme_shuff_vs_gen['day'], lme_shuff_vs_gen['shuf_vs_gen'],
+                lme_shuff_vs_gen['r2'])
+            pv1_str = util_fcns.get_pv_str(pv1)
+            
+            ########### LME for shuff vs. general #######
+            mx = np.max(day_r2[:, [0, 1]])
+            ax.plot(np.array([0, 1]) + ax_offset, [1.1*mx, 1.1*mx], 'k-')
+            ax.text(.5 + ax_offset, 1.15*mx, pv1_str, ha='center')
 
+            print('Individual Day Shuffle vs. Generla Animal %s' %(animal))
+            for itmpday, itmp in enumerate(shuff_vs_dyn):
+                print('Day %d, perc shuff gte data = %.5f' %(itmpday, itmp))
+
+            if fig4_opt:
+                mx = np.max(day_r2[:, [2, 3]])
+                ax.plot(np.array([2, 3]) + ax_offset, [1.1*mx, 1.1*mx], 'k-')
+                ax.text(2.5 + ax_offset, 1.15*mx, pv0_str, ha='center')
+                ax.set_xticks(np.arange(len(xlab)-1))
+                ax.set_xticklabels(xlab[:-1], rotation = 45)
+
+            else:
+                if skip_task_spec:
+                    pass
+                else:
+                    mx = np.max(day_r2[:, [1, 2]])
+                    ax.plot(np.array([1, 2]) + ax_offset, [1.1*mx, 1.1*mx], 'k-')
+                    ax.text(1.5 + ax_offset, 1.15*mx, pv0_str, ha='center')
+                    ax.set_xticks(np.arange(len(xlab)-1))
+                    ax.set_xticklabels(xlab[:-1], rotation = 45)
+                
         #### Plot stars ####
         if skip_shuffle:
-            ax.set_xlim([.5, 2.6])
+            ax.set_xlim([.5, 2.6 + ax_offset])
         else:
-            if np.all(shuff_vs_dyn == 1.):
-                mx = np.max(day_r2[:, [0, 1]])
-                ax.plot([0, 1], [1.1*mx, 1.1*mx], 'k-')
-                ax.text(.5, 1.15*mx, '***', ha='center')
-            ax.set_xlim([-.6, 2.6])
+            if fig4_opt:
+                ax.set_xlim([-.6, 3.6])
+            else:
+                if np.all(shuff_vs_dyn == 1.):
+                    mx = np.max(day_r2[:, [0, 1]])
+                    ax.plot(np.array([0, 1]) + ax_offset, [1.1*mx, 1.1*mx], 'k-')
+                    ax.text(.5 + ax_offset, 1.15*mx, '***', ha='center')
+                ax.set_xlim([-.6, 2.6 + ax_offset])
         if perc_increase:
             ax.set_ylabel('Frac. Increase in R2\nabove Shuffle Mean')
         else:
@@ -1627,7 +1804,7 @@ def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept =
         return np.dstack((pred_Y))
 
 def get_perc(dist, value):
-    ix = np.nonzero(dist < value)[0]
+    ix = np.nonzero(dist >= value)[0]
     return float(len(ix))/len(dist)
 
 ### Bar R2 and correlation plots -- figure 4;
@@ -1724,7 +1901,11 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     assert(c0.shape[1] == c1.shape[1] == 2)
                     com0 = util_fcns.commands2bins([c0], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
                     com1 = util_fcns.commands2bins([c1], mag_boundaries, animal, i_d, vel_ix = [0, 1])[0]
+                    
+                    ### Make sure discretized bins match
                     assert(np.all(com0 == com1))
+
+                    ### Not actual np
                     assert(not np.all(c0 == c1))
                     assert(not np.all(model_dicts[0][i_d, 'spks'] == model_dicts[1][i_d, 'spks']))
 
@@ -1938,7 +2119,7 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                     VAL2.append(VAF2)
                     R22[model, i_d, i_ds].append(VAF2)
                     if i_ds == scatter_ds and i_d == day_i:
-                        axall2[i_m].set_title('Day %d, VAF = %.4f\n %s \n %s' %(i_d,VAF2, '$'+models_to_include_labs[i_m]+'$', use_mFR_option), fontsize=14)
+                        axall2[i_m].set_title('Day %d, DS %d, VAF = %.4f\n %s \n %s' %(i_d, i_ds, VAF2, '$'+models_to_include_labs[i_m]+'$', use_mFR_option), fontsize=14)
 
         #### Save the second one ########
         fall2.savefig(fig_dir + 'scatter_%s_%s_command_cond_spec_scatterShuff%d.eps'%(animal, use_mFR_option, scatter_ds))
@@ -1986,11 +2167,11 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
                         ix0 = np.nonzero(MOD < 2)[0]
                         ix1 = np.nonzero(np.logical_and(MOD > 0, MOD <3))[0]
 
-                        pv0, slp0 = util_fcns.run_LME(DAY[ix0], MOD[ix0], val[ix0])
-                        pv1, slp1 = util_fcns.run_LME(DAY[ix1], MOD[ix1], val[ix1])
+                        #pv0, slp0 = util_fcns.run_LME(DAY[ix0], MOD[ix0], val[ix0])
+                        #pv1, slp1 = util_fcns.run_LME(DAY[ix1], MOD[ix1], val[ix1])
 
-                        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix0])), pv0, slp0, len(ix0)))
-                        print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix1])), pv1, slp1, len(ix1)))
+                        #print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix0])), pv0, slp0, len(ix0)))
+                        #print('Animal %s, Mods %s, pv: %.3f, slp: %.3f, N: %d' %(animal, str(np.unique(MOD[ix1])), pv1, slp1, len(ix1)))
 
                     ### Plot as bar plot ###
                     all_data = {}
@@ -2065,14 +2246,14 @@ def plot_real_vs_pred_bars_w_shuffle(use_mFR_option, model_dicts = None, min_obs
 
     mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
     model = 'hist_1pos_0psh_2spksm_1_spksp_0'
-    xkeys = ['shuffled', 'dyn_gen', 'dyn_tsk', 'identity_dyn']
+    xkeys = ['shuffled', 'dyn_gen', 'identity_dyn']#'dyn_tsk', 'identity_dyn']
     xlab = ['shuffled', 
         'general\ndynamics', 
-        'task-spec\ndynamics',
         'identity\ndynamics']
+
     models_colors = [[100, 100, 100], 
                  [39, 169, 225], 
-                 [39, 169, 225], 
+                 #[39, 169, 225], 
                  [100, 100, 100]]
     models_colors = [np.array(m)/255. for m in models_colors]
     model_set_number = 6; 
@@ -2278,7 +2459,9 @@ def plot_real_vs_pred_bars_w_shuffle(use_mFR_option, model_dicts = None, min_obs
         ### Make R2 plots to show how much each plot accounts for variace: 
         VAF_mat = np.zeros((ndays, len(xkeys)))
         VAF_mat_shuff = []
-        lme_gen_vs_tsk = dict(day=[], gen_vs_tsk=[], r2=[])
+        lme_gen_vs_identity = dict(day=[], gen_vs_id=[], r2=[])
+        lme_shuff_vs_gen    = dict(day=[], shuf_vs_gen=[], r2=[])
+        
         shuff_vs_dyn = np.zeros((ndays))
         #### R2 bar plot ####
         fbar, axbar = plt.subplots(figsize=(5, 5))
@@ -2311,6 +2494,7 @@ def plot_real_vs_pred_bars_w_shuffle(use_mFR_option, model_dicts = None, min_obs
                         tru = tru.reshape(-1)
                         pre = pre.reshape(-1)
                         vaf_mat.append(util_fcns.get_R2(tru, pre, pop=True))
+                    
                     VAF_mat[i_d, i_ds] = np.mean(vaf_mat)
                     VAF_mat_shuff.append(np.mean(vaf_mat))
                     # print('Stopping line 2163')
@@ -2327,15 +2511,26 @@ def plot_real_vs_pred_bars_w_shuffle(use_mFR_option, model_dicts = None, min_obs
                     VAF_mat[i_d, i_ds] = VAF2
                 
                 #### LME model saving ###
-                if xk in ['dyn_gen', 'dyn_tsk']:
-                    lme_gen_vs_tsk['day'].append(i_d)
-                    lme_gen_vs_tsk['gen_vs_tsk'].append(i_ds)
-                    lme_gen_vs_tsk['r2'].append(VAF2)
+                if xk in ['dyn_gen', 'identity_dyn']:
+                    lme_gen_vs_identity['day'].append(i_d)
+                    lme_gen_vs_identity['gen_vs_id'].append(i_ds)
+                    lme_gen_vs_identity['r2'].append(VAF2)
+
+                if xk in ['dyn_gen', 'shuffled']:
+                    lme_shuff_vs_gen['day'].append(i_d)
+                    lme_shuff_vs_gen['shuf_vs_gen'].append(i_ds)
+                    if xk == 'dyn_gen':
+                        lme_shuff_vs_gen['r2'].append(VAF2)
+                    elif xk == 'shuffled':
+                        lme_shuff_vs_gen['r2'].append(np.mean(vaf_mat))
 
                 if xk in ['dyn_gen']:
-                    ix = np.nonzero(vaf_mat < VAF_mat[i_d, i_ds])[0]
+                    ix = np.nonzero(vaf_mat <= VAF_mat[i_d, i_ds])[0]
                     assert(len(vaf_mat) == nShuff)
                     shuff_vs_dyn[i_d] = float(len(ix))/float(len(vaf_mat))
+
+                    ##### PRint p-value for shuff vs. true; 
+                    print('Fraction of shuff <= data for day %d, animal %s, p = %.5f' %(i_d, animal, shuff_vs_dyn[i_d] ))
 
             if xk == 'shuffled':
                 util_fcns.draw_plot(i_ds, np.hstack((VAF_mat_shuff)), models_colors[i_ds], 'white', axbar, width = 0.9)
@@ -2349,8 +2544,9 @@ def plot_real_vs_pred_bars_w_shuffle(use_mFR_option, model_dicts = None, min_obs
             axbar.plot(np.arange(len(xlab)), VAF_mat[i_d, :], '-', color='gray', linewidth=1.)
 
         ###### Run LME for tsk spec vs. general #####
-        pv0, slp0 = util_fcns.run_LME(lme_gen_vs_tsk['day'], lme_gen_vs_tsk['gen_vs_tsk'],
-            lme_gen_vs_tsk['r2'])
+        print('General vs. Identity dynamics : ')
+        pv0, slp0 = util_fcns.run_LME(lme_gen_vs_identity['day'], lme_gen_vs_identity['gen_vs_id'],
+            lme_gen_vs_identity['r2'])
         pv0_str = util_fcns.get_pv_str(pv0)
 
         ##### Plot asterix ###########
@@ -2358,6 +2554,18 @@ def plot_real_vs_pred_bars_w_shuffle(use_mFR_option, model_dicts = None, min_obs
         axbar.plot([1, 2], [1.1*mx, 1.1*mx], 'k-')
         axbar.text(1.5, 1.15*mx, pv0_str, ha='center')
         
+
+        print('Shuff vs. General Dynamics: ')
+        pv1, slp1 = util_fcns.run_LME(lme_shuff_vs_gen['day'], lme_shuff_vs_gen['shuf_vs_gen'],
+            lme_shuff_vs_gen['r2'])
+        pv1_str = util_fcns.get_pv_str(pv1)
+
+        ##### Plot asterix ###########
+        mx = np.max(VAF_mat[:, [0, 1]])
+        axbar.plot([0, 1], [1.1*mx, 1.1*mx], 'k-')
+        axbar.text(.5, 1.15*mx, pv1_str, ha='center')
+
+
         #### X labels ########
         axbar.set_xticks(np.arange(len(xlab)))
         axbar.set_xticklabels(xlab, rotation = 45)
@@ -2378,7 +2586,7 @@ def plot_real_vs_pred_bars_w_shuffle(use_mFR_option, model_dicts = None, min_obs
 
 ### Fig 5 #### 
 ### Mean diffs of action at next time step ###
-def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
+def plot_real_mean_diffs_behavior_next(model_set_number = 6, min_obs = 15):
     ### Take real task / target / command / neuron / day comparisons for each neuron in the BMI
     ### Plot within a bar 
     ### Plot only sig. different ones
@@ -2388,7 +2596,7 @@ def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
     fsumm, axsumm = plt.subplots(figsize=(4, 4))
 
     for ia, animal in enumerate(['grom','jeev']):
-        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %model_set_number, 'rb'))
+        model_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl' %model_set_number, 'rb'))
 
         if animal == 'grom':
             ndays = 9; 
@@ -2423,11 +2631,14 @@ def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
             ### Now go through combos and plot 
             for mag_i in range(4):
                 for ang_i in range(8):
+
+                    ### For each target 1 
                     for targi in range(8):
                         ix_co = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 0) & (targ == targi)
                         
                         if len(np.nonzero(ix_co == True)[0]) > min_obs:
                             
+                            ### For each target 2 
                             for targi2 in range(8):
                                 ix_ob = (commands_disc[:, 0] == mag_i) & (commands_disc[:, 1] == ang_i) & (tsk == 1) & (targ == targi2)
 
@@ -2486,12 +2697,17 @@ def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
             DX.append(X); 
             DWI.append(W); 
             tmp = np.hstack((W, X))
-            days.append(np.zeros_like(tmp) + i_d)
-            cat.append(np.zeros_like(W))
-            cat.append(np.zeros_like(X) + 1)
-            met.append(tmp)
+            
+            ### LME ####
+            # days.append(np.zeros_like(tmp) + i_d)
+            # cat.append(np.zeros_like(W))
+            # cat.append(np.zeros_like(X) + 1)
+            # met.append(tmp)
+            days.append([i_d, i_d])
+            cat.append([0, 1])
+            met.append([np.mean(W), np.mean(X)])
 
-            for i, (D, col) in enumerate(zip([X, W], ['k', 'gray'])):
+            for i, (D, col) in enumerate(zip([W, X], ['gray', 'k'])):
                 ax.bar(i_d + i*.45, np.nanmean(D), color=col, edgecolor='none', width=.4, linewidth=1.0)
                 ax.errorbar(i_d + i*.45, np.nanmean(D), np.nanstd(D)/np.sqrt(len(D)), marker='|', color=col)
                 mnz[i_d, i] = np.nanmean(D)
@@ -2502,18 +2718,17 @@ def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
 
         ### look at: run_LME(Days, Grp, Metric):
         pv, slp = util_fcns.run_LME(days, cat, met)
-
         print 'LME model, fixed effect is day, rand effect is X vs. Wi., N = %d, ndays = %d, pv = %.4f, slp = %.4f' %(len(days), len(np.unique(days)), pv, slp)
 
         ###
         DX = np.hstack((DX))
         DWI = np.hstack((DWI))
 
-        axsumm.bar(0 + ia, np.mean(DX), color='k', edgecolor='none', width=.4, linewidth=2.0, alpha = .8)
-        axsumm.bar(0.4 + ia, np.mean(DWI), color='gray', edgecolor='none', width=.4, linewidth=2.0, alpha =.8)
+        axsumm.bar(0.4 + ia, np.mean(DX), color='k', edgecolor='none', width=.4, linewidth=2.0, alpha = .8)
+        axsumm.bar(0. + ia, np.mean(DWI), color='gray', edgecolor='none', width=.4, linewidth=2.0, alpha =.8)
 
         for i_d in range(ndays):
-            axsumm.plot(np.array([0, .4]) + ia, mnz[i_d, :], '-', color='k', linewidth=1.0)
+            axsumm.plot(np.array([0, .4]) + ia, mnz[i_d, :], '-', color='gray', linewidth=1.0)
 
         if pv < 0.001: 
             axsumm.text(0.2+ia, np.max(mnz), '***')
@@ -2536,7 +2751,7 @@ def plot_real_mean_diffs_behavior_next(model_set_number = 3, min_obs = 15):
     #axsumm.set_ylim([0, 5])
     axsumm.set_ylabel(' Mean Diffs (cm/sec) ') 
     fsumm.tight_layout()
-    #fsumm.savefig(fig_dir+'both_monks_w_vs_x_task_push_mean_diffs.svg')
+    fsumm.savefig(fig_dir+'both_monks_w_vs_x_task_push_mean_diffs.svg')
 
 ### Fig 5 -- identity vs. neural dynamcis
 def fig_5_neural_dyn(min_obs = 15, r2_pop = True, 
@@ -2979,6 +3194,7 @@ def fig_5_cond_spec_next_action_scatter_bars(use_mvel_option = 'command_axis_spe
     
     models_colors = [np.array(m)/255. for m in models_colors]
     model_set_number = 6; 
+    fbar, axbar = plt.subplots(figsize =(4, 5))
 
     for i_a, animal in enumerate(['grom', 'jeev']):
         ############ Load the model #############
@@ -2989,12 +3205,13 @@ def fig_5_cond_spec_next_action_scatter_bars(use_mvel_option = 'command_axis_spe
 
         ############ Number of days ##############
         ndays = analysis_config.data_params[animal + '_ndays']
-    
+        
+        nbars_offs = 3*i_a
+
         z_vel = {}
         pred_z_vel = {}; 
         
         ######### Setup plot #########
-        fbar, axbar = plt.subplots(figsize =(5, 5))
         VAF_shuff = []
         vaf_shuff_mn = np.zeros((ndays))
         vaf_dyn = dict()
@@ -3020,13 +3237,16 @@ def fig_5_cond_spec_next_action_scatter_bars(use_mvel_option = 'command_axis_spe
             pred_A['dyn_tsk'] = np.dot(KG, tsk_spec.T).T ### Tx 2
 
             ######### Get shuffled ###############
-            shuff_Y = get_shuffled_data(animal, i_d, model)
-            nShuff = shuff_Y.shape[2]
-            shuff_tmp = []
+            if gen_vs_tsk_instead_of_shuff:
+                pass
+            else:
+                shuff_Y = get_shuffled_data(animal, i_d, model)
+                nShuff = shuff_Y.shape[2]
+                shuff_tmp = []
 
-            for ns in range(nShuff):
-                shuff_tmp.append(np.dot(KG, shuff_Y[:, :, ns].T).T)
-            pred_A['shuffled'] = np.dstack((shuff_tmp))
+                for ns in range(nShuff):
+                    shuff_tmp.append(np.dot(KG, shuff_Y[:, :, ns].T).T)
+                pred_A['shuffled'] = np.dstack((shuff_tmp))
 
             ############# For real model ############
             ### Get the spiking data
@@ -3194,26 +3414,26 @@ def fig_5_cond_spec_next_action_scatter_bars(use_mvel_option = 'command_axis_spe
 
         ########### Bar plot ###########
         if gen_vs_tsk_instead_of_shuff:
-            axbar.bar(0, np.mean(vaf_dyn[xkeys[0]]), color=models_colors[1], width = 0.9)
-            axbar.errorbar(0, np.mean(vaf_dyn[xkeys[0]]), np.std(vaf_dyn[xkeys[0]])/np.sqrt(len(vaf_dyn[xkeys[0]])), marker = '|', color = 'k') 
+            axbar.bar(0+nbars_offs, np.mean(vaf_dyn[xkeys[0]]), color=models_colors[1], width = 0.9)
+            axbar.errorbar(0+nbars_offs, np.mean(vaf_dyn[xkeys[0]]), np.std(vaf_dyn[xkeys[0]])/np.sqrt(len(vaf_dyn[xkeys[0]])), marker = '|', color = 'k') 
         else:
-            util_fcns.draw_plot(0, np.hstack((VAF_shuff)), models_colors[0], 'white', axbar, width = 0.9)
-        axbar.bar(1, np.mean(vaf_dyn[xkeys[1]]), color=models_colors[1], width = 0.9)
-        axbar.errorbar(1, np.mean(vaf_dyn[xkeys[1]]), np.std(vaf_dyn[xkeys[1]])/np.sqrt(len(vaf_dyn[xkeys[1]])), marker = '|', color = 'k')
+            util_fcns.draw_plot(0+nbars_offs, np.hstack((VAF_shuff)), models_colors[0], 'white', axbar, width = 0.9)
+        axbar.bar(1+nbars_offs, np.mean(vaf_dyn[xkeys[1]]), color=models_colors[1], width = 0.9)
+        axbar.errorbar(1+nbars_offs, np.mean(vaf_dyn[xkeys[1]]), np.std(vaf_dyn[xkeys[1]])/np.sqrt(len(vaf_dyn[xkeys[1]])), marker = '|', color = 'k')
         
         lme_dict = dict(day=[], grp = [], val = [])
 
         for i_d in range(ndays):
             if gen_vs_tsk_instead_of_shuff:
-                axbar.plot([0, 1], [ vaf_dyn[xkeys[0]][i_d], vaf_dyn[xkeys[1]][i_d]], '-', color='gray', linewidth=1.)
+                axbar.plot([0+nbars_offs, 1+nbars_offs], [ vaf_dyn[xkeys[0]][i_d], vaf_dyn[xkeys[1]][i_d]], '-', color='gray', linewidth=1.)
                 lme_dict['day'].append([i_d, i_d])
                 lme_dict['grp'].append([0, 1])
                 lme_dict['val'].append(vaf_dyn[xkeys[0]][i_d])
                 lme_dict['val'].append(vaf_dyn[xkeys[1]][i_d])
             else:
-                axbar.plot([0, 1], [vaf_shuff_mn[i_d], vaf_dyn[i_d]], '-', color='gray', linewidth=1.)
+                axbar.plot([0+nbars_offs, 1+nbars_offs], [vaf_shuff_mn[i_d], vaf_dyn[xkeys[1]][i_d]], '-', color='gray', linewidth=1.)
         
-        axbar.set_xlim([-.5, 2.5])
+        axbar.set_xlim([-.5, 4.5])
         axbar.set_xticks([0, 1])
         axbar.set_xticklabels(xlab, rotation=45)
 
@@ -3222,30 +3442,41 @@ def fig_5_cond_spec_next_action_scatter_bars(use_mvel_option = 'command_axis_spe
             pv, slp = util_fcns.run_LME(np.hstack((lme_dict['day'])), np.hstack((lme_dict['grp'])), np.hstack((lme_dict['val'])))
             pv_str = util_fcns.get_pv_str(pv)
             mx = np.hstack((vaf_dyn[xkeys[0]], vaf_dyn[xkeys[1]] )) 
-            axbar.plot([0, 1], [1.1*np.max(mx), 1.1*np.max(mx)], 'k-')
-            axbar.text(0.5, 1.15*np.max(mx), pv_str, ha='center')
+            axbar.plot([0+nbars_offs, 1+nbars_offs], [1.1*np.max(mx), 1.1*np.max(mx)], 'k-')
+            axbar.text(0.5+nbars_offs, 1.15*np.max(mx), pv_str, ha='center')
             
         else:
             dyn_gt_shuff = np.zeros((ndays))
+            dyn_lme = dict(day = [], grp = [], val = [])
+
             for i_d in range(ndays):
 
                 ##### For each day #####
-                vaf_dyn_day = vaf_dyn[i_d]
+                vaf_dyn_day = vaf_dyn['dyn_gen'][i_d]
                 vaf_shuff_day = VAF_shuff[i_d]
+
+                dyn_lme['day'].append([i_d, i_d])
+                dyn_lme['grp'].append([0, 1])
+                dyn_lme['val'].append([np.mean(vaf_shuff_day), vaf_dyn_day])
 
                 if np.all(vaf_shuff_day < vaf_dyn_day):
                     dyn_gt_shuff[i_d] = 1.
+                ix = np.nonzero(vaf_shuff_day >= vaf_dyn_day)[0]
+                print('Animal %s, Day %d, Perc shuff get vaf_dyn_day %.5f' %(animal, i_d, float(len(ix))/float(len(vaf_shuff_day))))
 
-            if np.all(dyn_gt_shuff == 1.):
-                mx = np.max(vaf_dyn)
-                axbar.plot([0, 1], [1.1*mx, 1.1*mx], 'k-')
-                axbar.text(.5, 1.15*mx, '***', ha ='center')
+            print('Animal %s, LME Dyn vs. shuffle' %(animal))
+            pv, slp = util_fcns.run_LME(dyn_lme['day'], dyn_lme['grp'], dyn_lme['val'])
+            pv_str = util_fcns.get_pv_str(pv)
+            mx = np.max(vaf_dyn['dyn_gen'])
+            axbar.plot([0+nbars_offs, 1+nbars_offs], [1.1*mx, 1.1*mx], 'k-')
+            axbar.text(.5+nbars_offs, 1.15*mx, pv_str, ha ='center')
+        
         fbar.tight_layout()
 
-        if gen_vs_tsk_instead_of_shuff:
-            fbar.savefig(analysis_config.config['fig_dir']+'%s_fig5_cond_spec_next_time_act_gen_vs_tskspec.svg'%(animal))
-        else:
-            fbar.savefig(analysis_config.config['fig_dir']+'%s_fig5_cond_spec_next_time_act.svg'%(animal))
+    if gen_vs_tsk_instead_of_shuff:
+        fbar.savefig(analysis_config.config['fig_dir']+'fig5_cond_spec_next_time_act_gen_vs_tskspec.svg')
+    else:
+        fbar.savefig(analysis_config.config['fig_dir']+'fig5_cond_spec_next_time_act.svg')
 
 ### Generalization of Neural dynamics across tasks #####
 ### Generalization of neural dynamics -- population R2 ### -- figure 6(?)
@@ -4679,8 +4910,8 @@ def eigvalue_2D_hist(animal, dt = 0.1, plt_evs_gte = .99, dat = None, with_inter
 
 def eigvalue_perc_gte_binsize(dt = 0.1, dat = None, with_intercept = True):
     dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
-    f, ax = plt.subplots(figsize = (4, 4))
-    ax = [None, None, ax]
+    f, ax = plt.subplots(ncols = 3, figsize = (12, 4))
+    #ax = [None, None, ax]
     i_m = 2; 
     n_folds = 5
 
@@ -4688,6 +4919,8 @@ def eigvalue_perc_gte_binsize(dt = 0.1, dat = None, with_intercept = True):
 
         eigs = dict(); eigs_perc = dict(); 
         shuff_eigs = dict(); shuff_eigs_perc = dict(); 
+
+        lme_dict = dict(day = [], grp = [], val = [])
 
         #### Iterate through days ####
         for i_d in range(analysis_config.data_params[animal+'_ndays']):
@@ -4737,32 +4970,48 @@ def eigvalue_perc_gte_binsize(dt = 0.1, dat = None, with_intercept = True):
             day_perc = np.hstack((eigs_perc[i_d]))
 
             #### Shuffle Eigs Raw number #####
-            # ax[0].plot([3*i_a, 3*i_a + 1], [np.mean(shuff_day), np.mean(day)], 
-            #     '-', color = 'gray')
+            ax[0].plot([3*i_a, 3*i_a + 1], [np.mean(shuff_day), np.mean(day)], 
+                '-', color = 'gray')
 
-            #### Percent increase in EVs gte shuff #####
-            # ax[1].plot([3*i_a, 3*i_a + 1], [0, (np.mean(day) - np.mean(shuff_day)) / np.mean(shuff_day)], 
-            #     '-', color = 'gray')
+            ### Percent increase in EVs gte shuff #####
+            ax[1].plot([3*i_a, 3*i_a + 1], [0, (np.mean(day) - np.mean(shuff_day)) / np.mean(shuff_day)], 
+                '-', color = 'gray')
 
             ### Frac EVs > .1 ####
             ax[2].plot([3*i_a, 3*i_a + 1], [np.mean(shuff_perc), np.mean(day_perc)], 
                 '-', color = 'gray')
 
-        #### Plot all ####
-        # util_fcns.draw_plot(3*i_a, np.hstack((shf)), 'gray', 'white', ax[0], width = 0.9)
-        # ax[0].bar(3*i_a + 1, np.hstack((egs)), width = 0.9, color = 'k')          
+            ### Sig ####
+            lme_dict['day'].append([i_d, i_d])
+            lme_dict['grp'].append([0., 1.])
+            lme_dict['val'].append([np.mean(shuff_perc), np.mean(day_perc)])
 
-        #### Plot number of eigs > and fraction of eigs > and fraction increase in eigs > .1; 
-        # util_fcns.draw_plot(3*i_a, np.hstack((shf)) - np.mean(shf), 'gray', 'white', ax[1], width = 0.9)
-        # ax[1].bar(3*i_a + 1, (np.hstack((egs)) - np.mean(shf)) /np.mean(shf), width = 0.9, color = 'k')          
+            #### Perc sig for day ###
+            ix = np.nonzero(shuff_perc >= np.mean(day_perc))[0]
+            print('Animal %s, Day %d, pv = %.5f' %(animal, i_d, float(len(ix))/float(len(shuff_perc))))
+
+        #### Plot all ####
+        util_fcns.draw_plot(3*i_a, np.hstack((shf)), 'gray', 'white', ax[0], width = 0.9)
+        ax[0].bar(3*i_a + 1, np.hstack((egs)), width = 0.9, color = 'k')          
+
+        ### Plot number of eigs > and fraction of eigs > and fraction increase in eigs > .1; 
+        util_fcns.draw_plot(3*i_a, np.hstack((shf)) - np.mean(shf), 'gray', 'white', ax[1], width = 0.9)
+        ax[1].bar(3*i_a + 1, (np.hstack((egs)) - np.mean(shf)) /np.mean(shf), width = 0.9, color = 'k')          
 
         util_fcns.draw_plot(3*i_a, np.hstack((shf_perc)), 'gray', 'white', ax[2], width = 0.9)
-        ax[2].bar(3*i_a + 1, np.hstack((egs_perc)), width = 0.9, color = 'k')          
+        ax[2].bar(3*i_a + 1, np.mean(np.hstack((egs_perc))), width = 0.9, color = 'k')          
 
+        print('Animal %s' %(animal))
+        util_fcns.run_LME(lme_dict['day'], lme_dict['grp'], lme_dict['val'])
+
+    ax[0].set_xlim([-.5, 4.5])
+    ax[1].set_xlim([-.5, 4.5])
     ax[2].set_xlim([-.5, 4.5])
+    ax[0].set_ylabel('# Eigenvalues \n w. Time Decay > 0.1sec')
+    ax[1].set_ylabel('% Increase in Eigenvalues \n w. Time Decay > 0.1sec greater than shuffle')
     ax[2].set_ylabel('% Eigenvalues \n w. Time Decay > 0.1sec')
     f.tight_layout()
-    f.savefig(analysis_config.config['fig_dir'] + 'fig6_perc_eigs_gte_binsize.svg')
+    #f.savefig(analysis_config.config['fig_dir'] + 'fig6_perc_eigs_gte_binsize.svg')
 
 def plot_eigs_from_LDS():
     n_states = 15; 
@@ -4845,6 +5094,8 @@ def analze_fixed_pt(dat):
         norm_diff_shuff_minus_mn = []
         all_sig = True
 
+        lme_dict = dict(day = [], grp = [], val = [])
+
         ##### for each day and task -- 
         for i_d in range(analysis_config.data_params[animal+'_ndays']):
 
@@ -4873,14 +5124,17 @@ def analze_fixed_pt(dat):
                     shuf_stb_i = np.squeeze(np.array(np.dot(ImAinv, 10*I[:, np.newaxis])))
                     shuf_stb.append(np.linalg.norm(shuf_stb_i - mFR))
 
-            pv = 0
-            for s in stb:
-                if np.any(np.hstack((shuf_stb)) >= s):
-                    all_sig = False
+            ix = np.nonzero(np.mean(stb) <= np.hstack((shuf_stb)))[0]
+            print('Animal %s, day %d, pv %.5f' %(animal, i_d, float(len(ix))/float(len(np.hstack((shuf_stb))))))
 
             #### Computing norm diffs #####
             norm_diff_true.append(stb)
             norm_diff_shuff.append(shuf_stb)
+            
+            lme_dict['day'].append([i_d, i_d])
+            lme_dict['grp'].append([0, 1])
+            lme_dict['val'].append([np.mean(np.hstack((shuf_stb))), np.mean(np.hstack((stb)))])
+
             mn_shuf = np.mean(np.hstack((shuf_stb)))
             norm_diff_shuff_mn.append(mn_shuf)
             norm_diff_shuff_minus_mn.append(np.hstack((shuf_stb)) - mn_shuf)
@@ -4908,13 +5162,22 @@ def analze_fixed_pt(dat):
             axi.set_xticks([0, 1, 3, 4])
             axi.set_xticklabels(['shuffled', 'data', 'shuffled', 'data'], rotation=45)
 
-        if all_sig:
-            axraw.plot([3*i_a, 3*i_a+1], [1.1*mx, 1.1*mx], 'k-')
-            axraw.text(3*i_a + 0.5, 1.15*mx, '***', ha='center')
-            axrel.plot([3*i_a, 3*i_a+1], [1.1*mx2, 1.1*mx2], 'k-')
-            axrel.text(3*i_a + 0.5, 1.15*mx2, '***', ha='center')
+        # if all_sig:
+        #     axraw.plot([3*i_a, 3*i_a+1], [1.1*mx, 1.1*mx], 'k-')
+        #     axraw.text(3*i_a + 0.5, 1.15*mx, '***', ha='center')
+            
+        #     axrel.plot([3*i_a, 3*i_a+1], [1.1*mx2, 1.1*mx2], 'k-')
+        #     axrel.text(3*i_a + 0.5, 1.15*mx2, '***', ha='center')
+        
         axraw.set_ylabel('Norm Diff. Between mFR and Fixed Point')
         axrel.set_ylabel('Frac. Increase in \nNorm Diff. Between mFR and Fixed Point')
+
+        ##### Print signifcnat 
+        print('Animal %s' %(animal))
+        pv, slp = util_fcns.run_LME(lme_dict['day'], lme_dict['grp'], lme_dict['val'])
+        pv_str = util_fcns.get_pv_str(pv)
+        axraw.plot([3*i_a, 3*i_a + 1], [1.1*mx, 1.1*mx], 'k-', linewidth=1.)
+        axraw.text(3*i_a + 0.5, 1.15*mx, pv_str, ha='center')
 
     frel.tight_layout()
     fraw.tight_layout()

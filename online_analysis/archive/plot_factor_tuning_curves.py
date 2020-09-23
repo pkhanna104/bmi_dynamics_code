@@ -193,10 +193,9 @@ def generate_KG_decoder_jeev():
         KG_approx[day] = KG.copy();
         KG_approx[day, 'R2'] = R2_best;
 
-        ### now estimate F matrix;
+        ######### now estimate F matrix;##########
         cursor_kin_all_t = np.vstack((cursor_kin_all_t))[:, [0, 2, 3, 5, 6]]
         cursor_kin_all_tm1 = np.vstack((cursor_kin_all_tm1))[:, [0, 2, 3, 5, 6]]
-
         bin_spk_all_t = np.vstack((bin_spk_all_t))
 
         _, N = KG.shape
@@ -211,8 +210,26 @@ def generate_KG_decoder_jeev():
         ## Cannot reasonably estimate velocity; 
         Fest_vel = np.mat(np.linalg.lstsq(cursor_kin_all_tm1[:, [2, 3, 4]], rez[:, [2, 3]])[0]).T
 
-        rez_vel_est = np.dot(Fest_vel, cursor_kin_all_tm1[:, [2, 3, 4].T).T
-        R2_f_vel = util_fcns.get_R2(cursor_kin_all_t[:, [2, 3, 4]], rez_vel_est)
+        rez_vel_est = np.dot(Fest_vel, cursor_kin_all_tm1[:, [2, 3, 4]].T).T
+        #R2_f_vel = util_fcns.get_R2(cursor_kin_all_t[:, [2, 3, 4]], rez_vel_est)
+
+        ####### estimate F as (I - KC)*A
+        KG_inflate = np.vstack((np.zeros((3, N)), KG[0, :], np.zeros((1, N)), KG[1, :], np.zeros((1, N)) ))
+        decoder = sio.loadmat(analysis_config.config['jeev_pref'] + te_num)
+        A = np.mat([[1., 0., 0., .1, 0., 0., 0.],
+                    [0., 0., 0., 0., 0., 0., 0.],
+                    [0., 0., 1., 0., 0., .1, 0.],
+                    [0., 0., 0., .7, 0., 0., 0.],
+                    [0., 0., 0., 0., 0., 0., 0.],
+                    [0., 0., 0., 0., 0., .7, 0.],
+                    [0., 0., 0., 0., 0., 0., 1.]])
+
+        ### 3 x 20 ###
+        C = decoder['decoder']['beta'][0, 0]/100. ### m --> cm 
+        C = np.vstack((np.zeros((3, N)), C[0, :], np.zeros((1, N)), C[1, :], C[2, :]))
+        C = C.T
+        F = np.dot(np.eye(7) - np.dot(KG_inflate, C), A)
+        KG_approx[day, 'F'] = F.copy()
 
     ### Save this: 
     pickle.dump(KG_approx, open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/jeev_KG_approx_fit.pkl', 'wb'))

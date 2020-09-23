@@ -63,3 +63,19 @@ data_params['jbins'] = np.linspace(-9., 9., 40)
 ##################################
 pref_colors = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab', 
 		'teal', 'steelblue', 'midnightblue', 'darkmagenta', 'black', 'gray']
+
+def print_params(te):
+	for i_d, day in enumerate(te):
+		for i_t, tsk in enumerate(day):
+			for i_te, tei in enumerate(tsk):
+
+				tedb = dbfn.TaskEntry(tei)
+
+				try:
+					print('TE %d: Center Target = %.2f, Cursor Rad = %.2f, \
+					Target Rad = %.2f, Target Dist = %.2f, Tiemout Time = %.2f, \
+					Hold Time = %.2f' %(tei, tedb.target_radius, tedb.cursor_radius,
+						tedb.target_radius, 10, tedb.timeout_time, tedb.hold_time))
+				except:
+					print('pass te %d'%(tei))
+

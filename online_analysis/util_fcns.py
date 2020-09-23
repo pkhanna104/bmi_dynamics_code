@@ -174,6 +174,11 @@ def get_jeev_decoder(day_ix):
     KG_potent = KG.copy(); #$[[3, 5], :]; # 2 x N
     return np.squeeze(np.array(KG_potent))
 
+def get_jeev_F(day_ix):
+    kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'))
+    F = kgs[day_ix, 'F'] ## 7 x N 
+    return np.squeeze(np.array(F))
+
 def get_decoder(animal, day_ix):
     ''' 
     returns 2 x N decoder 
