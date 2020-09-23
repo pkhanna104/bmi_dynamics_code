@@ -9,6 +9,8 @@ import tables
 import os
 
 from online_analysis import util_fcns, plot_generated_models
+import seaborn 
+seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
 try:
     import test_smoothness_mets
@@ -174,16 +176,16 @@ class Experiment_Cursor(Cursor):
             KG = util_fcns.get_decoder(animal, day)
             
             N = KG.shape[1]
+
+            ### 7 x N 
             KG = np.vstack(( np.zeros((3, N)), KG[0, :], np.zeros((1, N)), KG[1, :], np.zeros((1, N)) ))
 
+            ### 7 x 7
+            F = util_fcns.get_jeev_F(day)
 
-            F = np.array([[1., 0., 0., .1, 0., 0., 0.], 
-                          [0., 0., 0., 0., 0., 0., 0.],
-                          [0., 0., 1., 0., 0., .1, 0.],
-                          [0., 0., 0.,.8,  0., 0., 0.],
-                          [0., 0., 0., 0., 0., 0., 0.],
-                          [0., 0., 0., 0., 0., .8, 0.],
-                          [0., 0., 0., 0., 0., 0., 1.]])
+            # zero out off diagonals? 
+            #F[3, 5] = 0.
+            #F[5, 3] = 0.
 
         if keep_offset:
             ### Get "input" matrix: 
@@ -566,15 +568,16 @@ class Combined_Curs_Brain_LQR_Simulation(object):
             st = st / np.sqrt(nreps)
 
             if plot_traj: 
-                ax2.plot(np.nanmean(us_all_mask, axis=0), '-', color=cmap_list[it])
-                ax2.fill_between(np.arange(us_all_mask.shape[1]), mn-st, mn+st, 
+                tm = np.arange(us_all_mask.shape[1])*.1
+                ax2.plot(tm, np.nanmean(us_all_mask, axis=0), '-', color=cmap_list[it])
+                ax2.fill_between(tm, mn-st, mn+st, 
                     color=cmap_list[it], alpha=0.5)
         
         #if plot_traj: 
             #ax2.set_ylim([0., .1])
 
         if plot_traj: 
-            return ax, ax2, np.hstack((trl_tm)), np.hstack((total_u)), np.hstack((mean_u))
+            return (f, ax), (f2, ax2), np.hstack((trl_tm)), np.hstack((total_u)), np.hstack((mean_u))
         else:
             return np.hstack((trl_tm)), np.hstack((total_u)), np.hstack((mean_u))
 
