@@ -1,6 +1,9 @@
 import scipy.io as sio
+import scipy.stats as sio_stat
+import scipy.interpolate
 import numpy as np
 import pandas as pd
+import xarray as xr
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -42,15 +45,16 @@ def traj_signed_area_about_target_axis(traj_x, traj_y, target_pos):
 
     #2)
     a_traj = np.hstack((0, np.diff(t_proj)*to_proj[1:]))
-    a = np.sum(a_traj)
+    sa = np.sum(a_traj)
+    a = np.sum(np.abs(a_traj))
     d_dic = {'kin_px':traj_x, 'kin_py':traj_y, 
     'kin_pt':t_proj, 'kin_pto':to_proj, 
-    'kin_pt_area':a_traj, 'kin_pt_cum_area':np.cumsum(a_traj)}
+    'kin_pto_area':a_traj, 'kin_pto_cum_area':np.cumsum(a_traj)}
     df = pd.DataFrame(data=d_dic)
 
     #Return a dataframe for traj, proj, area
     #Return the area as a
-    return a, df
+    return sa, a, df   
 
 def target_axes(target_pos):
     """
@@ -79,14 +83,30 @@ def cartesian2polar(y,x):
     angle = np.arctan2(y,x)
     return mag, angle
 
-def center_angle(angle, ctr_orig, ctr_new):
+#COMMENT: I don't think this works in general, it worked for the case I was using in notebook:
+#'psth_polar_interp_separate_cw_ccw.ipynb'
+# def center_angle(angle, ctr_orig, ctr_new):
+#     """
+#     ctr_orig: the center angle of angle data.  
+#     e.g. if angle ranges from (0,2*pi) then the center is pi.  
+#     if angle ranges from (-pi,pi) then the center is 0.
+#     """
+#     angle_center = (angle+(np.pi-ctr_orig)-ctr_new)%(2*np.pi)-(np.pi-ctr_orig)
+#     return angle_center   
+
+#COMMENT: This code is the one to use... not center_angle...
+def center_angle(angle, ctr):
     """
-    ctr_orig: the center angle of angle data.  
-    e.g. if angle ranges from (0,2*pi) then the center is pi.  
-    if angle ranges from (-pi,pi) then the center is 0.
+    angle: array-like
+    ctr: the center angle of angle data.  
+    e.g. if you want angle to range from (0,2*pi) then the center is pi.  
+    if you want angle to range from (-pi,pi) then the center is 0.
     """
-    angle_center = (angle+(np.pi-ctr_orig)-ctr_new)%(2*np.pi)-(np.pi-ctr_orig)
-    return angle_center
+    angle = np.array(angle)
+    angle2round = np.array((ctr-angle)/(2*np.pi))
+    angle_center = angle+np.matrix.round(angle2round)*2*np.pi
+    # angle_center = angle+np.matrix.round((ctr-angle)/(2*np.pi))*2*np.pi
+    return angle_center       
 
 def bin_data_pt(data_pt, bins): 
     #assumes: 
@@ -103,6 +123,7 @@ def bin_vec_data(vec_data, bin_dic):
 
     assumes: 
     vec_data is num_observations X num_dim
+
     bin_dic is a dictionary num_dim keys from 0,...,num_dim-1
     Each entry in bin_dic is a matrix of 2xnum_bins, with:
     top row is bin's bottom edge
@@ -311,3 +332,941 @@ def polar_heat_map(heat_data, mag_bin, angle_bin, cmap, vmin, vmax):
     plt.show() 
 
     return fig, ax
+
+def plot_polar_bins(angle_bin_edges, mag_bin_edges, angle_bin_colors, angle_linewidth=3):
+    """
+    8.20.2020
+    INPUT: 
+    bin_edges (for angle and mag): 2xnum_bins.  top row = lower bin edge, bot row = upper bin edge
+    angle_colors = colors for each angle bin
+    """
+    mag_max = mag_bin_edges[-1,-1]
+    angle_bin_c = np.mean(angle_bin_edges,axis=0)
+    mag_bin = np.hstack((mag_bin_edges[0,:], mag_max))
+    for i,b in enumerate(angle_bin_edges.T):
+        x1 = np.cos(b[0])*mag_max
+        y1 = np.sin(b[0])*mag_max
+#         plt.plot([0, x1], [0, y1], color=target_color[i])
+        plt.plot([0, x1], [0, y1], '--', color=np.ones(3)*0.8,zorder=0)#'k')  
+    
+    for i,a in enumerate(angle_bin_c): 
+        x1 = np.cos(a)*mag_max
+        y1 = np.sin(a)*mag_max
+        plt.plot([0, x1], [0, y1], color=angle_bin_colors[i], linewidth=angle_linewidth,zorder=0)
+
+    for b in mag_bin:
+        theta = np.linspace(0,2*np.pi,1000)
+        plt.plot(b*np.cos(theta), b*np.sin(theta), 'k',zorder=0)
+    plt.axis('square')
+    plt.xlabel('x')
+    plt.ylabel('y')        
+
+def calc_command_trials_dic_da(df, win, num_var, num_tasks, num_targets, num_mag_bins, num_angle_bins):
+    """
+    fills out a dictionary with key: (task, target, mag_bin, angle_bin)
+    each entry is an xarray data array with 3 dimensions: 
+    var, time, trial
+
+    """
+    task_target_bin_dic = {}
+    num_win = win[1]-win[0]+1
+    for task in range(num_tasks): #[0]: 
+        for target in range(num_targets): #[0]:
+            for bm in range(num_mag_bins):
+                for ba in range(num_angle_bins):
+                    #identify the number of data points: 
+                    task_sel = (df['task'] == task)
+                    target_sel = (df['target'] == target)
+                    mag_sel = (df['u_v_mag_bin']==bm)
+                    angle_sel = (df['u_v_angle_bin']==ba)
+                    not_begin = (df['bin']>-win[0])
+                    not_end = (df['bin_end']>win[1])
+                    
+                    sel = task_sel&target_sel&mag_sel&angle_sel&not_begin&not_end
+                    trial_idxs = np.where(sel)[0]
+                    num_trials = len(trial_idxs)
+                    
+                    #Initialize a nan-filled xarray
+                    nan_mat = np.ones((num_var, num_win, num_trials))*np.nan
+                    da = xr.DataArray(nan_mat,
+                                coords={'var':list(df.columns),
+                                                 'time':range(win[0],win[1]+1),
+                                                 'trial':range(num_trials)},
+                                dims=['var','time','trial'])
+                    #Trials: 
+                    #-----------------------------------------------------------------------------
+                    for i,trial in enumerate(trial_idxs): 
+                        trial_data = np.array(df.loc[(trial+win[0]):(trial+win[1]),:]).T
+    #                     print(trial_data.shape)
+    #                     print(da[:,:,i].shape)
+                        da[:,:,i] = trial_data
+                    #-----------------------------------------------------------------------------
+            
+                    #ASSIGN:
+                    task_target_bin_dic[task,target,bm,ba] = da
+                    task_target_bin_dic[task,target,bm,ba,'num'] = num_trials
+                    print(task, target, bm, ba, num_trials)
+    return task_target_bin_dic
+
+def calc_command_psth(task_target_bin_dic, psth_var, min_trials, num_tasks, num_targets, num_mag_bins, num_angle_bins):
+    for task in range(num_tasks): #[0]: 
+        for target in range(num_targets): #[0]:
+            for bm in range(num_mag_bins):
+                for ba in range(num_angle_bins):
+                    da = task_target_bin_dic[task,target,bm,ba]
+                    num_trials = task_target_bin_dic[task,target,bm,ba,'num']
+                    if num_trials >= min_trials:
+                        psth = da.loc[psth_var,:,:].mean(axis=2)
+
+                        task_target_bin_dic[task,target,bm,ba,'psth'] = psth
+
+                        #Split into two halves for within-movement comparison: 
+                        #get two random halves of trials
+                        rnd_order = np.arange(num_trials)
+                        np.random.shuffle(rnd_order)
+                        half = int(round(num_trials/2))
+                        rnd0 = np.sort(rnd_order[:half])
+                        rnd1 = np.sort(rnd_order[half:])
+                        #
+                        psth0 = da.loc[psth_var,:,rnd0].mean(axis=2)
+                        psth1 = da.loc[psth_var,:,rnd1].mean(axis=2)
+                        #
+                        task_target_bin_dic[task,target,bm,ba,'psth_trials',0] = rnd0
+                        task_target_bin_dic[task,target,bm,ba,'psth_trials',1] = rnd1
+                        task_target_bin_dic[task,target,bm,ba,'psth',0] = psth0
+                        task_target_bin_dic[task,target,bm,ba,'psth',1] = psth1
+
+def calc_command_psth_center_at_lag(task_target_bin_dic, psth_var, lag_idx_c, min_trials, num_tasks, num_targets, num_mag_bins, num_angle_bins):
+    for task in range(num_tasks): #[0]: 
+        for target in range(num_targets): #[0]:
+            for bm in range(num_mag_bins):
+                for ba in range(num_angle_bins):
+                    da = task_target_bin_dic[task,target,bm,ba]
+                    num_trials = task_target_bin_dic[task,target,bm,ba,'num']
+                    if num_trials >= min_trials:
+                        data = da.loc[psth_var,:,:]
+                        data_c = center_by_data_at_lag(data, lag_idx_c, lag_axis=1)
+                        psth = data_c.mean(axis=2)
+
+                        task_target_bin_dic[task,target,bm,ba,'psth'] = psth
+
+                        #Split into two halves for within-movement comparison: 
+                        #get two random halves of trials
+                        rnd_order = np.arange(num_trials)
+                        np.random.shuffle(rnd_order)
+                        half = int(round(num_trials/2))
+                        rnd0 = np.sort(rnd_order[:half])
+                        rnd1 = np.sort(rnd_order[half:])
+                        #
+                        data0 = da.loc[psth_var,:,rnd0]
+                        data0_c = center_by_data_at_lag(data0, lag_idx_c, lag_axis=1)
+                        psth0 = data0.mean(axis=2)
+
+                        data1 = da.loc[psth_var,:,rnd1]
+                        data1_c = center_by_data_at_lag(data1, lag_idx_c, lag_axis=1)
+                        psth1 = data0.mean(axis=2)
+
+                        #
+                        task_target_bin_dic[task,target,bm,ba,'psth_trials',0] = rnd0
+                        task_target_bin_dic[task,target,bm,ba,'psth_trials',1] = rnd1
+                        task_target_bin_dic[task,target,bm,ba,'psth',0] = psth0
+                        task_target_bin_dic[task,target,bm,ba,'psth',1] = psth1                        
+
+def center_by_data_at_lag(data, lag, lag_axis=1):
+    """
+    Centers a data matrix by data at a specific lag (i.e. index) along a specific axis
+    """
+    orig_shape = list(data.shape)
+    sel_shape=copy.copy(orig_shape)
+    sel_shape[lag_axis] = 1
+    sel = np.reshape(np.take(np.array(data), lag, lag_axis), sel_shape)
+    sel_expand = np.repeat(sel,orig_shape[lag_axis], axis=lag_axis)
+    data_c = data-sel_expand
+    return data_c
+
+
+# def calc_command_psth(task_target_bin_dic, psth_var, min_trials, num_tasks, num_targets, num_mag_bins, num_angle_bins):
+#     for task in range(num_tasks): #[0]: 
+#         for target in range(num_targets): #[0]:
+#             for bm in range(num_mag_bins):
+#                 for ba in range(num_angle_bins):
+#                     da = task_target_bin_dic[task,target,bm,ba]
+#                     if task_target_bin_dic[task,target,bm,ba,'num'] >= min_trials:
+#                         psth = da.loc[psth_var,:,:].mean(axis=2)
+#                         task_target_bin_dic[task,target,bm,ba,'psth'] = psth
+
+def calc_command_psth_diff(task_target_bin_dic, psth_var, task_pairs, zero_lag_idx, min_trials, num_targets, num_mag_bins, num_angle_bins):
+    """
+    This code calculates the difference between psth's locked to a command. 
+    ASSUMES two tasks
+    REQUIRES task_target_bin_dic was modified by method 'calc_command_psth' to have the 'psth' entry
+    INPUT:
+    'task_target_bin_dic' computed from 'calc_command_psth'
+    'task_pairs' - list of tuples, each tuple contains the two tasks to compare.  common use would be: [(0,0), (0,1), (1,1)]
+    OUTPUT:
+    'diff_df' - dataframe 
+    """
+    columns = ['diff_norm',
+                'mag_bin', 'angle_bin', 
+                'task0', 'target0', 'num_trials0', 'u_vx0', 'u_vy0',
+                'task1', 'target1', 'num_trials1', 'u_vx1', 'u_vy1']
+    num_col = len(columns)
+    nan_df = pd.DataFrame(np.ones((1,num_col))*np.nan, columns=columns)
+    df_list = []
+    task_pairs = [(0,0), (0,1), (1,1)]
+    vec_diff_dic = {}
+
+    for task0, task1 in task_pairs:
+        for t0 in range(num_targets):
+            if task0 == task1:
+                t1_set = range(t0, num_targets)
+            else:
+                t1_set = range(0,num_targets)
+            for t1 in t1_set:
+                print(task0, t0, task1, t1)
+                for bm in range(num_mag_bins):
+                    for ba in range(num_angle_bins):
+                        num_trials0 = task_target_bin_dic[task0,t0,bm,ba,'num']
+                        d0_valid = num_trials0 >= min_trials
+                        num_trials1 = task_target_bin_dic[task1,t1,bm,ba,'num']
+                        d1_valid = num_trials1 >= min_trials                        
+                        if d0_valid&d1_valid:
+                            #Check if same movement: 
+                            if (task0==task1)&(t0==t1):
+                                #if same movement, compare psth's on different splits of data: 
+                                d0_a = task_target_bin_dic[task0,t0,bm,ba,'psth',0]
+                                d0 = d0_a.loc[psth_var,:]
+                                d1_a = task_target_bin_dic[task0,t0,bm,ba,'psth',1]
+                                d1 = d1_a.loc[psth_var,:]
+                            else:
+                                d0_a = task_target_bin_dic[task0,t0,bm,ba,'psth']
+                                d0 = d0_a.loc[psth_var,:]
+                                d1_a = task_target_bin_dic[task1,t1,bm,ba,'psth']
+                                d1 = d1_a.loc[psth_var,:]
+
+                            #ASSIGN:
+                            vec_diff_dic[bm, ba, task0, t0, task1, t1] = d0-d1
+                            df_i = copy.copy(nan_df)
+                            df_i['diff_norm'] = np.linalg.norm(d0-d1)
+                            df_i['mag_bin'] = bm
+                            df_i['angle_bin'] = ba
+
+                            df_i['task0'] = task0
+                            df_i['target0'] = t0
+                            df_i['num_trials0'] = num_trials0
+                            df_i['u_vx0'] = float(d0_a.loc['u_vx',zero_lag_idx])
+                            df_i['u_vy0'] = float(d0_a.loc['u_vy',zero_lag_idx])
+                            
+                            df_i['task1'] = task1
+                            df_i['target1'] = t1
+                            df_i['num_trials1'] = num_trials1
+                            df_i['u_vx1'] = float(d1_a.loc['u_vx',zero_lag_idx])
+                            df_i['u_vy1'] = float(d1_a.loc['u_vy',zero_lag_idx])
+                            #APPEND:
+                            df_list.append(df_i)
+
+    diff_df = pd.concat(df_list, ignore_index=True)
+    return diff_df, vec_diff_dic
+
+# def calc_command_psth_diff(task_target_bin_dic, min_trials, num_targets, num_mag_bins, num_angle_bins):
+#     """
+#     This code calculates the difference between psth's locked to a command. 
+#     It uses 'task_target_bin_dic'
+#     It's hard coded to compare task0 movements to task1 movements
+#     output: 
+#     da_diff - data array with dimensions: mag_bin, angle_bin, target_task0, target_task1, value: psth difference
+#     d_accum - array containing all the differences 
+#     """
+
+#     nan_mat = np.ones((num_mag_bins, num_angle_bins, num_targets, num_targets))*np.nan
+#     da = xr.DataArray(nan_mat,
+#                 coords={'mag':range(num_mag_bins),
+#                                 'angle':range(num_angle_bins),
+#                                 't0':range(num_targets),
+#                                 't1':range(num_targets)},
+#                       dims=['mag','angle','t0','t1'])
+#     d_accum = []
+#     for bm in range(num_mag_bins):
+#         for ba in range(num_angle_bins):
+#             for t0 in range(num_targets):
+#                 task = 0
+#                 d0_valid = task_target_bin_dic[task,t0,bm,ba,'num'] >= min_trials
+#                 if d0_valid: 
+#                     d0 = task_target_bin_dic[task,t0,bm,ba,'psth']            
+#                     for t1 in range(num_targets):
+#                         task = 1
+#                         d1_valid = task_target_bin_dic[task,t1,bm,ba,'num'] >= min_trials
+#                         if d1_valid: 
+#                             d1 = task_target_bin_dic[task,t1,bm,ba,'psth']
+#                             da[bm, ba, t0, t1] = np.linalg.norm(d0-d1)
+#                             d_accum.append(da[bm, ba, t0, t1])    
+#     da_diff = da
+#     d_accum = np.array(d_accum)
+#     return da_diff, d_accum
+
+def calc_command_triggered_psth_diff_at_lag(lags, task_target_bin_dic, min_trials, num_mag_bins, num_angle_bins, num_targets, num_tasks):
+    """
+
+    """
+    #Calc diff of mag and diff of angle: 
+    columns = ['diff_mag', 'diff_angle', 'diff_mag_abs', 'diff_angle_abs',
+                'diff_norm', 'diff_x', 'diff_y', 'lag',
+                'mag_bin_current', 'angle_bin_current', 
+                'task0', 'target0', 'num_trials0', 'u_vx0', 'u_vy0',
+                'task1', 'target1', 'num_trials1', 'u_vx1', 'u_vy1']
+    num_col = len(columns)
+    nan_df = pd.DataFrame(np.ones((1,num_col))*np.nan, columns=columns)
+    df_list = []
+    task_pairs = [(0,0), (0,1), (1,1)]
+    #Compute:        
+
+    for task0, task1 in task_pairs:
+        for t0 in range(num_targets):
+            if task0 == task1:
+                t1_set = range(t0, num_targets)
+            else:
+                t1_set = range(0,num_targets)
+            # t1_set = range(0,num_targets)
+            for t1 in t1_set:
+                print(task0, t0, task1, t1)
+                for bm in range(num_mag_bins):
+                    for ba in range(num_angle_bins):
+                        num_trials0 = task_target_bin_dic[task0,t0,bm,ba,'num']
+                        d0_valid = num_trials0 >= min_trials
+                        num_trials1 = task_target_bin_dic[task1,t1,bm,ba,'num']
+                        d1_valid = num_trials1 >= min_trials                        
+
+                        if d0_valid&d1_valid:
+                            #Check if same movement: 
+                            if (task0==task1)&(t0==t1):
+                                #if same movement, compare psth's on different splits of data: 
+                                d0 = task_target_bin_dic[task0,t0,bm,ba,'psth',0]
+                                d1 = task_target_bin_dic[task0,t0,bm,ba,'psth',1]
+                            else:
+                                d0 = task_target_bin_dic[task0,t0,bm,ba,'psth']
+                                d1 = task_target_bin_dic[task1,t1,bm,ba,'psth']
+
+                            for l in lags:
+                                #Convert to polar: 
+                                x0 = float(d0.loc['u_vx',l])
+                                y0 = float(d0.loc['u_vy',l])
+                                d0_mag = np.linalg.norm(np.array(d0.loc[:,l]))                            
+                                d0_angle = np.arctan2(y0,x0)
+                                
+                                x1 = float(d1.loc['u_vx',l])
+                                y1 = float(d1.loc['u_vy',l])
+                                d1_mag = np.linalg.norm(np.array(d1.loc[:,l]))        
+                                d1_angle = np.arctan2(y1,x1)
+                                                        
+                                l_diff_mag = d0_mag-d1_mag
+                                l_diff_angle = center_angle(d1_angle-d0_angle, 0) 
+                                l_diff_norm = np.linalg.norm(np.array([x0-x1, y0-y1]))                           
+                                
+                                #ASSIGN:
+                                df_i = copy.copy(nan_df)
+                                df_i['diff_mag_abs'] = np.abs(l_diff_mag)
+                                df_i['diff_angle_abs'] = np.abs(l_diff_angle)
+                                df_i['diff_mag'] = l_diff_mag
+                                df_i['diff_angle'] = l_diff_angle
+                                df_i['diff_norm'] = l_diff_norm
+                                df_i['diff_x'] = float(x0-x1)
+                                df_i['diff_y'] = float(y0-y1)
+                                df_i['lag'] = l
+                                df_i['mag_bin_current'] = bm
+                                df_i['angle_bin_current'] = ba
+                                
+                                df_i['task0'] = task0
+                                df_i['target0'] = t0
+                                df_i['num_trials0'] = num_trials0
+                                df_i['u_vx0'] = x0
+                                df_i['u_vy0'] = y0
+                                
+                                df_i['task1'] = task1
+                                df_i['target1'] = t1
+                                df_i['num_trials1'] = num_trials1
+                                df_i['u_vx1'] = x1
+                                df_i['u_vy1'] = y1
+                                #APPEND: 
+                                df_list.append(df_i)
+                            
+    diff_df = pd.concat(df_list, ignore_index=True)
+    return diff_df  
+
+#
+def calc_command_triggered_psth_diff_at_lag_across_task(lags, task_target_bin_dic, min_trials, num_mag_bins, num_angle_bins, num_targets):
+    """
+
+    """
+    #Calc diff of mag and diff of angle: 
+    columns = ['diff_mag', 'diff_angle', 'diff_x', 'diff_y', 'lag',
+               'mag_bin_current', 'angle_bin_current', 
+               'task0', 'target0', 'num_trials0', 'u_vx0', 'u_vy0',
+               'task1', 'target1', 'num_trials1', 'u_vx1', 'u_vy1']
+    num_col = len(columns)
+    nan_df = pd.DataFrame(np.ones((1,num_col))*np.nan, columns=columns)
+    df_list = []
+    #Compute:        
+    for bm in range(num_mag_bins):
+        for ba in range(num_angle_bins):
+            for t0 in range(num_targets):
+                task = 0
+                num_trials0 = task_target_bin_dic[task,t0,bm,ba,'num']
+                d0_valid = num_trials0 >= min_trials
+                if d0_valid: 
+                    d0 = task_target_bin_dic[task,t0,bm,ba,'psth']            
+                    for t1 in range(num_targets):
+                        task = 1
+                        num_trials1= task_target_bin_dic[task,t1,bm,ba,'num']
+                        d1_valid = num_trials1 >= min_trials
+                        if d1_valid: 
+                            d1 = task_target_bin_dic[task,t1,bm,ba,'psth']
+    #                         psth_diff = d0-d1
+                            #loop lags: 
+                            for l in lags:
+                                #Convert to polar: 
+                                x0 = float(d0.loc['u_vx',l])
+                                y0 = float(d0.loc['u_vy',l])
+                                d0_mag = np.linalg.norm(np.array(d0.loc[:,l]))                            
+                                d0_angle = np.arctan2(y0,x0)
+                                
+                                x1 = float(d1.loc['u_vx',l])
+                                y1 = float(d1.loc['u_vy',l])
+                                d1_mag = np.linalg.norm(np.array(d1.loc[:,l]))        
+                                d1_angle = np.arctan2(y1,x1)
+                                                        
+                                l_diff_mag = d0_mag-d1_mag
+                                l_diff_angle = center_angle(d1_angle-d0_angle, 0)                            
+                                
+                                #ASSIGN:
+                                df_i = copy.copy(nan_df)
+                                df_i['diff_mag'] = l_diff_mag
+                                df_i['diff_angle'] = l_diff_angle
+                                df_i['diff_x'] = float(x0-x1)
+                                df_i['diff_y'] = float(y0-y1)
+                                df_i['lag'] = l
+                                df_i['mag_bin_current'] = bm
+                                df_i['angle_bin_current'] = ba
+                                
+                                df_i['task0'] = 0
+                                df_i['target0'] = t0
+                                df_i['num_trials0'] = num_trials0
+                                df_i['u_vx0'] = x0
+                                df_i['u_vy0'] = y0
+                                
+                                df_i['task1'] = 1
+                                df_i['target1'] = t1
+                                df_i['num_trials1'] = num_trials1
+                                df_i['u_vx1'] = x1
+                                df_i['u_vy1'] = y1
+                                #APPEND: 
+                                df_list.append(df_i)
+                                
+    diff_df = pd.concat(df_list, ignore_index=True)
+    return diff_df  
+
+def plot_hist_stair(bin_edges, data, label=''):
+    """
+    input: 
+    bin_edges: 2 x num_bins
+    """
+    x = []
+    y = []
+    for i,b in enumerate(bin_edges.T):
+        x.append(b[0])
+        x.append(b[1])
+        y.append(data[i])
+        y.append(data[i])
+    if len(label)>0:
+        plt.plot(x,y,label=label,linewidth=2)
+    else:
+        plt.plot(x,y)
+
+def subsample_2datasets_to_match_mean(match_var, d_list, pval_sig, max_iter=5):
+    """
+    This code subsamples data from two data sets so that their means are matched for all chosen variables
+    In future maybe this can be modified to handle more than 2 data sets
+
+    INPUT: 
+    match_var: list of variables which should have no significant difference in mean
+    d_list: list of data sets.  
+    each data set is an xarray
+    xarray: num_var X num_observations
+    pval_sig: pvalue considered statistically significant
+
+    OUTPUT: 
+    DataFrame:
+    a data frame with rows for each data_set, columns include: 
+    num_kept: number of observations kept after matching procedure
+    num_discarded: number of observations discarded during matching procedure
+
+    List:
+    kept_list
+    discard_list
+
+    XArray:
+    ttest_results
+    xarray: num_var X num_features
+    features: t-stat, pval, mean_init, mean_match
+
+    XArray: 
+    mean_results
+    xarray: num_var X num_datasets X 
+
+    """
+    num_d = len(d_list)
+    assert num_d==2, 'Currently mean-matching more than 2 data sets is unsupported!'
+
+    #INITIALIZE:
+    #-----------------------------------------------------------------------------------------------------------------------------
+    #DataFrame
+    columns = ['num_init', 'num_kept', 'num_discarded']
+    num_col = len(columns)
+    nan_df = pd.DataFrame(np.ones((1,num_col))*np.nan, columns=columns)
+    df_list = []
+    kept_list = []
+    discard_list = []
+    for i,d in enumerate(d_list):
+        df_i = copy.copy(nan_df)
+        #ASSIGN:
+        num_observations = d.shape[1]
+        df_i['num_init'] = num_observations
+        df_i['num_kept'] = num_observations
+        df_i['num_discarded'] = 0
+        df_list.append(df_i)
+
+        kept_list.append(range(num_observations))
+        discard_list.append([])
+    # for var in match_
+    df = pd.concat(df_list, ignore_index=True)
+
+    #XArray ttest
+    #NOTE: will need to repeat this at the end of the function:
+    num_var = len(match_var)
+    num_features = 4
+    feature_list = ['tstat_init', 'pval_init', 'tstat_match', 'pval_match']
+    nan_mat = np.ones((num_var, num_features))*np.nan
+    ttest_r = xr.DataArray(nan_mat, coords={'var':match_var, 'features':feature_list}, dims=['var', 'features'])
+
+    #XArray mean: 
+    num_var = len(match_var)
+    num_features = 4
+    feature_list = ['mean_init', 'var_init', 'mean_match', 'var_match']
+    nan_mat = np.ones((num_var, num_d, num_features))*np.nan
+    mean_r = xr.DataArray(nan_mat, coords={'var':match_var, 'dataset':np.arange(num_d), 'features':feature_list}, \
+        dims=['var', 'dataset', 'features'])
+
+    for var in match_var:
+        vd_list = []
+        for i,d in enumerate(d_list):
+            d_i = np.array(d.loc[var,:])
+            vd_list.append(d_i)
+            mean_r.loc[var,i,'mean_init'] = d_i.mean()
+            mean_r.loc[var,i,'var_init'] = d_i.var()
+        (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
+        ttest_r.loc[var, 'tstat_init'] = tstat
+        ttest_r.loc[var, 'pval_init'] = pval
+    #-----------------------------------------------------------------------------------------------------------------------------
+    #PROCEDURE: 
+    #(follows a heuristic, not optimal for sure)
+
+    #Loop over variables
+    #Check if there's a significant difference, if not, skip this loop
+    #If so, remove data from data set with more data
+    
+    complete = False
+    success = False
+    num_iter = 0
+    while not complete: 
+        mean_equal = []
+        for var in match_var:
+            vd_list = []
+            d_num_obs = []
+            for i,d in enumerate(d_list):
+                d_i = np.array(d.loc[var, kept_list[i]]) #data only using kept observations
+                vd_list.append(d_i)
+                d_num_obs.append(len(d_i))
+            d_num_obs = np.array(d_num_obs)
+            d_big = d_num_obs.argmax()
+            d_small = d_num_obs.argmin()
+            num_obs_small = d_num_obs.min()
+            if num_obs_small > 0:
+                (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
+                sig_diff = (pval <= pval_sig)
+                mean_equal.append(not sig_diff)
+                if sig_diff:
+                    if vd_list[d_big].mean() >= vd_list[d_small].mean():
+                        #remove the largest
+                        i_discard = kept_list[d_big][vd_list[d_big].argmax()]
+                        kept_list[d_big].remove(i_discard)
+                        discard_list[d_big].append(i_discard)
+                    else:
+                        #remove the smallest
+                        i_discard = kept_list[d_big][vd_list[d_big].argmin()]
+                        kept_list[d_big].remove(i_discard)
+                        discard_list[d_big].append(i_discard)
+                    df.loc[d_big, 'num_kept'] -= 1
+                    df.loc[d_big, 'num_discarded'] += 1
+
+            else: 
+                print('Mean Matching Failed :(  A data set lost all its data')
+        if all(mean_equal):
+            complete = True
+            success = True
+            print('Mean Matching Succeeded :)')
+        elif num_iter == max_iter:
+            complete = True
+            print('Max Iter Reached')
+        num_iter+=1
+        # print('num iterations:', num_iter)
+        # print('discard_list', discard_list)
+
+    #-----------------------------------------------------------------------------------------------------------------------------
+    #Calculate stats after mean matching: 
+    for var in match_var:
+        vd_list = []
+        for i,d in enumerate(d_list):
+            sel = kept_list[i]
+            d_i = np.array(d.loc[var,sel])
+            vd_list.append(d_i)
+            mean_r.loc[var,i,'mean_match'] = d_i.mean()
+            mean_r.loc[var,i,'var_match'] = d_i.var()
+        (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
+        ttest_r.loc[var, 'tstat_match'] = tstat
+        ttest_r.loc[var, 'pval_match'] = pval
+
+    return kept_list, discard_list, df, ttest_r, mean_r
+
+
+def diff_n_lag0_b_psth_for_command_condition_pair(\
+    task_target_bin_dic, task_pairs, num_tasks, num_targets, num_mag_bins, num_angle_bins, min_trials, n_list):
+    """
+    Code calculates for each (command, condition pair) the difference between neural activity for the command
+    and the difference in behavior psth
+    """
+    columns = ['n_diff_norm', 'b_diff_norm', 'b_diff_norm_lag0',
+                'mag_bin', 'angle_bin', 
+                'task0', 'target0', 'num_trials0', 'u_vx0', 'u_vy0',
+                'task1', 'target1', 'num_trials1', 'u_vx1', 'u_vy1',
+                'u_vx_diff_p', 'u_vx_diff_tstat',
+                'u_vy_diff_p', 'u_vy_diff_tstat',
+                'u_v_mag_diff_p', 'u_v_mag_diff_tstat', 
+                'u_v_angle_diff_p', 'u_v_angle_diff_tstat']
+
+    num_col = len(columns)
+    nan_df = pd.DataFrame(np.ones((1,num_col))*np.nan, columns=columns)
+    df_list = []
+    # task_pairs = [(0,0), (0,1), (1,1)]
+    vec_diff_dic = {}
+
+    for task0, task1 in task_pairs:
+        for t0 in range(num_targets):
+            if task0 == task1:
+                t1_set = range(t0, num_targets)
+            else:
+                t1_set = range(0,num_targets)
+            for t1 in t1_set:
+                print(task0, t0, task1, t1)
+                for bm in range(num_mag_bins):
+                    for ba in range(num_angle_bins):
+                        num_trials0 = task_target_bin_dic[task0,t0,bm,ba,'num']
+                        d0_valid = num_trials0 >= min_trials
+                        num_trials1 = task_target_bin_dic[task1,t1,bm,ba,'num']
+                        d1_valid = num_trials1 >= min_trials                        
+                        if d0_valid&d1_valid:
+                            #Check if same movement: 
+                            if (task0==task1)&(t0==t1):
+                                #if same movement, compare psth's on different splits of data: 
+                                d0 = task_target_bin_dic[task0,t0,bm,ba,'psth',0]
+                                d1 = task_target_bin_dic[task0,t0,bm,ba,'psth',1]
+                                
+                                sel0 = task_target_bin_dic[task0,t0,bm,ba,'psth_trials', 0]
+                                dd0 = task_target_bin_dic[task0,t0,bm,ba].loc[:,0,sel0]
+                                sel1 = task_target_bin_dic[task0,t0,bm,ba,'psth_trials', 1]
+                                dd1 = task_target_bin_dic[task1,t1,bm,ba].loc[:,0,sel1]
+                            else:
+                                d0 = task_target_bin_dic[task0,t0,bm,ba,'psth']
+                                d1 = task_target_bin_dic[task1,t1,bm,ba,'psth']
+                                                        
+                                dd0 = task_target_bin_dic[task0,t0,bm,ba].loc[:,0,:]
+                                dd1 = task_target_bin_dic[task1,t1,bm,ba].loc[:,0,:]                          
+                                
+                            #ASSIGN:
+                            vec_diff_dic[bm, ba, task0, t0, task1, t1] = d0-d1
+                            df_i = copy.copy(nan_df)                        
+                            
+                            #neural diff is over lag 0: 
+                            df_i['n_diff_norm'] = np.linalg.norm(d0.loc[n_list,0]-d1.loc[n_list,0])
+                            
+                            #behavior diff is over all lags: 
+                            df_i['b_diff_norm'] = np.linalg.norm(d0.loc[['u_vx', 'u_vy'],:]-d1.loc[['u_vx', 'u_vy'],:])
+                            
+                            #behavior diff is over all lags: 
+                            df_i['b_diff_norm_lag0'] = np.linalg.norm(d0.loc[['u_vx', 'u_vy'],0]-d1.loc[['u_vx', 'u_vy'],0])                        
+                            
+                            df_i['mag_bin'] = bm
+                            df_i['angle_bin'] = ba                 
+                            
+                            df_i['task0'] = task0
+                            df_i['target0'] = t0
+                            df_i['num_trials0'] = num_trials0
+                            df_i['u_vx0'] = float(d0.loc['u_vx',0])
+                            df_i['u_vy0'] = float(d0.loc['u_vy',0])
+
+                            df_i['task1'] = task1
+                            df_i['target1'] = t1
+                            df_i['num_trials1'] = num_trials1
+                            df_i['u_vx1'] = float(d1.loc['u_vx',0])
+                            df_i['u_vy1'] = float(d1.loc['u_vy',0])
+                            
+                            #Check if behavior is significantly different within bin: 
+                            #XY:
+                            #X:
+                            x0 = np.array(dd0.loc['u_vx', :])
+                            x1 = np.array(dd1.loc['u_vx', :])
+    #                         print(x0.shape, x1.shape)
+                            (tstat,pval) = scipy.stats.ttest_ind(x0, x1, equal_var=True)
+                            df_i['u_vx_diff_p'] = pval
+                            df_i['u_vx_diff_tstat'] = tstat
+                            #Y:
+                            y0 = np.array(dd0.loc['u_vy', :])
+                            y1 = np.array(dd1.loc['u_vy', :])
+                            (tstat,pval) = scipy.stats.ttest_ind(y0, y1, equal_var=True)
+                            df_i['u_vy_diff_p'] = pval
+                            df_i['u_vy_diff_tstat'] = tstat                          
+                            
+                            #mag,angle:
+                            #X:
+                            x0 = np.array(dd0.loc['u_v_mag', :])
+                            x1 = np.array(dd1.loc['u_v_mag', :])
+    #                         print(x0.shape, x1.shape)
+                            (tstat,pval) = scipy.stats.ttest_ind(x0, x1, equal_var=True)
+                            df_i['u_v_mag_diff_p'] = pval
+                            df_i['u_v_mag_diff_tstat'] = tstat
+                            #Y:
+                            y0 = np.array(dd0.loc['u_v_angle_ctr_bin', :])
+                            y1 = np.array(dd1.loc['u_v_angle_ctr_bin', :])
+                            (tstat,pval) = scipy.stats.ttest_ind(y0, y1, equal_var=True)
+                            df_i['u_v_angle_diff_p'] = pval
+                            df_i['u_v_angle_diff_tstat'] = tstat                         
+                            
+                            #APPEND:
+                            df_list.append(df_i)
+
+    diff_df = pd.concat(df_list, ignore_index=True)
+    return diff_df    
+
+def diff_df_sel(diff_df, min_trials_list, num_mag_bins, p_sig=0.05):
+    """
+    takes the output of 'diff_n_lag0_b_psth_for_command_condition_pair'
+    and calculates selection filters on the dataframe for use in analysis
+
+    Assumes task 0 = 'co' (center-out)
+    Assumes task 1 = 'obs' (obstacle)
+
+    """
+
+    sel_dic = {}
+
+    #TRIALS:
+    for min_trials in min_trials_list:
+        num_trials0_sel = (diff_df['num_trials0']>=min_trials) #5
+        num_trials1_sel = (diff_df['num_trials1']>=min_trials) #5
+        sel_dic['num_trials',min_trials] = \
+            num_trials0_sel\
+            &num_trials1_sel\
+
+    
+    #MOVEMENT:
+    move_list = ['within_move', 'within_task', 'within_co', 'within_obs', 'across_task', 'across_move']
+    sel_dic['within_move'] = (diff_df['target0']==diff_df['target1'])&(diff_df['task0']==diff_df['task1'])
+    sel_dic['within_task'] = (diff_df['target0']!=diff_df['target1'])&(diff_df['task0']==diff_df['task1'])
+    sel_dic['within_co'] = (diff_df['target0']!=diff_df['target1'])&(diff_df['task0']==diff_df['task1'])&(diff_df['task0']==0)
+    sel_dic['within_obs'] = (diff_df['target0']!=diff_df['target1'])&(diff_df['task0']==diff_df['task1'])&(diff_df['task0']==1)
+    sel_dic['across_task'] = (diff_df['task0']!=diff_df['task1'])
+    sel_dic['across_move'] = (diff_df['task0']!=diff_df['task1'])|(diff_df['target0']!=diff_df['target1'])
+
+    #MAGNITUDE
+    mag_list = range(num_mag_bins) #[0,1,2,3]
+    for bm in mag_list:
+        sel_dic['mag', bm] = (diff_df['mag_bin']==bm)
+        
+    #SIGNIFANCE
+    # p_sig = 0.05
+    sel_dic['x_y_sig'] = \
+    (diff_df['u_vx_diff_p'] <= p_sig)\
+    |(diff_df['u_vy_diff_p'] <= p_sig)
+
+    sel_dic['mag_angle_sig'] = \
+    (diff_df['u_v_mag_diff_p'] <= p_sig)\
+    |(diff_df['u_v_angle_diff_p'] <= p_sig)
+
+    return sel_dic, move_list
+
+def preprocess_bmi_df(df, target_pos, num_prefix, num_tasks, num_targets):
+    """
+    adds the following "preprocessing" columns to the data frame: 
+
+    'bin_end': number of samples till you reach the last sample of the trial
+    'prog': progress till end of trial (ranges from 0 to 1)
+    'trial_cond': 
+    POLAR:
+    p_mag, p_angle, v_mag, v_angle, u_p_mag, u_p_angle, u_v_mag, u_v_angle
+    
+    """
+    #Pre-processing: 
+
+    #Trial boundaries:
+    trial_start = np.where((df['bin']==-10.0))[0]
+    trial_stop = np.where((df['trial_stop']==1))[0]
+    trial_bound = np.vstack((trial_start,trial_stop)).T
+    num_trials = trial_bound.shape[0]
+
+    #-----------------------------------------------------------------------------------------------
+    #Time till end of trial: 
+    df['bin_end'] = 0
+    df['prog'] = 0
+
+    for bnd in trial_bound:
+        bin_data = df.loc[bnd[0]:bnd[1], 'bin']
+        last_bin = bin_data.iloc[-1]
+        bin_end = last_bin-bin_data
+        prog = bin_data/last_bin
+        #ASSIGN:
+        df.loc[bnd[0]:bnd[1], 'bin_end'] = bin_end
+        df.loc[bnd[0]:bnd[1], 'prog'] = prog
+    
+    #-----------------------------------------------------------------------------------------------    
+    #Cond Trial number
+    for task in range(num_tasks):
+        for target in range(num_targets):
+            cond_sel = (df['task']==task) & (df['target']==target)
+            trial_start = (df['bin']==0) & cond_sel 
+            trial_stop = (df['bin_end']==0) & cond_sel
+            trial_bnd = np.vstack((np.where(trial_start)[0], np.where(trial_stop)[0]))
+            for i,bnd in enumerate(trial_bnd.T):
+                # print(i, bnd)
+                df.loc[bnd[0]:bnd[1], 'trial_cond'] = i
+    
+    #-----------------------------------------------------------------------------------------------    
+    #Polar coordinates: 
+    # 1) Convert stuff to polar, 2) calculate distance to target
+    # 1) Convert stuff to polar
+    df['p_mag'], df['p_angle'] = cartesian2polar(df['kin_py'], df['kin_px'])
+    df['v_mag'], df['v_angle'] = cartesian2polar(df['kin_vy'], df['kin_vx'])
+    df['u_p_mag'], df['u_p_angle'] = cartesian2polar(df['u_py'], df['u_px'])
+    df['u_v_mag'], df['u_v_angle'] = cartesian2polar(df['u_vy'], df['u_vx'])
+
+    # 2) distance to target
+    error = df.loc[:, 'kin_px':'kin_py']-target_pos[df['target'].astype(int),:]
+    df['d2target'] = np.linalg.norm(error,ord=2,axis=1)
+    df['x_error'] = error.loc[:,'kin_px']
+    df['y_error'] = error.loc[:,'kin_py']    
+
+def def_command_bin(df, mag_bin_perc=np.array([0,25,50,75,100]), num_angle_bins=8, T0_angle=-3*(2*np.pi)/8):
+    """
+    FUNCTION:
+    defines bins for commands ('u_vx', 'u_vy')
+    INPUT:
+    mag_bin_perc: numpy array of length num_mag_bins+1
+    boundaries of command magnitude (percentiles over all data)
+    num_angle_bins: number of angle bins
+    T0_angle: the angle corresponding to target 0.  function places the 0th angle bin at this angle.
+    """
+
+    #1) magnitude bins: 
+    #USUAL:
+    mag_data = df['u_v_mag']
+    #mag_data = df['u_v_mag'][df['bin']>=0] - we didn't do this, because we want to be able to bin all data, negative bins
+    mag_bin = np.percentile(mag_data, mag_bin_perc)
+    mag_bin_edges = np.vstack((mag_bin[0:-1], mag_bin[1:]))
+    mag_bin_c = mag_bin_edges.mean(axis=0)
+
+    #2) angle bins: 
+    angle_bin_c = np.linspace(T0_angle, T0_angle+np.pi*2, num=num_angle_bins+1, endpoint=True)
+    angle_bin = angle_bin_c-np.pi*2/16.0
+    angle_bin_edges = np.vstack((angle_bin[0:-1], angle_bin[1:]))
+
+    return mag_bin, mag_bin_edges, mag_bin_c, angle_bin_c, angle_bin, angle_bin_edges
+
+def df_center_angle_for_binning(df, angle_bin):
+    """
+    FUNCTION:
+    centers angle variables based on the start and end angle of angle bins
+
+    INPUT:
+    OUTPUT:
+    """
+    #center angles for binning: 
+    angle_center_for_binning = (angle_bin[-1]+angle_bin[0])/2.0
+    print('angle_center:', angle_center_for_binning*180/np.pi)
+
+    angle_vars = ['p_angle', 'v_angle', 'u_p_angle', 'u_v_angle']
+    for d in angle_vars:
+        df[d] = center_angle(np.array(df[d]), angle_center_for_binning)
+    print('min centered angle:', np.min(df['u_v_angle'])*180/np.pi)
+    print('max centered angle:', np.max(df['u_v_angle'])*180/np.pi)
+    return angle_center_for_binning
+
+def df_bin_command(df, mag_bin_edges, angle_bin_edges):
+    """
+    FUNCTION:
+    bins the commands ['u_v_mag', 'u_v_angle']
+
+    """
+    bin_dic = {}
+    bin_dic[0] = mag_bin_edges
+    bin_dic[1] = angle_bin_edges
+
+    data2bin = np.array(df[['u_v_mag','u_v_angle']])
+    bin_r, hist_r = bin_vec_data(data2bin, bin_dic)
+    df['u_v_mag_bin']=bin_r[:,0]
+    df['u_v_angle_bin']=bin_r[:,1]
+
+def center_df_angle(df, angle_bin_c, target_angle):
+
+        # 2) Center @ target angle: 
+    d_list = ['p_angle', 'v_angle', 'u_p_angle', 'u_v_angle']
+    for d in d_list:
+        data = df[d]
+        t_angle = target_angle[df['target'].astype(int)]
+        df[d+'_ctr_t'] = center_angle(df[d], t_angle)
+
+    #-----------------------------------------------------------------------------------------------
+    #Center Angle to Bin Angle: 
+    d_list = ['u_v_angle']
+    for d in d_list:
+        data = df[d]
+        bin_angle = angle_bin_c[df['u_v_angle_bin'].astype(int)]
+        df[d+'_ctr_bin'] = center_angle(df[d], bin_angle)    
+
+def shuffle_df_by_command(df, var_shuffle, var_shuffle_src, num_mag_bins, num_angle_bins, angle_bin_c, target_angle):
+    """
+    shuffles 'var_shuffle'
+    saves where the shuffled data came from 'var_shuffle_src'
+    """
+    df_S = copy.deepcopy(df)
+
+    var_src_assign = [i+'_shuffle' for i in var_shuffle_src]
+    df2concat = pd.DataFrame(columns=var_src_assign)
+    df_S = pd.concat([df_S, df2concat], sort=False)
+
+    for bm in range(num_mag_bins):
+        for ba in range(num_angle_bins):
+            sel = \
+            (df_S.loc[:,'u_v_mag_bin']==bm)\
+            &(df_S.loc[:,'u_v_angle_bin']==ba)\
+            &(df_S.loc[:,'bin']>=0)
+
+            var = var_shuffle+var_shuffle_src
+            temp = df_S.loc[sel, var].sample(frac=1).reset_index(drop=True)
+
+            df_S.loc[sel, var_shuffle] = np.array(temp.loc[:,var_shuffle])
+
+            test_assign = np.array(temp.loc[:,var_shuffle_src])
+            print(test_assign.shape)
+            df_S.loc[sel, var_src_assign] = test_assign
+
+    #Need to recalculate after shuffle: 
+    center_df_angle(df_S, angle_bin_c, target_angle)
+    return df_S
+

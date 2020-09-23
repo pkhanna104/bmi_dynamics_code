@@ -48,7 +48,23 @@ def make_df_idx(index_df, task_idx, tc, target, trial, pre, num_data):
 
 	m_idx = np.stack((m_task, m_tc, m_target, m_trial, m_bin, m_trial_start, m_trial_stop), axis=1) #num_data X 5
 	df_idx = pd.DataFrame(m_idx, index=index_df, columns=label)
-	return df_idx	
+	return df_idx
+
+def make_df_size(index_df, target_size, obs_size, num_data): 
+	"""
+	makes a dataframe containing target and obstacle size information, typically for a trial of data
+	(target_loc, target_size, obs_loc, obs_size)
+	input:
+	target_size - 
+	obs_size - 
+	num_data - number of samples (typically in the trail)	
+	"""
+	label = ['target_size', 'obs_size']
+	m_target_size = np.ones(num_data)*target_size
+	m_obs_size = np.ones(num_data)*obs_size
+	m_size = np.stack((m_target_size, m_obs_size), axis=1)
+	df_size = pd.DataFrame(m_size, index=index_df, columns=label)
+	return df_size
 
 def def_target_over_trials(data, task_codes):
 	target_over_trials = {}
@@ -434,8 +450,8 @@ def plot_rect(ctr, width, height, color):
 		[ctr[0]+d[0], ctr[1]+d[1]],
 		[ctr[0]-d[0], ctr[1]+d[1]],
 		[ctr[0]-d[0], ctr[1]-d[1]]])
-	plt.plot(pts[:,0],pts[:,1],color, linewidth=4)	
-	# plt.plot(pts[:,0],pts[:,1],'w', linewidth=1)
+	plt.plot(pts[:,0],pts[:,1],color, linewidth=4.5)	
+	plt.plot(pts[:,0],pts[:,1],'w', linewidth=1.5)
 
 def sim_bmi(cursor_state_in, spk_cnts, F, K): 
 	"""
