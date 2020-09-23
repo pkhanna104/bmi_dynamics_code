@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import scipy.stats
 from collections import defaultdict 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.4, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
 ###### notebook fcns #######
 
@@ -101,57 +101,75 @@ def plot_barplots_new_shuff(all_stats_dict):
     models_colors = [[100, 100, 100], [255, 0, 0]]
     models_colors = [np.array(m)/255. for m in models_colors]
     xlab = ['shuffled', 'general\ndynamics']
-    for animal in all_stats_dict.keys():
 
-        for pci in [None, 'pc']:
+    #### Percent correct ######
+    for pci in [None, 'pc']:
+
+        if pci is None:
+            keys = ['ang', 'mag']
         
+        elif pci == 'pc':
+            keys = ['ang_pw', 'mag']
+
+        #### For each of these keys ######
+        for ik, key in enumerate(keys):
+    
             #### Get R2 of model vs. shuffle for dAngle ####
-            fR2, axR2 = plt.subplots(nrows = 2, figsize = (3, 8))
+            fR2, axR2 = plt.subplots(figsize = (4, 5))
+            vls = []
 
-            if pci is None:
-                keys = ['ang', 'mag']
-            elif pci == 'pc':
-                keys = ['ang_pw', 'mag']
-
-            #### For each of these keys ######
-            for ik, key in enumerate(keys):
+            for i_a, animal in enumerate(['grom', 'jeev']):
 
                 #### Values from all stats dict #######
                 if pci is None:
                     vals = np.hstack((all_stats_dict[animal]['r2'+key, 'trans']))
                     vals_shuff = all_stats_dict[animal]['r2'+key, 'trans_shuff']
+                
                 elif pci == 'pc':
                     vals = process_pc(all_stats_dict[animal]['pc', key, 'trans'])
                     vals_shuff = process_pc(all_stats_dict[animal]['pc', key, 'trans_shuff'])                
                     vals = np.hstack((vals))
 
-                util_fcns.draw_plot(0, np.hstack((vals_shuff)), models_colors[0], 'white', axR2[ik], width = 0.9)
-                axR2[ik].bar(1, np.mean(vals), width=0.9, color=models_colors[1])
-                axR2[ik].errorbar(1, np.mean(vals), np.std(vals)/np.sqrt(len(vals)), marker = '|', color='k')
+                util_fcns.draw_plot(0+(3*i_a), np.hstack((vals_shuff)), models_colors[0], 'white', axR2, width = 0.9)
+                axR2.bar(1+(3*i_a), np.mean(vals), width=0.9, color=models_colors[1])
+                axR2.errorbar(1+(3*i_a), np.mean(vals), np.std(vals)/np.sqrt(len(vals)), marker = '|', color='k')
+                
+                ### Add vals 
+                vls.append(np.hstack((vals_shuff)))
+                vls.append(vals)
 
                 #### Plot each day: 
                 ndays = len(vals)
+                lme_dict = dict(day=[], grp=[], val=[])
                 sig = []
                 mn = []
                 for i_d in range(ndays):
-                    axR2[ik].plot([0, 1], [np.mean(vals_shuff[i_d]), vals[i_d]], '-', color='gray', linewidth=1.)
+                    axR2.plot(np.array([0, 1])+(3*i_a), [np.mean(vals_shuff[i_d]), vals[i_d]], '-', color='gray', linewidth=1.)
                     mn.append(np.mean(vals_shuff[i_d]))
                     ix_sig = np.nonzero(vals_shuff[i_d] >= vals[i_d])[0]
                     sig.append(float(len(ix_sig)) / len(vals_shuff[i_d]))
-                
-                if np.all(np.array(sig) < 0.05): 
-                    axR2[ik].plot([0, 1], [1.1*np.max(vals), 1.1*np.max(vals)], 'k-')
-                    axR2[ik].text(0.5, 1.15*np.max(vals), '***', ha='center')
-                axR2[ik].set_xlim([-.5, 1.5])
-                axR2[ik].set_ylim([np.min(mn), 1.2*np.max(vals)])
-                
-                axR2[ik].set_xticks([0, 1])
-                axR2[ik].set_xticklabels(xlab, rotation=45)
-                print('Animal %s, pc=%s, key=%s sig'%(animal, str(pci), key))
-                print(sig)
+                    print('Animal %s, Day %d, perc corr %s, key %s, pv = %.5f' %(animal, i_d, str(pci), key, float(len(ix_sig)) / len(vals_shuff[i_d])))
 
+                    lme_dict['day'].append([i_d, i_d])
+                    lme_dict['grp'].append([0, 1])
+                    lme_dict['val'].append([np.mean(vals_shuff[i_d]), vals[i_d]])
+                        
+                #if np.all(np.array(sig) < 0.05): 
+                pv, slp = util_fcns.run_LME(lme_dict['day'], lme_dict['grp'], lme_dict['val'])
+                pv_str = util_fcns.get_pv_str(pv)
+
+                axR2.plot(np.array([0, 1])+(3*i_a), [1.1*np.max(vals), 1.1*np.max(vals)], 'k-')
+                axR2.text(0.5+ 3*i_a, 1.15*np.max(vals), pv_str, ha='center')
+                axR2.set_xlim([-.5, 4.5])
+               
+                axR2.set_xticks([0, 1])
+                axR2.set_xticklabels(xlab, rotation=45)
+                #print('Animal %s, pc=%s, key=%s sig'%(animal, str(pci), key))
+                #print(sig)
+
+            axR2.set_ylim([np.min(np.hstack((vls))),np.max(np.hstack((vls)))])
             fR2.tight_layout()
-            fR2.savefig(analysis_config.config['fig_dir']+'%s_PC_%s_fig5_trans_r2_ang_mag.svg'%(animal, str(pci)))
+            fR2.savefig(analysis_config.config['fig_dir']+'%s_PC_%s_%s_fig5_trans_r2_ang_mag.svg'%(animal, str(pci), key))
 
 def plot_barplots_gen_vs_task_spec(all_stats_dict):
     models_colors = [[100, 100, 100], [255, 0, 0]]
@@ -162,16 +180,18 @@ def plot_barplots_gen_vs_task_spec(all_stats_dict):
     fR2, axR2 = plt.subplots(ncols = 2, nrows = 2, figsize = (10, 12))    
     vls = defaultdict(list)
 
-    for i_a, animal in enumerate(['grom', 'jeev']):
-        for i_p, pci in enumerate([None, 'pc']):
-            if pci is None:
-                keys = ['ang', 'mag']
-            elif pci == 'pc':
-                keys = ['ang_pw', 'mag']
+    
+    for i_p, pci in enumerate([None, 'pc']):
+        if pci is None:
+            keys = ['ang', 'mag']
+        elif pci == 'pc':
+            keys = ['ang_pw', 'mag']
 
-            #### For each of these keys ######
-            for ik, key in enumerate(keys):
+        #### For each of these keys ######
+        for ik, key in enumerate(keys):
+            fR2, axR2 = plt.subplots(figsize = (4, 5))
 
+            for i_a, animal in enumerate(['grom', 'jeev']):
                 lme_dict = dict(day=[], gen_vs_tsk = [], val = [])
                 #### Values from all stats dict #######
                 if pci is None:
@@ -184,10 +204,10 @@ def plot_barplots_gen_vs_task_spec(all_stats_dict):
                     vals_tsk = process_pc(all_stats_dict[animal]['pc', key, 'trans', 4])
                     vals_tsk = np.hstack((vals_tsk))
 
-                axR2[i_p, ik].bar(3*i_a, np.mean(vals_gen), width=0.9, color=models_colors[1])
-                axR2[i_p, ik].errorbar(3*i_a, np.mean(vals_gen), np.std(vals_gen)/np.sqrt(len(vals_gen)), marker = '|', color='k')
-                axR2[i_p, ik].bar(3*i_a+ 1, np.mean(vals_tsk), width=0.9, color=models_colors[1])
-                axR2[i_p, ik].errorbar(3*i_a+ 1, np.mean(vals_tsk), np.std(vals_tsk)/np.sqrt(len(vals_tsk)), marker = '|', color='k')
+                axR2.bar(3*i_a, np.mean(vals_gen), width=0.9, color=models_colors[1])
+                axR2.errorbar(3*i_a, np.mean(vals_gen), np.std(vals_gen)/np.sqrt(len(vals_gen)), marker = '|', color='k')
+                axR2.bar(3*i_a+ 1, np.mean(vals_tsk), width=0.9, color=models_colors[1])
+                axR2.errorbar(3*i_a+ 1, np.mean(vals_tsk), np.std(vals_tsk)/np.sqrt(len(vals_tsk)), marker = '|', color='k')
 
                 #### Plot each day: 
                 ndays = len(vals_gen)
@@ -195,7 +215,7 @@ def plot_barplots_gen_vs_task_spec(all_stats_dict):
                 mn = []
                 
                 for i_d in range(ndays):
-                    axR2[i_p, ik].plot([3*i_a, 3*i_a+1], [vals_gen[i_d], vals_tsk[i_d]], '-', color='gray', linewidth=1.)
+                    axR2.plot([3*i_a, 3*i_a+1], [vals_gen[i_d], vals_tsk[i_d]], '-', color='gray', linewidth=1.)
                     
                     ###### Appending for stats ##########
                     lme_dict['day'].append([i_d, i_d])
@@ -203,30 +223,31 @@ def plot_barplots_gen_vs_task_spec(all_stats_dict):
                     lme_dict['val'].append([vals_gen[i_d], vals_tsk[i_d]])
 
                 ##### stats ######
+                print('Animal %s, key %s, perc corr %s' %(animal, key, str(pci)))
                 pv, slp = util_fcns.run_LME(np.hstack((lme_dict['day'])), np.hstack((lme_dict['gen_vs_tsk'])), np.hstack((lme_dict['val'])))
                 pv_str = util_fcns.get_pv_str(pv)
 
                 mx = np.hstack((vals_gen, vals_tsk))
-                axR2[i_p, ik].plot([3*i_a, 3*i_a+1], [1.1*np.max(mx), 1.1*np.max(mx)], 'k-')
-                axR2[i_p, ik].text(3*i_a + 0.5, 1.15*np.max(mx), pv_str, ha='center')
+                axR2.plot([3*i_a, 3*i_a+1], [1.1*np.max(mx), 1.1*np.max(mx)], 'k-')
+                axR2.text(3*i_a + 0.5, 1.15*np.max(mx), pv_str, ha='center')
                 
-                axR2[i_p, ik].set_xlim([-.5, 4.5])
+                axR2.set_xlim([-.5, 4.5])
 
                 vls[i_p, ik].append(mx)
-                axR2[i_p, ik].set_ylim([np.min(np.hstack((vls[i_p, ik]))), 1.2*np.max(np.hstack((vls[i_p, ik])))])
+                axR2.set_ylim([np.min(np.hstack((vls[i_p, ik]))), 1.2*np.max(np.hstack((vls[i_p, ik])))])
                 
-                axR2[i_p, ik].set_xticks([0, 1, 3, 4])
-                axR2[i_p, ik].set_xticklabels(np.hstack((xlab, xlab)), rotation=45)
+                axR2.set_xticks([0, 1, 3, 4])
+                axR2.set_xticklabels(np.hstack((xlab, xlab)), rotation=45)
     
                 if pci == 'pc':
-                    axR2[i_p, ik].set_ylabel('Perc. Corr.\n%s Change'%key[:3].capitalize())
+                    axR2.set_ylabel('Perc. Corr.\n%s Change'%key[:3].capitalize())
                 else:
-                    axR2[i_p, ik].set_ylabel('VAF %s Change'%key[:3].capitalize())
+                    axR2.set_ylabel('VAF %s Change'%key[:3].capitalize())
                 #print('Animal %s, pc=%s, key=%s sig'%(animal, str(pci), key))
                 #print(sig)
 
-    fR2.tight_layout()
-    fR2.savefig(analysis_config.config['fig_dir']+'PC_combo_VAF_fig5_trans_r2_ang_mag.svg')
+            fR2.tight_layout()
+            fR2.savefig(analysis_config.config['fig_dir']+'PC_%s_VAF_fig5_trans_r2_%s.svg'% (str(pci), key))
 
 
 
@@ -694,6 +715,12 @@ def plot_example_dAng_dMag(animal, day, angle_og, mag_og, minobs = 10, dyn_model
 
                 scalarMap.set_array([])
                 cbar = f.colorbar(scalarMap, ax = ax[coli, rowi], orientation='horizontal')
+                xt = cbar.get_ticks()
+
+                if key == 'dA':
+                    cbar.set_ticks(xt)
+                    cbar.set_ticklabels(np.array(xt/np.pi*180).astype(int))
+
                 cbar.ax.set_title(labs[rowi][coli])
         
                 #### Add one last wedge #####
