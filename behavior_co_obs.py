@@ -361,6 +361,55 @@ def plot_polar_bins(angle_bin_edges, mag_bin_edges, angle_bin_colors, angle_line
     plt.xlabel('x')
     plt.ylabel('y')        
 
+def calc_command_trials_dic_da_v2(df, win, num_var, task_list, num_targets, num_mag_bins, num_angle_bins):
+    """
+    fills out a dictionary with key: (task, target, mag_bin, angle_bin)
+    each entry is an xarray data array with 3 dimensions: 
+    var, time, trial
+
+    updated to check 'task_rot', which has values: 0=co, 1.1=obs+cw, 1.2=obs+ccw
+
+    """
+    task_target_bin_dic = {}
+    num_win = win[1]-win[0]+1
+    for task in task_list: #[0]: 
+        for target in range(num_targets): #[0]:
+            for bm in range(num_mag_bins):
+                for ba in range(num_angle_bins):
+                    #identify the number of data points: 
+                    task_sel = (df['task'] == task)
+                    target_sel = (df['target'] == target)
+                    mag_sel = (df['u_v_mag_bin']==bm)
+                    angle_sel = (df['u_v_angle_bin']==ba)
+                    not_begin = (df['bin']>= -win[0])
+                    not_end = (df['bin_end']>= win[1])
+                    
+                    sel = task_sel&target_sel&mag_sel&angle_sel&not_begin&not_end
+                    trial_idxs = np.where(sel)[0]
+                    num_trials = len(trial_idxs)
+                    
+                    #Initialize a nan-filled xarray
+                    nan_mat = np.ones((num_var, num_win, num_trials))*np.nan
+                    da = xr.DataArray(nan_mat,
+                                coords={'var':list(df.columns),
+                                                 'time':range(win[0],win[1]+1),
+                                                 'trial':range(num_trials)},
+                                dims=['var','time','trial'])
+                    #Trials: 
+                    #-----------------------------------------------------------------------------
+                    for i,trial in enumerate(trial_idxs): 
+                        trial_data = np.array(df.loc[(trial+win[0]):(trial+win[1]),:]).T
+    #                     print(trial_data.shape)
+    #                     print(da[:,:,i].shape)
+                        da[:,:,i] = trial_data
+                    #-----------------------------------------------------------------------------
+            
+                    #ASSIGN:
+                    task_target_bin_dic[task,target,bm,ba] = da
+                    task_target_bin_dic[task,target,bm,ba,'num'] = num_trials
+                    print(task, target, bm, ba, num_trials)
+    return task_target_bin_dic
+
 def calc_command_trials_dic_da(df, win, num_var, num_tasks, num_targets, num_mag_bins, num_angle_bins):
     """
     fills out a dictionary with key: (task, target, mag_bin, angle_bin)
