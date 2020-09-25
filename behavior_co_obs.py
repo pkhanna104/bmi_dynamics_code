@@ -24,6 +24,7 @@ import time
 import pylab as pl
 from IPython import display
 import copy
+from bmi_dynamics_code import util as bmi_util
 
 #TODO: function which decides which way the trajectory goes around the obstacle
 # def obs_traj_cw_vs_ccw(traj_x, traj_y, target_pos):
@@ -1365,4 +1366,48 @@ def shuffle_df_by_command(df, var_shuffle, var_shuffle_src, num_mag_bins, num_an
     #Need to recalculate after shuffle: 
     center_df_angle(df_S, angle_bin_c, target_angle)
     return df_S
+
+def df_idx_win2psth_mat(df, idx, win, psth_var):
+    """
+    code creates a psth matrix (var X time X trials) using a dataframe, idx of events, and window around event idx
+    Input:
+    df containing data from trials
+    idx - idxs of events to lock to
+    win - 2 entry vector defining how many samples before and after idxs to include
+    psth_var - variables to calculate the psth on
+    Output:
+    da - xarray data array of (var X time X trials), where var is all var in the df
+    psth, psth_sem - xarray of (var X time), where var is just the 'psth_var'
+
+    """
+    time = range(win[0],win[1]+1)
+    num_win = win[1]-win[0]+1
+    num_var = len(list(df.columns))
+
+    #Initialize a nan-filled xarray
+    num_trials = len(idx)
+    nan_mat = np.ones((num_var, num_win, num_trials))*np.nan
+    da = xr.DataArray(nan_mat,
+                coords={'var':list(df.columns),
+                                 'time':time,
+                                 'trial':idx},
+                dims=['var','time','trial'])
+    #Trials: 
+    #-----------------------------------------------------------------------------
+    for i,trial in enumerate(idx): 
+        trial_data = np.array(df.loc[(trial+win[0]):(trial+win[1]),:]).T
+        da[:,:,i] = trial_data
+    #-----------------------------------------------------------------------------        
+    
+    #RESULTS:
+    psth,psth_var,psth_sem = bmi_util.da_mean_var_sem(da.loc[psth_var,:,:], axis=2)
+
+    # psth = da.loc[psth_var,:,:].mean(axis=2)
+    # psth_sem = sio_stat.sem(da.loc[psth_var,:,:], axis=2)
+    # psth_sem = xr.DataArray(psth_sem, 
+    #                             coords={'var':psth_var,
+    #                                   'time':time},
+    #                             dims=['var','time'])
+    return da, psth, psth_sem
+
 

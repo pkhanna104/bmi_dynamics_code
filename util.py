@@ -776,3 +776,14 @@ class MidpointNormalize(colors.Normalize):
 		# simple example...
 		x, y = [self.vmin, self.midpoint, self.vmax], [0, 0.5, 1]
 		return np.ma.masked_array(np.interp(value, x, y))
+
+def da_mean_var_sem(da, axis):
+	"""
+	sem: sigma/sqrt(n)
+	"""
+	da_mean = da.mean(axis=axis)
+	da_var = da.var(axis=axis)
+	n = da.shape[axis]
+	da_sem = np.sqrt(da_var/n)
+
+	return da_mean, da_var, da_sem
