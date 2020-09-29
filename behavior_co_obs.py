@@ -1410,7 +1410,26 @@ def df_idx_win2psth_mat(df, idx, win, psth_var):
     #                             dims=['var','time'])
     return da, psth, psth_sem
 
-def subsample_2datasets_to_match_mean_v2(match_var, d_list, match_perc, max_iter=5):
+def df_idx2da(df, idx, var):
+    """
+    code creates an xarray data array (var X trials) using a dataframe, idx of events, and selected var.
+    Input:
+    df containing data from trials
+    idx - idxs of events to lock to.  (idx refers to label, not the row)
+    var - list of variables to select
+    Output:
+    da - xarray data array of (v X observation), where v are the variables in var
+
+    """
+    num_var = len(var)
+    da = xr.DataArray(np.array(df.loc[idx,var]).T,
+                coords={'v':var,
+                'observation':idx},
+                dims=['v','observation'])
+    #RESULTS:
+    return da
+
+def subsample_2datasets_to_match_mean_v2(match_var, d_list, p_sig=0.05, max_iter=5):
     """
     This code subsamples data from two data sets so that their means are matched for all chosen variables
     (Code subsamples from the larger dataset.)
@@ -1427,7 +1446,8 @@ def subsample_2datasets_to_match_mean_v2(match_var, d_list, match_perc, max_iter
     match_var: list of variables which should have no significant difference in mean
     d_list: list of data sets.  
     each data set is an xarray
-    xarray: num_var X num_observations
+    xarray: num_var X num_observation
+    this code will use the 'observation' label to choose the samples
     match_perc: percentage difference in mean tolerated 
 
     OUTPUT: 
@@ -1453,6 +1473,8 @@ def subsample_2datasets_to_match_mean_v2(match_var, d_list, match_perc, max_iter
 
     num_d = len(d_list)
     assert num_d==2, 'Currently mean-matching more than 2 data sets is unsupported!'
+    assert (p_sig<=1) and (p_sig>=0), 'p_sig must range between 0 and 1'
+    # assert (match_frac<=1) and (match_frac>=0), 'match_perc must range between 0 and 1'
 
     #INITIALIZE:
     #-----------------------------------------------------------------------------------------------------------------------------
@@ -1472,8 +1494,8 @@ def subsample_2datasets_to_match_mean_v2(match_var, d_list, match_perc, max_iter
         df_i['num_kept'] = num_observations
         df_i['num_discarded'] = 0
         df_list.append(df_i)
-
-        kept_list.append(range(num_observations))
+        kept_list.append(list(np.array(d.observation))) #list helps us remove entries easily
+        #kept_list.append(range(num_observations))
         discard_list.append([])
     df = pd.concat(df_list, ignore_index=True)
 
@@ -1483,27 +1505,28 @@ def subsample_2datasets_to_match_mean_v2(match_var, d_list, match_perc, max_iter
     num_features = 4
     feature_list = ['tstat_init', 'pval_init', 'tstat_match', 'pval_match']
     nan_mat = np.ones((num_var, num_features))*np.nan
-    ttest_r = xr.DataArray(nan_mat, coords={'var':match_var, 'features':feature_list}, dims=['var', 'features'])
+    ttest_r = xr.DataArray(nan_mat, coords={'v':match_var, 'features':feature_list}, dims=['v', 'features'])
+    #initialize ttest_r
+    for var in match_var:
+        vd_list = []
+        for i,d in enumerate(d_list):
+            d_i = np.array(d.loc[var,:])
+            vd_list.append(d_i)
+        (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
+        ttest_r.loc[var, 'tstat_init'] = tstat
+        ttest_r.loc[var, 'pval_init'] = pval
 
     #XArray mean: 
     num_var = len(match_var)
     num_features = 4
     feature_list = ['mean_init', 'var_init', 'mean_match', 'var_match']
     nan_mat = np.ones((num_var, num_d, num_features))*np.nan
-    mean_r = xr.DataArray(nan_mat, coords={'var':match_var, 'dataset':np.arange(num_d), 'features':feature_list}, \
-        dims=['var', 'dataset', 'features'])
-
-    for var in match_var:
-        vd_list = []
-        for i,d in enumerate(d_list):
-            d_i = np.array(d.loc[var,:])
-            vd_list.append(d_i)
-            mean_r.loc[var,i,'mean_init'] = d_i.mean()
-            mean_r.loc[var,i,'var_init'] = d_i.var()
-        (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
-        ttest_r.loc[var, 'tstat_init'] = tstat
-        ttest_r.loc[var, 'pval_init'] = pval
-
+    mean_r = xr.DataArray(nan_mat, coords={'v':match_var, 'dataset':np.arange(num_d), 'features':feature_list}, \
+        dims=['v', 'dataset', 'features'])
+    #initialize mean_r.  
+    for i,d in enumerate(d_list):
+        mean_r.loc[match_var,i,'mean_init'] = d.loc[match_var,:].mean(dim='observation')
+        mean_r.loc[match_var,i,'var_init'] = d.loc[match_var,:].var(dim='observation')
     #-----------------------------------------------------------------------------------------------------------------------------
     #PROCEDURE: 
     
@@ -1511,49 +1534,63 @@ def subsample_2datasets_to_match_mean_v2(match_var, d_list, match_perc, max_iter
     success = False
     num_iter = 0
     while not complete: 
-        mean_equal = []
+        #determine which var need to be matched
+        #Obsolete, based on frac_diff instead of p:
+        # frac_diff = np.absolute(np.divide(mean_tochange-mean_match, mean_match))
+        # tochange = (frac_diff > match_frac)
+        # var_tochange = list(np.array((tochange.loc[tochange]).v))
+
+        #----------------------------------------------------------------------------------------------------------------------
+        #update mean_r and ttest_r: 
+        #mean_r: 
+        for i,d in enumerate(d_list):
+            mean_r.loc[match_var,i,'mean_match'] = d.loc[match_var,kept_list[i]].mean(dim='observation')
+            mean_r.loc[match_var,i,'var_match'] = d.loc[match_var,kept_list[i]].var(dim='observation')
+        #ttest_r, var_tochange:
+        var_tochange = []
         for var in match_var:
-            #HERE!!!!  UPDATE CODE
-
-
-
             vd_list = []
-            d_num_obs = []
             for i,d in enumerate(d_list):
-                d_i = np.array(d.loc[var, kept_list[i]]) #data only using kept observations
+                d_i = np.array(d.loc[var,kept_list[i]])
                 vd_list.append(d_i)
-                d_num_obs.append(len(d_i))
-            d_num_obs = np.array(d_num_obs)
-            d_big = d_num_obs.argmax()
-            d_small = d_num_obs.argmin()
-            num_obs_small = d_num_obs.min()
-            if num_obs_small > 0:
-                (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
-                sig_diff = (pval <= pval_sig)
-                mean_equal.append(not sig_diff)
-                if sig_diff:
-                    if vd_list[d_big].mean() >= vd_list[d_small].mean():
-                        #remove the largest
-                        i_discard = kept_list[d_big][vd_list[d_big].argmax()]
-                        kept_list[d_big].remove(i_discard)
-                        discard_list[d_big].append(i_discard)
-                    else:
-                        #remove the smallest
-                        i_discard = kept_list[d_big][vd_list[d_big].argmin()]
-                        kept_list[d_big].remove(i_discard)
-                        discard_list[d_big].append(i_discard)
-                    df.loc[d_big, 'num_kept'] -= 1
-                    df.loc[d_big, 'num_discarded'] += 1
+            (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
+            ttest_r.loc[var, 'tstat_match'] = tstat
+            ttest_r.loc[var, 'pval_match'] = pval
+            if pval < p_sig:
+                var_tochange.append(var)
 
-            else: 
-                print('Mean Matching Failed :(  A data set lost all its data')
-        if all(mean_equal):
+        #The mean to match to, the mean of the smaller data set
+        i_s = df.loc[:,'num_kept'].idxmin() #idx of smaller data set:
+        mean_match = mean_r.loc[match_var, i_s,'mean_match']
+
+        #The mean of the data set which needs subsampling:
+        i_b = df.loc[:,'num_kept'].idxmax() #idx of bigger data set:
+        mean_tochange = mean_r.loc[match_var, i_b,'mean_match']
+
+        #----------------------------------------------------------------------------------------------------------------------
+        if (num_iter == max_iter):
+            print('reached max iter!')
             complete = True
-            success = True
-            print('Mean Matching Succeeded :)')
-        elif num_iter == max_iter:
+            success = False
+        if (df.loc[i_s, 'num_kept']<=2):
+            print('failed to match')
             complete = True
-            print('Max Iter Reached')
-        num_iter+=1
-        # print('num iterations:', num_iter)
-        # print('discard_list', discard_list)    
+            success = False
+        elif (len(var_tochange) == 0):
+            print('matched!')
+            complete = True
+            success = True            
+        else: #(len(var_tochange) >0) and (df.loc[i_s, 'num_kept']>2):
+            #Calculate the cost of each observation in large data set:
+            #abs difference between data and mean_match:
+            cost_highd = np.absolute(np.array(mean_match)[...,None]-d_list[i_b].loc[match_var,kept_list[i_b]])
+            cost = cost_highd.loc[var_tochange,:].sum(dim='v')
+            #remove the sample with highest cost:
+            obs2remove = int(cost.where(cost==cost.max(), drop=True).squeeze().observation)
+            kept_list[i_b].remove(obs2remove)
+            discard_list[i_b].append(obs2remove)
+            df.loc[i_b, 'num_kept'] -= 1
+            df.loc[i_b, 'num_discarded'] += 1
+        num_iter +=1
+    df_match = df
+    return success, kept_list, discard_list, df_match, ttest_r, mean_r  
