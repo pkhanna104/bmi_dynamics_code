@@ -1139,7 +1139,7 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
     assert(bin_spk.shape[0] == decoder_all.shape[0])
 
     #### Mag boundaries #######
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     print('using animal %s, day_ix %d for mag boundaries' %(animal, day_ix))
 
     command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]

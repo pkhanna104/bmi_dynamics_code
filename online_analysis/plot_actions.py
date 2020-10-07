@@ -1887,7 +1887,7 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
     print('R2 of neural %.2f' %(R2))
     
     ### Segment up the pushes into discrete bins ###
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day, vel_ix = [0,1], ndiv=8)[0]
     
     data = dict(spks = spks, pred_spks = pred_spks, pred_push = pred_push, bin_num = bin_num, tsk = tsk, pos = pos, vel = vel, trg = trg, push = push,

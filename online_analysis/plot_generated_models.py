@@ -1355,7 +1355,7 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
     '''
 
     ### For stats each neuron is an observation ##
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref']+ 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     key = 'spks' 
 
     ### Now generate plots -- testing w/ 1 day

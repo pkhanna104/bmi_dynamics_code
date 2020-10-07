@@ -84,7 +84,7 @@ def extract_mean_diffs(animal='grom', day=0, lags = 1, min_obs = 15,
         x_conds -- compute avg beh for CO condition-spec command vs. avg beh for OBS condition-spec command
     '''
 
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     if animal == 'grom':
         order_dict = analysis_config.data_params['grom_ordered_input_type']
         input_type = analysis_config.data_params['grom_input_type']
