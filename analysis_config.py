@@ -58,13 +58,20 @@ data_params['jeev_ndays'] = 4
 data_params['jeev_names'] = ['8-24a', '8-24b', '8-29', '8-31']
 data_params['jbins'] = np.linspace(-9., 9., 40)
 
+# Whether or not to use the 95th percentile? 
+ninty_fifth_perc = True
+if ninty_fifth_perc:
+	data_params['mag_bound_file'] = config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_oct_2020_95th_max.pkl'
+else:
+	data_params['mag_bound_file'] = config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'
+
 ##################################
 ####### Useful formating #########
 ##################################
 pref_colors = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab', 
 		'teal', 'steelblue', 'midnightblue', 'darkmagenta', 'black', 'gray']
 
-def print_params(te):
+def print_G_params(te=data_params['grom_input_type']):
 	for i_d, day in enumerate(te):
 		for i_t, tsk in enumerate(day):
 			for i_te, tei in enumerate(tsk):

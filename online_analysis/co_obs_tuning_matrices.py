@@ -1042,13 +1042,17 @@ def get_SOT_from_bin_spk(bin_spk):
     FA_full.fit(zscore_X)
     return FA_full, mu[0, :]*10, num_factors
 
-def extract_radial_bin_edges_grom_jeev():
+def extract_radial_bin_edges_grom_jeev(make_last_bin_95th = False):
     ''' Method to extract and save bin edges for magnitude in scheme
     that bins velocity commands by angle (8 bins: edges = np.linspace(0, 2*np.pi, 9.)) and 
     magnitude: edges = np.linspace(0, 25thperc, 50thperc, 75thperc, 100thperc) fit separately 
     for each day
 
     Saves data for each animal
+
+    make_last_bin_95th --> make ti so that edges = np.linspace(0, 
+        25thperc, 50thperc, 75thperc, 95thperc) fit separately 
+        for each day
     '''
     input_type2 = {}
     input_type2['grom'] = analysis_config.data_params['grom_input_type']
@@ -1075,11 +1079,21 @@ def extract_radial_bin_edges_grom_jeev():
             # Get angle and magnitude of each
             mag = np.sqrt(day_dict[:, 3]**2 + day_dict[:, 5]**2)
 
-            boundaries[animal, i_d] = [np.percentile(mag, 25), np.percentile(mag, 50), np.percentile(mag, 75)]
+            if make_last_bin_95th: 
+                boundaries[animal, i_d] = [np.percentile(mag, 25), np.percentile(mag, 50), np.percentile(mag, 75), np.percentile(mag, 95)]
+            else:
+                boundaries[animal, i_d] = [np.percentile(mag, 25), np.percentile(mag, 50), np.percentile(mag, 75)]
     
     pref = analysis_config.config['grom_pref']
-    pickle.dump(boundaries, open(pref+'radial_boundaries_fit_based_on_perc_feb_2019.pkl', 'wb'))
-    return pref+'radial_boundaries_fit_based_on_perc_feb_2019.pkl', boundaries
+
+    if np.percentile(mag, 95): 
+        pickle.dump(boundaries, open(pref+'radial_boundaries_fit_based_on_perc_oct_2020_95th_max.pkl', 'wb'))
+        filename = pref+'radial_boundaries_fit_based_on_perc_oct_2020_95th_max.pkl'
+    else:
+        pickle.dump(boundaries, open(pref+'radial_boundaries_fit_based_on_perc_feb_2019.pkl', 'wb'))
+        filename = pref+'radial_boundaries_fit_based_on_perc_feb_2019.pkl'
+
+    return filename, boundaries
 
 def get_spks(animal, te, keep_trls_sep = False):
     if animal == 'grom':
