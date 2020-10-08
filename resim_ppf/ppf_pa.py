@@ -358,7 +358,7 @@ def make_strobed(dat, start_index_overall):
                     strobed.append([i, ee[0]])
     return np.array(strobed)
 
-def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0):
+def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0, binsize = 0.1):
     input_type = fk.task_filelist
     
     if task == 'co':
@@ -368,7 +368,7 @@ def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0):
         te_num = input_type[day_ix][1][0]
     
     bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, cursor_state, unbinned, exclude = get_jeev_trials_from_task_data(te_num,
-        include_pos=True, binsize=.005)
+        include_pos=True, binsize=binsize)
 
     colors = ['maroon', 'orangered', 'goldenrod','olivedrab','teal', 'steelblue', 'midnightblue', 'darkmagenta', 'k', 'brown']
 
@@ -388,12 +388,14 @@ def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0):
         for trl in trl_ix:
             ax.plot(cursor_state[trl][:, 0], cursor_state[trl][:, 2], '-', color = colors[i], linewidth=1.0)
             ax.plot(cursor_state[trl][0, 0], cursor_state[trl][0, 2], 'r.')
-
+            
         ### Plot the target: 
         if task == 'co':
-            ax.plot(np.array([.04, targ_i_all[ix[0], 0]])*20, np.array([.14, targ_i_all[ix[0], 1]])*20, 'k-.')
-            ### For binsize == 0.005; 
-            #ax.plot(np.array([.04, targ_i_all[ix[0], 0]])*1, np.array([.14, targ_i_all[ix[0], 1]])*1, 'k-.')
+            if binsize == 0.1:
+                ax.plot(np.array([0.0377292, targ_i_all[ix[0], 0]])*20, np.array([0.1383867, targ_i_all[ix[0], 1]])*20, 'k-.')
+            
+            elif binsize == 0.005:
+                ax.plot(np.array([0.0377292, targ_i_all[ix[0], 0]])*1, np.array([0.1383867, targ_i_all[ix[0], 1]])*1, 'k-.')
         else:
             #tg = targ_i_all[ix[0], :]
 
@@ -416,15 +418,16 @@ def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0):
 
             for t in [TC0, TC1, TC2]:
 
-                ### Subtract center; 
-                t_dem = t - np.array([0., 2.5])[:, np.newaxis]
+                ### Subtract center;
+                ### Update 10/6/20 --> this isn't necessary;  
+                #t_dem = t - np.array([0., 2.5])[:, np.newaxis]
 
                 ### Convert from cm --> m 
-                t_dem_m = t_dem / 100.
+                t_m = t / 100.
 
                 ### Add other center; 
                 centerPos = np.array([ 0.0377292,  0.1383867])
-                t_ = t_dem_m + centerPos[:, np.newaxis]
+                t_ = t_m + centerPos[:, np.newaxis]
                 ax.plot(t_[0, :], t_[1, :], 'k-')
                 
             ### Plot the whole thing
