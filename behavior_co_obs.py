@@ -1369,7 +1369,7 @@ def shuffle_df_by_command(df, var_shuffle, var_shuffle_src, num_mag_bins, num_an
 
 def df_idx_win2psth_mat(df, idx, win, psth_var):
     """
-    code creates a psth matrix (var X time X trials) using a dataframe, idx of events, and window around event idx
+    code creates a psth matrix (xarray data array) (var X time X trials) using a dataframe, idx of events, and window around event idx
     Input:
     df containing data from trials
     idx - idxs of events to lock to
@@ -1568,18 +1568,18 @@ def subsample_2datasets_to_match_mean_v2(match_var, d_list, p_sig=0.05, max_iter
         mean_tochange = mean_r.loc[match_var, i_b,'mean_match']
 
         #----------------------------------------------------------------------------------------------------------------------
-        if (num_iter == max_iter):
+        if (len(var_tochange) == 0):
+            print('matched!')
+            complete = True
+            success = True  
+        elif (num_iter == max_iter):
             print('reached max iter!')
             complete = True
             success = False
-        if (df.loc[i_s, 'num_kept']<=2):
+        elif (df.loc[i_s, 'num_kept']<=2):
             print('failed to match')
             complete = True
             success = False
-        elif (len(var_tochange) == 0):
-            print('matched!')
-            complete = True
-            success = True            
         else: #(len(var_tochange) >0) and (df.loc[i_s, 'num_kept']>2):
             #Calculate the cost of each observation in large data set:
             #abs difference between data and mean_match:
