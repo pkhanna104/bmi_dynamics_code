@@ -1,6 +1,7 @@
 import scipy.io as sio
 import scipy.stats as sio_stat
 import scipy.interpolate
+from sklearn.linear_model import LinearRegression
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -1594,3 +1595,127 @@ def subsample_2datasets_to_match_mean_v2(match_var, d_list, p_sig=0.05, max_iter
         num_iter +=1
     df_match = df
     return success, kept_list, discard_list, df_match, ttest_r, mean_r  
+
+def df_predict_activity_conditioned_on_action(df, decoder, num_neurons, n_list):
+    """
+    For now, neural dynamics is fit using all neural activity.  
+    """
+
+    #0) the data
+    #n_da
+    sel_bin = df.loc[:,'bin']>=0
+    sel_bin_end = df.loc[:,'bin_end']>=0
+    sel = sel_bin&sel_bin_end
+    idx = np.where(sel)[0]
+    n_da = df_idx2da(df, idx, n_list)
+
+    #1) zero mean the data: 
+    n_da_mean = n_da.mean(axis=1)
+    nc_da = n_da - n_da_mean
+
+    #2) make t and tp1 matrices (centered)
+    #n_t_da
+    sel_bin = df.loc[:,'bin']>=0
+    sel_bin_end = df.loc[:,'bin_end']>=1
+    sel = sel_bin&sel_bin_end
+    idx = np.where(sel)[0]
+    n_t_da = df_idx2da(df, idx, n_list)
+    nc_t_da = n_t_da-n_da_mean #centered (i.e. mean subtracted)
+
+    #n_tp1_da
+    sel_bin = df.loc[:,'bin']>=1
+    sel_bin_end = df.loc[:,'bin_end']>=0
+    sel = sel_bin&sel_bin_end
+    idx = np.where(sel)[0]
+    n_tp1_da = df_idx2da(df, idx, n_list)
+    nc_tp1_da = n_tp1_da-n_da_mean
+    idx_tp1 = copy.copy(idx) # we need this for assignment later
+
+    #3) Fit dynamics matrix: 
+    #linear regression: num_samples X num_observations
+    reg = LinearRegression(fit_intercept=False).fit(nc_t_da.T, nc_tp1_da.T)
+    #Predict next step
+    VAF = reg.score(nc_t_da.T,nc_tp1_da.T)
+    A = reg.coef_
+
+    #4) Neural Covariance
+    Sn = np.cov(nc_da)
+    Sn_t = np.cov(nc_t_da)
+    Sn_tp1 = np.cov(nc_tp1_da)
+
+    #5) Decoder mapping to u_vx, u_vy
+    dd = bmi_util.decompose_decoder(decoder['F'], decoder['K'])
+    K = decoder['K'][dd['var_idxs']['v'],:]
+
+    #6) Define conditioning matrix
+    #use notation of fX|Y = MY
+    #we want to solve for M
+    #X = n_tp1
+    #Y = n_t, Kn_tp1
+    #M = np.dot(S_XY, inv(S_Y))
+
+
+    use_cov_ss = False 
+    #use steady state covariance?  i.e. for now, this is just the covariance of neural activity
+    #this option empirically doesn't matter much
+
+    if not use_cov_ss: 
+        S_XY = np.concatenate((np.dot(A,Sn_t), np.dot(Sn_tp1,K.T)), axis=1)
+
+        TL = Sn_t
+        TR = np.dot(Sn_t, np.dot(A.T, K.T))
+        BR = np.dot(np.dot(K, Sn_tp1), K.T)
+        BL = TR.T
+        S_Y_top = np.concatenate((TL, TR),axis=1)
+        S_Y_bot = np.concatenate((BL, BR),axis=1)
+        S_Y = np.concatenate((S_Y_top, S_Y_bot),axis=0)
+
+        M = np.dot(S_XY, np.linalg.inv(S_Y))
+        
+    else:
+        S_XY = np.concatenate((np.dot(A,Sn), np.dot(Sn,K.T)), axis=1)
+
+        TL = Sn
+        TR = np.dot(Sn, np.dot(A.T, K.T))
+        BR = np.dot(np.dot(K, Sn), K.T)
+        BL = TR.T
+        S_Y_top = np.concatenate((TL, TR),axis=1)
+        S_Y_bot = np.concatenate((BL, BR),axis=1)
+        S_Y = np.concatenate((S_Y_top, S_Y_bot),axis=0)
+
+        M = np.dot(S_XY, np.linalg.inv(S_Y)) 
+
+    #7) Perform conditioning: 
+    #n_t_da #previous neural
+    Knc_tp1_da = np.dot(K, nc_tp1_da) #output
+    in_mat = np.concatenate((np.array(nc_t_da), np.array(Knc_tp1_da)),axis=0)
+    out_mat = np.dot(M, in_mat) #+ np.array(n_da_mean).reshape((-1,1))
+    # # Check results:
+    # cond_res = out_mat-np.array(nc_tp1_da)
+    # reg_res = np.array(np.dot(A, nc_t_da))-np.array(nc_tp1_da)
+    # print(np.trace(np.cov(cond_res)))
+    # print(np.trace(np.cov(reg_res)))   
+    # #Confirm action remains
+    # n_cond = np.array(df.loc[idx_tp1,n_cond_list]).T
+    # u_cond = np.dot(K, n_cond)
+    # u = np.array(df.loc[idx_tp1,['u_vx', 'u_vy']]).T
+
+    # print(u_cond[:,10])
+    # print(u[:,10]) 
+
+    #8) save back the predicted activity
+    n_tp1_hat = out_mat+np.array(n_da_mean).reshape((-1,1))
+    # # Inspect results
+    # true_res = n_tp1_hat-np.array(n_tp1_da)
+    # print(np.trace(np.cov(true_res)))
+    # print(np.trace(np.cov(n_tp1_da)))
+
+    n_cond_list = ['n_cond_' + str(i) for i in range(num_neurons)]
+    if n_cond_list[0] not in list(df.columns):
+        df_cond = pd.DataFrame(index=df.index, columns=n_cond_list)
+        df_cond.loc[idx_tp1,:] = n_tp1_hat.T
+        df = pd.concat([df, df_cond],axis=1)
+    else:
+        df.loc[idx_tp1,n_cond_list] = n_tp1_hat.T
+
+    return df, A, M, n_da_mean, n_cond_list
