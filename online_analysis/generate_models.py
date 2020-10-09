@@ -21,10 +21,22 @@ from pylds.models import DefaultLDS
 from pylds.states import kalman_filter
 import sklearn.decomposition as skdecomp
 
+
 ######### STEP 1 -- Get alpha value #########
 def sweep_alpha_all(run_alphas=True, model_set_number = 3,
     fit_intercept = True, within_bin_shuffle = False):
 
+    """ Sweep different alphas for Ridge regression --> see which one is best
+    
+    Args:
+        run_alphas (bool, optional): default true -- Whether or not the alphas actually need to be run via sweep_ridge_alpha
+        model_set_number (int, optional): Model number -- see generate_models_list for model options
+        fit_intercept (bool, optional): whether to fit the intercept of the ridge regression; 
+        within_bin_shuffle (bool, optional): fit alpha on shuffled data (shuffle activity for commands)
+    
+    Raises:
+        Exception: if run_alphas is false
+    """
     max_alphas = dict(grom=[], jeev=[])
 
     alphas = []; 
@@ -61,14 +73,23 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
         pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'wb'))
     print('Done with max_alphas_ridge')
 
-def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4, 
+def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1, 
     model_set_number = 1, ndays=None, fit_intercept = True, within_bin_shuffle = False):
-
-    '''
-    Summary: 
-        goal to sweep alphas for ridge regression
-        do this for different model types
-    '''
+    """Summary
+    
+    Args:
+        alphas (list): list of alphas to test
+        animal (str, optional): animal name; 
+        n_folds (int, optional): default = 5
+        history_bins_max (int, optional): default = 1; dictates how lags to use to fit; 
+        model_set_number (int, optional): form generate_models_list; 
+        ndays (int, optional): how many days to fit (if None, fits all)
+        fit_intercept (bool, optional): whether to fit intercept in Ridge; 
+        within_bin_shuffle (bool, optional): whther to fit on shuffled data (shuffle activity for commands)
+    
+    Returns:
+        hdf_filename: name of file where alphas are stored; 
+    """
 
     #### Get models from here ###
     model_var_list, predict_key, include_action_lags, _ = generate_models_list.get_model_var_list(model_set_number)
@@ -114,8 +135,6 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
 
     #### Open file 
     h5file = tables.openFile(hdf_filename, mode="w", title=animal+'_tuning')
-    vxvy0 = ['velx_tm0', 'vely_tm0']
-
     mFR = {}
     sdFR = {}
 
@@ -126,6 +145,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
         ####### data is everything; 
         ###### data_temp / sub_pikes / sub_spk_temp_all / sub_push_all --> all spks / actions 
         ##### but samples only using history_bins:nT-history_bins within trial 
+        
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
             day, order_dict[i_d], history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle)
 
@@ -164,7 +184,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 4,
                 ### Unpack model_var_list; 
                 _, model_nm, _, _, _ = model_var_list_i; 
 
-                if model_nm == 'identity_dyn':
+                if model_nm in ['identity_dyn', 'diagonal_dyn']:
                     pass
                 else:
                     ####### HERE ######
@@ -1592,7 +1612,7 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
 
         #### model names ####
         for im, model_nm in enumerate(model_names):
-            if model_nm == 'identity_dyn':
+            if model_nm in ['identity_dyn', 'diagonal_dyn']:
                 pass
             else:
                 if skip_plots:
