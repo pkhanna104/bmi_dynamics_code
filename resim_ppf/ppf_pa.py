@@ -4,7 +4,7 @@ import scipy.io as sio
 import file_key as fk
 import pickle
 import os
-
+import analysis_config
 from online_analysis import util_fcns
 
 def get_jeev_trials(filename, binsize=.1):
@@ -372,12 +372,25 @@ def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0, binsize = 0.1):
 
     colors = ['maroon', 'orangered', 'goldenrod','olivedrab','teal', 'steelblue', 'midnightblue', 'darkmagenta', 'k', 'brown']
 
-    f, ax = plt.subplots()
-
     targs = np.unique(targ_ix)
-    targs = targs[targs == targ_only]
+    targs = targs[targs >= 0] # skip -1
 
-    for i in targs:
+    if targ_only is not None:
+        targs = targs[targs == targ_only]
+
+    if task == 'co':
+        f, ax = plt.subplots(ncols = len(targs), figsize=(20, 3))
+    
+    elif task == 'obs':
+        f, ax = plt.subplots(ncols = len(targs), nrows = 2, figsize=(20, 6))
+        ax[0, 0].set_ylabel('CW')
+        ax[1, 0].set_ylabel('CCW')
+        
+    if len(targs) == 1:
+        ax = [ax]
+
+    for ti, i in enumerate(targs):
+
 
         ### Get trials with the right target number: 
         ix = np.nonzero(targ_ix == i)[0]
@@ -385,17 +398,33 @@ def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0, binsize = 0.1):
         ### Now figure out which trial: 
         trl_ix = np.unique(trial_ix_all[ix])
 
-        for trl in trl_ix:
-            ax.plot(cursor_state[trl][:, 0], cursor_state[trl][:, 2], '-', color = colors[i], linewidth=1.0)
-            ax.plot(cursor_state[trl][0, 0], cursor_state[trl][0, 2], 'r.')
-            
         ### Plot the target: 
         if task == 'co':
+            ax[ti].set_xlim([-1.5, 3.0])
+            ax[ti].set_ylim([1,  4.5])
+
+            ### Targ
+            tmp = np.linspace(0, 2*np.pi, 1000)
+            tmp_x = .013*np.cos(tmp) + targ_i_all[ix[0], 0]
+            tmp_y = .013*np.sin(tmp) + targ_i_all[ix[0], 1]
+
+            ### Center
+            tmp2_x = .013*np.cos(tmp) + 0.0377292
+            tmp2_y = .013*np.sin(tmp) + 0.1383867       
+
+
             if binsize == 0.1:
-                ax.plot(np.array([0.0377292, targ_i_all[ix[0], 0]])*20, np.array([0.1383867, targ_i_all[ix[0], 1]])*20, 'k-.')
+                ax[ti].plot(tmp_x*20, tmp_y*20, 'k-')
+                ax[ti].plot(tmp2_x*20, tmp2_y*20, 'k-')
+                centerPos = np.array([0.0377292, 0.1383867])*20
+                targetPos = targ_i_all[ix[0], [0, 1]]*20
             
             elif binsize == 0.005:
-                ax.plot(np.array([0.0377292, targ_i_all[ix[0], 0]])*1, np.array([0.1383867, targ_i_all[ix[0], 1]])*1, 'k-.')
+                ax[ti].plot(tmp_x*1, tmp_y*1, 'k-')
+                ax[ti].plot(tmp2_x*1, tmp2_y*1, 'k-')         
+                centerPos = np.array([0.0377292, 0.1383867])*1    
+                targetPos = targ_i_all[ix[0], [0, 1]]*1   
+        
         else:
             #tg = targ_i_all[ix[0], :]
 
@@ -407,7 +436,10 @@ def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0, binsize = 0.1):
 
             ### Add back the other center; 
             #tg = tg + np.array([.04, .14])
-            
+            for axrow in range(2):
+                ax[axrow, ti].set_xlim([-1.5, 3.0])
+                ax[axrow, ti].set_ylim([1,  4.5])
+
             #### Test obstacles ####
             x = sio.loadmat('resim_ppf/jeev_obs_positions_from_amy.mat')
             targ_list = fk.obstrialList
@@ -426,14 +458,47 @@ def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0, binsize = 0.1):
                 t_m = t / 100.
 
                 ### Add other center; 
-                centerPos = np.array([ 0.0377292,  0.1383867])
-                t_ = t_m + centerPos[:, np.newaxis]
-                ax.plot(t_[0, :], t_[1, :], 'k-')
+                centerpos = np.array([ 0.0377292,  0.1383867])
+                t_ = t_m + centerpos[:, np.newaxis]
+
+                if binsize == 0.005:
+                    for axrow in range(2):
+                        ax[axrow, ti].plot(t_[0, :], t_[1, :], 'k-')
+
+                elif binsize == 0.1:
+                    for axrow in range(2):
+                        ax[axrow, ti].plot(t_[0, :]*20, t_[1, :]*20, 'k-')
+            
+            #### Get cneterpos; 
+            centerPos = np.mean(TC0, axis=1)/100. + centerpos
+            targetPos = np.mean(TC2, axis=1)/100. + centerpos
+            
+            if binsize == 0.1:
+                centerPos = centerPos*20
+                targetPos = targetPos*20
+
+        ######### Plot each trial; ############
+        for trl in trl_ix:
+
+            ### This a CW or CCW trial  ?
+            if task == 'obs':
                 
-            ### Plot the whole thing
-            #ax.plot(np.array([.04, tg[0]])*20, np.array([.14,tg[1]])*20, 'k-.')
-            ### For binsize == 0.005; 
-            #ax.plot(np.array([.04, tg[0]])*1, np.array([.14,tg[1]])*1, 'k-.')
+                if i in [1, 3, 4, 5, 8, 9]: 
+                    axros = analysis_config.jeev_cw_ccw_dict[i]
+                elif day_ix == 3 and i == 2:
+                    axrow, s = CW_CCW_obs(centerPos, targetPos, cursor_state[trl][:, [0, 2]].T)
+                    if s < 0.1: 
+                        axrow = 1
+                else:
+                    axrow, _ = CW_CCW_obs(centerPos, targetPos, cursor_state[trl][:, [0, 2]].T)
+                
+                ax[axrow, ti].plot(cursor_state[trl][:, 0], cursor_state[trl][:, 2], '-', color = colors[i], linewidth=1.0)
+                ax[axrow, ti].plot(cursor_state[trl][0, 0], cursor_state[trl][0, 2], 'r.')
+                ax[axrow, ti].set_title("Targ %d" %(i))
+            else:
+                ax[ti].plot(cursor_state[trl][:, 0], cursor_state[trl][:, 2], '-', color = colors[i], linewidth=1.0)
+                ax[ti].plot(cursor_state[trl][0, 0], cursor_state[trl][0, 2], 'r.')
+    f.tight_layout()
 
 def plot_percent_correct_t2t(plot=True, min_obs_targ = 2): 
     input_type = fk.task_filelist
@@ -681,9 +746,65 @@ def test_perc_obs_viol(trl_curs, min_obs_targ, plot=False):
 
     return np.sum(violate) / float(len(violate))
 
+def CW_CCW_obs(centerPos, targPos, trialPos, plot=False):
+    """
+    Return 0: if CW to get to target, return 1 if CCW to get to target; 
+    Steps: 
+        1. Center by the centerPos
+        2. Rotate by targPos angle such that aligned with (0, 1) axis; 
+        3. Compute integral unneath curve; 
 
+    Args:
+        centerPos (np.array): (x, y) of centerPos (or start target for Jeev)
+        targPos (np.array): (x, y) of targetPos (or end target for Jeev)
+        trialPos (np.array): (2 x T) of trial trajectory (position)
+    
+    Returns:
+        integer: 0 for CW, 1 for CCW
+    """
 
+    targCentered = targPos - centerPos
+    targCentered_norm = targCentered / np.linalg.norm(targCentered)
+
+    assert(trialPos.shape[0] == len(centerPos) == 2)
+    trialCentered = trialPos - centerPos[:, np.newaxis]
+
+    ### Rotate Target / trial; 
+    angle = np.arctan2(targCentered_norm[1], targCentered_norm[0])
+
+    ### Rotate by negative of angle: 
+    Rot = np.array([[np.cos(-1*angle), -np.sin(-1*angle)], [np.sin(-1*angle), np.cos(-1*angle)]])
+
+    ### Apply this rotation to the trial: 
+    trialCentRot = np.dot(Rot, trialCentered)
+
+    ### Get step size; 
+    dx = np.hstack(([0], np.diff(trialCentRot[0, :])))
+
+    ### Get the height: 
+    y = trialCentRot[1, :]
+
+    assert(len(dx) == len(y))
+
+    if np.dot(dx, y) > 0:
+        rot = 'CW'
+        return 0, np.dot(dx, y)
+
+    elif np.dot(dx, y) < 0:
+        rot = 'CCW'
+        return 1, np.dot(dx, y)
+
+    elif np.dot(dx, y) == 0:
+        raise Exception('Perfect Straight Line?')
+
+    if plot:
+        plot_CW_CCW(trialPos, trialCentRot, rot)
             
+def plot_CW_CCW(trialPos, trialCentRot, rot):
+    f, ax = plt.subplots(ncols = 2)
+    ax[0].plot(trialPos[0, :], trialPos[1, :])
+    ax[1].plot(trialCentRot[0, :], trialCentRot[1, :])
+    ax[1].set_title('Rot %s'%(rot))
 
 
 
