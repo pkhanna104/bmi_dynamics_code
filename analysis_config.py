@@ -65,6 +65,24 @@ if ninty_fifth_perc:
 else:
 	data_params['mag_bound_file'] = config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'
 
+############# Which targets to analyze ####
+min_targix = dict()
+
+### For CO / OBS --> Jeev only analyze targs >= 2
+min_targix['jeev'] = [0, 2]
+min_targix['grom'] = [0, 0]
+
+
+############ Jeev Cw/CCW ########
+jeev_cw_ccw_dict = {}
+jeev_cw_ccw_dict[1] = 1; 
+jeev_cw_ccw_dict[2] = 1;  
+jeev_cw_ccw_dict[3] = 0; 
+jeev_cw_ccw_dict[4] = 0; 
+jeev_cw_ccw_dict[5] = 1; 
+jeev_cw_ccw_dict[8] = 0; 
+jeev_cw_ccw_dict[9] = 1; 
+
 ##################################
 ####### Useful formating #########
 ##################################
