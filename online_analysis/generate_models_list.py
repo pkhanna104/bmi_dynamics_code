@@ -91,9 +91,9 @@ def get_model_var_list(model_set_number):
 
     elif model_set_number == 6:
         model_var_list.append([np.array([-1]), 'hist_1pos_0psh_2spksm_1_spksp_0', 0, 1, 0]) ### Only dynamics, conditioned on action  
-        #model_var_list.append([np.array([-1]), 'hist_1pos_0psh_1spksm_1_spksp_0', 0, 1, 0]) ### dynamics and action
         model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0', 0, 1, 0]) ### only dynamics
         model_var_list.append([np.array([-1]), 'identity_dyn', 0, 0, 0]) ### Identity dynamics; 
+        model_var_list.append([np.array([-1]), 'diagonal_dyn', 0, 0, 0]) ### Diagonal dynamics; 
         predict_key = 'spks'
         history_bins_max = 1;
         include_action_lags = False 
