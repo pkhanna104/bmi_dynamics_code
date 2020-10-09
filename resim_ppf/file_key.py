@@ -13,7 +13,7 @@ import analysis_config
 ###### targetPos is real target position 
 
 trialList = np.zeros((11, 3))
-trialList[1,:]  = [5, 2, 11]
+trialList[1,:]  = [5, 2, 11] 
 trialList[2,:]  = [11, 2, 5]
 trialList[3,:]  = [3, 13, 11]
 trialList[4,:]  = [11, 13, 3]
@@ -21,8 +21,8 @@ trialList[5,:]  = [5, 16, 9]
 trialList[6,:]  = [9, 16, 5]
 trialList[7,:]  = [3, 21, 9]
 trialList[8,:]  = [9, 21, 3]
-trialList[9,:]  = [23, 20, 24]
-trialList[10,:] = [24, 20, 23]
+trialList[9,:]  = [23, 20, 24] 
+trialList[10,:] = [24, 20, 23] 
 trialList = trialList + 63
 obstrialList = trialList[1:, :]
 obstrialList_types = dict(hard= [6, 7, 8, 9], easy = [0, 1, 2, 3, 4, 5], all = range(10))

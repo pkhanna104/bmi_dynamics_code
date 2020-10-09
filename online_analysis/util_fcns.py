@@ -154,7 +154,108 @@ def hstack_keys(d):
     for k in d.keys():
         d[k] = np.hstack((d[k]))
     return d
+  
+#### Get the CW/CCW target traj ####
+def get_target_cw_ccw(animal, day_ix, cursor_pos, targIx): 
+    """
+    Method to get target index depending on whether 
+    trajectory goes around the obstacle CW or CCW: 
     
+    Args:
+        animal (str): Description
+        cursor_pos (np.array T x 2): trial time x (pos_x, pos_y)
+        targIx (int): target index
+    
+    Returns:
+        float: targIx + 0. if CW or targIx + 0.1 if CCW
+    """
+    if animal == 'jeev':
+        if targIx in [1, 3, 4, 5, 8, 9]: 
+            cw_ccw = analysis_config.jeev_cw_ccw_dict[targIx]/10.
+        else:
+            #### Test obstacles ####
+            x = sio.loadmat('resim_ppf/jeev_obs_positions_from_amy.mat')
+            targ_list = file_key.obstrialList
+            targ_series = targ_list[targIx, :] - 63
+            TC0 = x['targObjects'][:, :, int(targ_series[0])-1]
+            TC2 = x['targObjects'][:, :, int(targ_series[2])-1]
+            centerpos = np.array([ 0.0377292,  0.1383867])
+
+            #### Get cneterpos; 
+            centerPos = np.mean(TC0, axis=1)/100. + centerpos
+            targetPos = np.mean(TC2, axis=1)/100. + centerpos
+
+            #### Assume binsize is 0.1 (TODO: add this as an kwarg)
+            centerPos = centerPos*20
+            targetPos = targetPos*20
+            
+            ### Will return 0.0 or 0.1 depending
+            cw_ccw, s = CW_CCW_obs(centerPos, targetPos, cursor_pos.T)
+
+            if day_ix == 3 and targIx == 2:
+                if s < 0.1: 
+                    cw_ccw = 0.1
+                    print('Correcting JEEV target 2 %.1f' %(s))
+                else:
+                    print('Keeping JEEV target 2 %.1f' %(s))
+
+        return targIx + cw_ccw
+
+    elif animal == 'grom':
+        dats = sio.loadmat(analysis_config.config['grom_pref'] + 'unique_targ.mat')
+        targetPos = np.squeeze(dats['unique_targ'][int(targIx), :])
+        centerPos = np.array([0., 0.])
+        cw_ccw, s = CW_CCW_obs(centerPos, targetPos, cursor_pos.T)
+        return targIx + cw_ccw
+
+def CW_CCW_obs(centerPos, targPos, trialPos):
+    """
+    Return 0: if CW to get to target, return 1 if CCW to get to target; 
+    Steps: 
+        1. Center by the centerPos
+        2. Rotate by targPos angle such that aligned with (0, 1) axis; 
+        3. Compute integral unneath curve; 
+
+    Args:
+        centerPos (np.array): (x, y) of centerPos (or start target for Jeev)
+        targPos (np.array): (x, y) of targetPos (or end target for Jeev)
+        trialPos (np.array): (2 x T) of trial trajectory (position)
+    
+    Returns:
+        integer: 0 for CW, 1 for CCW
+    """
+
+    targCentered = targPos - centerPos
+    targCentered_norm = targCentered / np.linalg.norm(targCentered)
+
+    assert(trialPos.shape[0] == len(centerPos) == 2)
+    trialCentered = trialPos - centerPos[:, np.newaxis]
+
+    ### Rotate Target / trial; 
+    angle = np.arctan2(targCentered_norm[1], targCentered_norm[0])
+
+    ### Rotate by negative of angle: 
+    Rot = np.array([[np.cos(-1*angle), -np.sin(-1*angle)], [np.sin(-1*angle), np.cos(-1*angle)]])
+
+    ### Apply this rotation to the trial: 
+    trialCentRot = np.dot(Rot, trialCentered)
+
+    ### Get step size; 
+    dx = np.hstack(([0], np.diff(trialCentRot[0, :])))
+
+    ### Get the height: 
+    y = trialCentRot[1, :]
+
+    assert(len(dx) == len(y))
+
+    if np.dot(dx, y) > 0:
+        rot = 'CW'
+        return 0.0, np.dot(dx, y)
+
+    elif np.dot(dx, y) < 0:
+        rot = 'CCW'
+        return 0.1, np.dot(dx, y)
+
 #### Extract Data ###
 def get_grom_decoder(day_ix):
     co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))

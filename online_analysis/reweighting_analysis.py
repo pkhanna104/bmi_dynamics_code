@@ -36,7 +36,7 @@ def PC_proj_plot(animal, day, model_set_number = 7, min_obs = 30, min_obs2 = 20,
     bin_num = dat[day, 'bin_num']
     
     ### Now get discretized; 
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     command_bins = util_fcns.commands2bins([neural_push], mag_boundaries, animal, day, vel_ix = [0, 1], ndiv=8)[0]
     
     ### Get mean FR for each transition observed; 

@@ -194,7 +194,6 @@ def bar_plot_meta_mets(metric_wanted, met_hdf, input_type, ylabel=None, ylim=Non
     ax.set_title(metric_wanted)
     plt.tight_layout()
 
-
 def add_stats(ax, times, names, ylim, x_axis_offs=None):
     to_plot= []
 
