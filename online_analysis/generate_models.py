@@ -605,6 +605,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             if type_of_model_index < 0:
                 pass
             else:
+                nneur = sub_spk_temp_all.shape[2]
+
                 if model_set_number == 11: 
                     assert(type_of_model_index in [0, 1, 2])
                     if latent_dim == 'full':
@@ -617,6 +619,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     ### TEST DATA ####
                     data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
                     data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
+                    for ntmp in range(nneur): assert(np.allclose(data_temp_dict_test['spks'][:, ntmp],data_temp_dict_test['spk_tm0_n%d'%ntmp]))
+
                     data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
                     data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
                     data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
@@ -624,13 +628,13 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     ### TRAIN DATA ####
                     data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
                     data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
+                    for ntmp in range(nneur): assert(np.allclose(data_temp_dict['spks'][:, ntmp],data_temp_dict['spk_tm0_n%d'%ntmp]))
                     data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
                     data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
                     data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
 
                     print('R2 train ix: %.2f' %(generate_models_utils.quick_reg(data_temp_dict['spks'], data_temp_dict['psh'])))
 
-                nneur = sub_spk_temp_all.shape[2]
                 variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
                 
                 ### For each variable in the model: 
@@ -645,7 +649,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     model_data[model_nm, 'variables'] = variables
 
                     if ridge:
-                        if model_nm == 'identity_dyn':
+                        if model_nm in ['identity_dyn']:
                             pass
                         
                         elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS': 
@@ -654,7 +658,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = ndims)
 
                         else:
-                            alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+                            if model_nm == 'diagonal_dyn':
+                                alpha_spec = 0.
+                            else:
+                                alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+
                             if alpha_always_zero:
                                 alpha_spec = 0.
                                 print('alpha zero')
@@ -662,7 +670,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
                                 only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
                                 fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
-                                fit_intercept = fit_intercept, model_nm = model_nm)
+                                fit_intercept = fit_intercept, model_nm = model_nm, nneur=nneur)
                         
                         save_model = True
 
@@ -674,6 +682,9 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     if save_model:
                         if model_nm == 'identity_dyn':
                             pred_Y = identity_dyn(data_temp_dict_test, nneur)
+
+                        elif model_nm == 'diagonal_dyn': 
+                            pred_Y = pred_diag(data_temp_dict_test, model_, nneur, )
 
                         elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
                             pred_Y, test_ix = pred_LDS(data_temp, model_, variables, trl_test_ix[i_fold], i_fold)
@@ -1225,113 +1236,116 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
     test_data=None, test_data2=None, train_data2=None,
     only_potent_predictor = False, KG_pot = None, 
     fit_task_specific_model_test_task_spec = False,
-    fit_intercept = True, model_nm=None):
+    fit_intercept = True, model_nm=None, nneur=None):
 
     ''' fit Ridge regression using alpha = ridge parameter
         only_potent_predictor --> multiply KG_pot -- which I think should be N x N by data;  '''
 
-    ### Initialize model 
-    model_2 = Ridge(alpha=alpha, fit_intercept=fit_intercept)
-
-    ### Aggregate the variable name
-    x = []
-    for vr in x_var_names:
-        x.append(data_temp_dict[vr][: , np.newaxis])
-    X = np.hstack((x))
-    assert(X.shape[1] == len(x_var_names))
-
-    ### Aggregate the training data 2 if needed: 
-    X2 = []
-    if train_data2 is not None: 
-        for vr in x_var_names:
-            X2.append(train_data2[vr][:, np.newaxis])
-        X2 = np.hstack((X2))
-
-        ### Append the training data 1 to training data 2
-        print('Appending training_data2 to training_data1')
-        X = np.vstack((X, X2))
-
-    if only_potent_predictor:
-        assert KG_pot is not None
-
-        #### Assuuming that the trianing data is some sort of spiking thing
-        assert(KG_pot.shape[1] == X.shape[1])
-        pre_X_shape = X.shape
-        X = np.dot(KG_pot, X.T).T
-        
-        ### Assuming KG_pot is the 
-        assert(X.shape == pre_X_shape)
-        print 'only potent used to train ridge'
-
-    #### Fit two models one on each task ####
-    if fit_task_specific_model_test_task_spec:
-        tsk = data_temp_dict['tsk']
-        ix0 = np.nonzero(tsk == 0)[0]
-        ix1 = np.nonzero(tsk == 1)[0]
-
-        X0 = X[ix0, :]; X1 = X[ix1, :]; 
-        Y0 = y_train[ix0, :]; Y1 = y_train[ix1, :];
-        
-        #### Model 1 ####
-        model_2.fit(X0, Y0); 
-        
-        #### Model 2 ####
-        model_2_ = Ridge(alpha=alpha)
-        model_2_.fit(X1, Y1); 
-
-        ######## Get relevant params #######
-        model_2.nneurons = Y0.shape[1]
-        model_2.nobs = X0.shape[0]
-
-        model_2_.nneurons = Y1.shape[1]
-        model_2_.nobs = X1.shape[0]
-
-        ######## Put the models together #######
-        model_2 = [model_2, model_2_]
-
+    if model_nm == 'diagonal_dyn':
+        return fit_diag(data_temp_dict, nneur)
     else:
-        model_2.fit(X, y_train)
-        ### Add the data for some reason? ####
-        ### Maybe this is what is making the HDF files so big?###
-        # model_2.X = X
-        # model_2.y = y_train
+        ### Initialize model 
+        model_2 = Ridge(alpha=alpha, fit_intercept=fit_intercept)
 
-        ##### Add relevant parameters; 
-        model_2.nneurons = y_train.shape[1]
-        model_2.nobs = X.shape[0]
-        model_2.coef_names = x_var_names
-
-        if 'psh_2' in model_nm:
-            ###### Conditioning needs a covariance; 
-            pred_x = model_2.predict(X)
-            W = np.cov(y_train.T - pred_x.T)
-            model_2.W = W 
-
-    if test_data is None:
-        return model_2
-    
-    else:
-        y = []
-        z = []
-        
+        ### Aggregate the variable name
+        x = []
         for vr in x_var_names:
-            y.append(test_data[vr][:, np.newaxis])
-        
-            ### Test second dataset ###
-            if test_data2 is not None:
-                z.append(test_data2[vr][:, np.newaxis])
-        
-        Y = np.hstack((y))
-        if test_data2 is not None:
-            Z = np.hstack((z))
-        
-        pred = model_2.predict(Y)
-        if test_data2 is not None:
-            pred2 = model_2.predict(Z)
+            x.append(data_temp_dict[vr][: , np.newaxis])
+        X = np.hstack((x))
+        assert(X.shape[1] == len(x_var_names))
+
+        ### Aggregate the training data 2 if needed: 
+        X2 = []
+        if train_data2 is not None: 
+            for vr in x_var_names:
+                X2.append(train_data2[vr][:, np.newaxis])
+            X2 = np.hstack((X2))
+
+            ### Append the training data 1 to training data 2
+            print('Appending training_data2 to training_data1')
+            X = np.vstack((X, X2))
+
+        if only_potent_predictor:
+            assert KG_pot is not None
+
+            #### Assuuming that the trianing data is some sort of spiking thing
+            assert(KG_pot.shape[1] == X.shape[1])
+            pre_X_shape = X.shape
+            X = np.dot(KG_pot, X.T).T
+            
+            ### Assuming KG_pot is the 
+            assert(X.shape == pre_X_shape)
+            print 'only potent used to train ridge'
+
+        #### Fit two models one on each task ####
+        if fit_task_specific_model_test_task_spec:
+            tsk = data_temp_dict['tsk']
+            ix0 = np.nonzero(tsk == 0)[0]
+            ix1 = np.nonzero(tsk == 1)[0]
+
+            X0 = X[ix0, :]; X1 = X[ix1, :]; 
+            Y0 = y_train[ix0, :]; Y1 = y_train[ix1, :];
+            
+            #### Model 1 ####
+            model_2.fit(X0, Y0); 
+            
+            #### Model 2 ####
+            model_2_ = Ridge(alpha=alpha)
+            model_2_.fit(X1, Y1); 
+
+            ######## Get relevant params #######
+            model_2.nneurons = Y0.shape[1]
+            model_2.nobs = X0.shape[0]
+
+            model_2_.nneurons = Y1.shape[1]
+            model_2_.nobs = X1.shape[0]
+
+            ######## Put the models together #######
+            model_2 = [model_2, model_2_]
+
         else:
-            pred2 = None
+            model_2.fit(X, y_train)
+            ### Add the data for some reason? ####
+            ### Maybe this is what is making the HDF files so big?###
+            # model_2.X = X
+            # model_2.y = y_train
+
+            ##### Add relevant parameters; 
+            model_2.nneurons = y_train.shape[1]
+            model_2.nobs = X.shape[0]
+            model_2.coef_names = x_var_names
+
+            if 'psh_2' in model_nm:
+                ###### Conditioning needs a covariance; 
+                pred_x = model_2.predict(X)
+                W = np.cov(y_train.T - pred_x.T)
+                model_2.W = W 
+
+        if test_data is None:
+            return model_2
         
-        return model_2, pred, pred2
+        else:
+            y = []
+            z = []
+            
+            for vr in x_var_names:
+                y.append(test_data[vr][:, np.newaxis])
+            
+                ### Test second dataset ###
+                if test_data2 is not None:
+                    z.append(test_data2[vr][:, np.newaxis])
+            
+            Y = np.hstack((y))
+            if test_data2 is not None:
+                Z = np.hstack((z))
+            
+            pred = model_2.predict(Y)
+            if test_data2 is not None:
+                pred2 = model_2.predict(Z)
+            else:
+                pred2 = None
+            
+            return model_2, pred, pred2
 
 def fit_LDS(data_temp_dict, x_var_names, trl_train_ix,
     nEMiters = 30, n_dim_latent = 'full'):
@@ -1474,6 +1488,64 @@ def pred_LDS(data_temp, model, variables, trl_test_ix, i_f):
         pred_Y_all[:, ix] = pred_Y[:, i] 
 
     return pred_Y_all, test_ix 
+
+def fit_diag(data_temp_dict, nneur):
+    """
+    Generate linear models for each neuron: yi_t = A_i*yi_{t-1} + b_i
+    
+    Parameters
+    ----------
+    data_temp_dict : dict
+        Description
+    nneur : int
+        number of neurons
+    """
+
+    model_ = {}
+
+    for i_n in range(nneur): 
+
+        ### Get the training data; 
+        y_train = data_temp_dict['spks'][: , i_n]
+        x_train = data_temp_dict['spk_tm1_n%d'%i_n][: , np.newaxis]
+
+        ### Fit the ridge model
+        model_2 = Ridge(alpha=0., fit_intercept=True)
+        model_2.fit(x_train, y_train)
+
+        ### Add model 2; 
+        model_[i_n] = model_2
+
+    return model_
+
+def pred_diag(data_temp_dict_test, model_, nneur):
+    """
+    Use the model_ from fit_diag to generate predictions
+    
+    Args:
+        data_temp_dict_test (dict): dictionary of test data; 
+        model_ (dict): of Ridge models from above
+        nneur (int): # of neurons 
+    
+    Returns:
+        predY: np.array: T x N predictions 
+    """
+    predY = []
+
+    for i_n in range(nneur):
+
+        ### Test data --> x_test ###
+        x_test = data_temp_dict_test['spk_tm1_n%d'%i_n][:, np.newaxis]
+
+        ### Model N
+        model_n = model_[i_n]
+
+        ### Prediction: 
+        predY.append(model_n.predict(x_test)[:, np.newaxis])
+
+    predY = np.hstack((predY))
+
+    return predY
 
 def identity_dyn(data_temp_dict, nneur):
     pred_Y = []
