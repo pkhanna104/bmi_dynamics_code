@@ -6,6 +6,7 @@ from resim_ppf import ppf_pa
 
 import numpy as np 
 import pandas
+import xarray as xr
 import copy
 import pickle 
 import tables 
@@ -20,9 +21,13 @@ from collections import defaultdict
 pref = analysis_config.config['grom_pref']
 n_entries_hdf = 800
 
+import seaborn
+seaborn.set(font='Arial',context='talk',font_scale=1.0, style='white')
+
+
 class Model_Table(tables.IsDescription):
-    param = tables.Float64Col(shape=(n_entries_hdf, ))
-    pvalue = tables.Float64Col(shape=(n_entries_hdf, ))
+    #param = tables.Float64Col(shape=(n_entries_hdf, ))
+    #pvalue = tables.Float64Col(shape=(n_entries_hdf, ))
     r2 = tables.Float64Col(shape=(1,))
     r2_pop = tables.Float64Col(shape=(1,))
     aic = tables.Float64Col(shape=(1,))
@@ -32,21 +37,44 @@ class Model_Table(tables.IsDescription):
 #### Methods to get data needed for spike models ####
 def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False, 
     within_bin_shuffle = False, shuffix = None, nshuffs = 1, **kwargs):
+
+    """
+    Create an xarray Dataset with all of the variables typically in the dictionary
     
+    Args:
+        animal (str): animal name 
+        day (list): list of the task entries
+        order (list): list of the order that entries occurred in on that day
+        history_bins (int): number of previous bins to include; 
+        full_shuffle (bool, optional): default = False --> full shuffle (not preserving the behavior )
+        within_bin_shuffle (bool, optional): default = False --> shuffle activity for commands
+        shuffix (int, optional): random seed for shuffle 
+        nshuffs (int, optional): default = 1; 
+        **kwargs: Description
+            trial_ix --> ? 
+            day_ix --> day index (dataset index)
+    
+    Returns:
+        xarray DataSet of the variables; 
+    
+    Raises:
+        Exception: if try to shuffle both within bin and shuffle everything; 
+    """
+
     if 'trial_ix' in kwargs:
         trial_ix = kwargs['trial_ix']
     else:
         trial_ix = None
 
-    if within_bin_shuffle or full_shuffle:
-        if 'day_ix' not in kwargs.keys():
-            raise Exception('Need to include day ix to get mag boundaries for shuffling wihtin bin')
-        else:
-            day_ix = kwargs['day_ix']
+    if 'day_ix' not in kwargs.keys():
+        raise Exception('Need to include day ix to get mag boundaries for shuffling wihtin bin and figure out cw/ccw boundaries')
+    else:
+        day_ix = kwargs['day_ix']
 
     if within_bin_shuffle and full_shuffle:
         raise Exception('Cant have both shuffles! Choose one!')
 
+    ### Lists used to append ####
     spks = []
     vel = []
     push = []
@@ -55,11 +83,9 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     trl = []
     bin_num = []
 
-    ### Not sure what these are 
-    trial_ord = {}
-
     ### Trial order -- which order in the day did this thing happen? 
     trl_order_ix = []; 
+    
     ### Get out the target indices and target position for each trial 
     trg_trl = []; trg_trl_pos = []; 
     trl_off = 0 
@@ -72,7 +98,6 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
         ### For each task filename 
         for i_te_num, te_num in enumerate(tsk_fname):
-
 
 
             ################################################
@@ -224,16 +249,36 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 assert(np.all(targ_ix[ix_x] == targ_ix[ix_x[0]]))
 
                 ### Get the target index for this trial -- if it is -1 then remove this trial 
-                if targ_ix[ix_x[0]] < 0:
+                min_targ_ix = analysis_config.min_targix[animal][i_t]
+
+                if targ_ix[ix_x[0]] < min_targ_ix:
                     rm_trls.append(ix_)
-                    print('REMOVING A TRIAL ')
+                    print('REMOVING A TRIAL: Animal %s, TargIx %.1f' %(animal, targ_ix[ix_x[0]]))
                     #import pdb; pdb.set_trace()
 
                 ### If we want to keep this one; #
                 else:
+                    ### Assess CW vs. CCW here to decide on targ_ix
+                    ### Get position, center, target, animal ####
+                    tmp_tg_ix = targ_ix[ix_x[0]]
+
+                    ### Postion 
+                    trl_cursor_pos = cursor_pos[ix_]
+
+                    ### If obstacle task: 
+                    if i_t == 1:
+                        trl_targ_cw_ccw = util_fcns.get_target_cw_ccw(animal, day_ix, trl_cursor_pos, tmp_tg_ix)
+
+                    ### Elif CO task -- copy
+                    elif i_t == 0: 
+                        trl_targ_cw_ccw = tmp_tg_ix
+
+                    assert(int(np.round(trl_targ_cw_ccw)) == tmp_tg_ix)
+
                     ### Keep so that indexing stays consistent
-                    trg_trl.append(targ_ix[ix_x[0]]) ## #Get the right target for this trial
+                    trg_trl.append(trl_targ_cw_ccw) ## #Get the right target for this trial
                     trg_trl_pos.append(targ_i_all[ix_x[0], :])
+
                     assert(np.all(targ_i_all[ix_x, 0] == targ_i_all[ix_x[0], 0]))
                     assert(np.all(targ_i_all[ix_x, 1] == targ_i_all[ix_x[0], 1]))
                     trl_order_ix.append(order[i_t][i_te_num])
@@ -297,15 +342,14 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         temp_tune = {}
         temp_tune['spks'] = [] ### Time window of spikes; 
         temp_tune['spk0'] = [] ### spks at a given time point
-
         temp_tune['vel'] = []
         temp_tune['pos'] = []
-        
         temp_tune['tsk'] = []
-        temp_tune['trg'] = [] ### Index 
-        temp_tune['trg_pos'] = [] ### position in space 
         temp_tune['trl'] = []
         temp_tune['psh'] = [] ### xy push 
+        
+        temp_tune['trg'] = [] ### Index 
+        temp_tune['trg_pos'] = [] ### position in space 
         temp_tune['trl_bin_ix'] = [] ### index from onset 
         temp_tune['day_bin_ix'] = [] ### Which bin number (from the full day) is this? 
         temp_tune['day_bin_ix_shuff'] = []
@@ -317,6 +361,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             np.random.seed(nsi)
 
         ################## Run the shuffle ######################
+        ####### shuff_ix --> full indices ######
+
         if full_shuffle:
             shuff_ix = full_shuffling(spks, push, animal, day_ix)
 
@@ -327,6 +373,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             shuff_ix = np.arange(spks.shape[0])
 
         assert(spks.shape[0] == push.shape[0] == len(shuff_ix))
+
+        ### Modify the spikes and pushes; 
         spks = spks[shuff_ix, :]
         push = push[shuff_ix, :]
 
@@ -334,6 +382,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             assert(np.allclose(np.dot(KG, spks.T).T, push))
 
         ########################################
+        ######### For each trial ###############
         ########################################
         for t in np.unique(trl):
             assert(int(t) == t)
@@ -354,10 +403,11 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
             ### Modified on 9/13/19 and 6/16/20
             spk_temp =  np.zeros((nt-(2*history_bins),    (1+(2*history_bins)), nneurons))
+            
             ### EOM
             spk_temp0 = np.zeros((nt-(2*history_bins),                          nneurons))
-
             velo =      np.zeros((nt-(2*history_bins), 2*(1+(2*history_bins))))
+            
             poso = np.zeros_like(velo)
             pusho = np.zeros_like(velo)
             
@@ -527,7 +577,6 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             for n in range(nneur):
                 tmp_dict['spk_t'+nm0+str(np.abs(TL[i]))+'_n'+str(n)] = sub_spk_temp_all[:, i, n]
 
-        #tmp_dict['trial_ord'] = trl_temp
         tmp_dict['tsk'] = tsk_temp
         tmp_dict['trg'] = trg_temp
         tmp_dict['trg_posx'] = trg_pos_temp[:, 0]
@@ -541,7 +590,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         ### MODEL with HISTORY +FUTURE ###
         ##################################
         data_temp = pandas.DataFrame(tmp_dict)
-        if nsi == 1:
+        if nsi == 0:
             plot_data_temp(data_temp, animal, True)
 
         if nshuffs == 1:
@@ -557,19 +606,19 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 def plot_data_temp(data_temp, animal, use_bg = False):
     
     ### COLORS ####
-    cmap_list = analysis_config.pref_colors
-    co_obs_cmap = [np.array([0, 103, 56])/255., np.array([46, 48, 146])/255., ]
+    cmap_list = analysis_config.pref_colors + analysis_config.pref_colors
 
-    if animal == 'jeev':
-        use_bg = False
 
     ### for each target new plto: 
     fco, axco = plt.subplots()
-    fob, axob = plt.subplots()
+    fob, axob = plt.subplots(ncols = 16, figsize = (24, 3))
     
     for ax in [axco, axob]:
-        ax.axis('square')
-    tgs = [4, 5]
+        try:
+            ax.axis('square')
+        except:
+            for axi in ax:
+                axi.axis('square')
 
     ### open target: 
     for i in range(2): 
@@ -582,49 +631,61 @@ def plot_data_temp(data_temp, animal, use_bg = False):
             ## Get the trial numbers: 
             targ_ix = np.nonzero(data_temp['trg'][tsk_ix] == tr)[0]
             trls = np.unique(data_temp['trl'][tsk_ix[targ_ix]])
-            print('Tsk %d, Trg %d, N = %d' %(i, int(tr), len(targ_ix)))
+            print('Tsk %d, Trg %.2f, N = %d' %(i, tr, len(targ_ix)))
 
-            if tgs[i] == itr:
-                alpha = 1.0; LW = 2.0
-            else:
-                alpha = 0.4; LW = 1.0
+            alpha = 0.6; LW = 1.0
 
+            ### Centerout Task 
             if i == 0:
                 axi = axco; 
+
+            ### Obstacle Task 
             else:
-                axi = axob#[itr/3, itr%3]
+                axi = axob[itr]
 
             for trl in trls:
                 ix = np.nonzero(data_temp['trl'][tsk_ix] == trl)[0]
-                if use_bg:
-                    axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=co_obs_cmap[i], linewidth = LW, alpha=alpha)
-                else:
-                    axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=cmap_list[itr])
-
+                axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=cmap_list[int(np.round(tr))])
+            axi.set_title('Targ. %.1f' %(tr))
     ### Add target info for Grom: 
-    for i, a in enumerate(np.linspace(0., 2*np.pi, 9)):
-        if i < 8:
-            tg = [10*np.cos(a), 10*np.sin(a)]
-            circle = plt.Circle(tg, radius=1.7, color = cmap_list[i], alpha=.2)
-            axob.add_artist(circle)
-            circle = plt.Circle(tg, radius=1.7, color = cmap_list[i], alpha=.2)
-            axco.add_artist(circle)
+    # for i, a in enumerate(np.linspace(0., 2*np.pi, 9)):
+    #     if i < 8:
+    #         tg = [10*np.cos(a), 10*np.sin(a)]
+    #         circle = plt.Circle(tg, radius=1.7, color = cmap_list[i], alpha=.2)
+    #         axob.add_artist(circle)
+    #         circle = plt.Circle(tg, radius=1.7, color = cmap_list[i], alpha=.2)
+    #         axco.add_artist(circle)
 
-        for ax in [axco, axob]:
+    for iat, axall in enumerate([axco, axob]):
+        if iat == 0:
+            axall = [axall]
+        for ax in axall:
             if animal == 'grom':
                 ax.set_xlim([-12, 12])
                 ax.set_ylim([-12, 12])
                 ax.set_xticks([])
                 ax.set_yticks([])
             else:
-                ax.set_xlim([-.5, 2.5])
+                ax.set_xlim([-.5, 3.3])
                 ax.set_ylim([1.2, 5.0])
                 ax.set_xticks([])
                 ax.set_yticks([])
 
 ##### Training / testing sets ######
 def get_training_testings(n_folds, data_temp):
+    """ 
+    Return indices used for training and testing data; 
+        -- uses 1/n_folds fraction of indices for testing each task
+        so each model uses (n_folds-1)/n_folds fraction of each task's data to train; 
     
+    Args:
+        n_folds (int): how many folds are wanted
+        data_temp (dict): data from previous 
+    
+    Returns:
+        TYPE: Description
+    """
+
     ### Get training and testing datasets: 
     N_pts = [];
 
@@ -1101,7 +1162,6 @@ def quick_reg(bin_spk, decoder_all):
     est = clf.predict(DA)
     return util_fcns.get_R2(BS, est) 
 
-
 ###########################################
 ############### Shuffling #################
 ###########################################
@@ -1144,6 +1204,8 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
 
     command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]
 
+    print('Check "command_bins" to make sure that there is something labeled as "4"')
+    import pdb; pdb.set_trace()
     assert(bin_spk.shape[0] == command_bins.shape[0])
 
     #### Get KG ###
@@ -1236,27 +1298,27 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
         
             #Add params: 
             #vrs = getattr(getattr(h5file.root, model_nm+'_fold_'+str(int(fold))+'_nms'), 'vars')[:]
-            param = np.zeros((n_entries_hdf, ))
-            pv = np.zeros((n_entries_hdf, ))
-            for iv, v in enumerate(xvars):
+            # param = np.zeros((n_entries_hdf, ))
+            # pv = np.zeros((n_entries_hdf, ))
+            # for iv, v in enumerate(xvars):
 
-                ######### RIDGE ########
-                if fit_task_specific_model_test_task_spec:
-                    param[iv] = model_v[0].coef_[n, iv]
-                    pv[iv] = model_v[0].pvalues[n, iv]
-                else:
-                    param[iv] = model_v.coef_[n, iv]
-                    pv[iv] = model_v.pvalues[n, iv]
+            #     ######### RIDGE ########
+            #     if fit_task_specific_model_test_task_spec:
+            #         param[iv] = model_v[0].coef_[n, iv]
+            #         pv[iv] = model_v[0].pvalues[n, iv]
+            #     else:
+            #         param[iv] = model_v.coef_[n, iv]
+            #         pv[iv] = model_v.pvalues[n, iv]
 
-                ######### OLS ########
-                # try:
-                #     # OLS: 
-                #     param[iv] = model_v.params[n][v]
-                #     pv[iv] = model_v.pvalues[iv, n]
-                # except:
+            #     ######### OLS ########
+            #     # try:
+            #     #     # OLS: 
+            #     #     param[iv] = model_v.params[n][v]
+            #     #     pv[iv] = model_v.pvalues[iv, n]
+            #     # except:
 
-            row['param'] = param
-            row['pvalue'] = pv
+            # row['param'] = param
+            # row['pvalue'] = pv
             row['day_ix'] = day_ix
 
             if fit_task_specific_model_test_task_spec:
