@@ -1823,8 +1823,8 @@ def plot_real_vs_pred(model_set_number = 2, min_obs = 15, cov = False,
 
     '''
     
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
-
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+    
     if model_set_number == 2:
         models_to_include = ['prespos_0psh_1spksm_0_spksp_0', 
                              'hist_1pos_3psh_1spksm_0_spksp_0', ### Full state 
@@ -2244,7 +2244,7 @@ def plot_real_vs_pred_bars_w_shuffle(use_mFR_option, model_dicts = None, min_obs
         -- command_axis_spec: for x axis used mFR | day, command, yaxis used pred mFR | day, command
     '''
 
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     model = 'hist_1pos_0psh_2spksm_1_spksp_0'
     xkeys = ['shuffled', 'dyn_gen', 'identity_dyn']#'dyn_tsk', 'identity_dyn']
     xlab = ['shuffled', 
@@ -2592,7 +2592,7 @@ def plot_real_mean_diffs_behavior_next(model_set_number = 6, min_obs = 15):
     ### Plot only sig. different ones
 
     ### Plot cov. diffs (mat1 - mat2)
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     fsumm, axsumm = plt.subplots(figsize=(4, 4))
 
     for ia, animal in enumerate(['grom','jeev']):
@@ -2758,7 +2758,7 @@ def fig_5_neural_dyn(min_obs = 15, r2_pop = True,
     model_set_number = 3, ndays = None,):
     
     ### For stats each neuron is an observation ##
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
     ### Now generate plots -- testing w/ 1 day
     if ndays is None:
@@ -2906,7 +2906,7 @@ def fig_5_neural_dyn_mean_pred(min_obs = 15, r2_pop = True,
     ### note that previously jeev-days was [0, 2, 3] -- something about how day 1 only had 16 CO trials 
     
     ### For stats each neuron is an observation ##
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
     ### Now generate plots -- testing w/ 1 day
     if ndays is None:
@@ -3173,7 +3173,7 @@ def fig_5_cond_spec_next_action_scatter_bars(use_mvel_option = 'command_axis_spe
         --                    for y axis use pred_vel | (day, command)
     '''
 
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     
     ### No conditioning, just dynamics #####
     model = 'hist_1pos_0psh_0spksm_1_spksp_0'
@@ -4008,7 +4008,7 @@ def reinventing_model_7_w_sig(model_set_number = 7, data = None,
     Day_Tsk_fit_lme = defaultdict(list)
     Neur_act_lme =defaultdict(list)
 
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
     for ia, animal in enumerate(['grom', 'jeev']):
         
@@ -5319,7 +5319,7 @@ def plot_dyn_examples_for_conditions(dat, animal = 'grom', day = 0, min_obs = 15
     mn_spks = np.mean(spks, axis=0)
 
     ### Bin the push ###
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     commands = util_fcns.commands2bins([push], mag_boundaries, animal, day, vel_ix = [0, 1])[0]
 
     for ang in range(8):
@@ -5443,7 +5443,7 @@ def plot_dyn_examples_for_transitions(dat, animal = 'grom', day = 0, min_obs = 1
     mn_spks = np.mean(spks, axis=0)
 
     ### Bin the push ###
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     commands = util_fcns.commands2bins([push], mag_boundaries, animal, day, vel_ix = [0, 1])[0]
 
     for ang in range(8):
@@ -5567,7 +5567,7 @@ def mean_diffs_plot(animal = 'grom', min_obs = 15, load_file = 'default', dt = 1
     savedir = analysis_config.config['fig_dir']
 
     ### Magnitude boundaries: 
-    mag_boundaries = pickle.load(open(analysis_config.config['grom_pref'] + 'radial_boundaries_fit_based_on_perc_feb_2019.pkl'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     marks = ['-', '--']
 
     if important_neurons:
