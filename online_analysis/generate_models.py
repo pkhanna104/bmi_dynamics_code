@@ -684,7 +684,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             pred_Y = identity_dyn(data_temp_dict_test, nneur)
 
                         elif model_nm == 'diagonal_dyn': 
-                            pred_Y = pred_diag(data_temp_dict_test, model_, nneur, )
+                            pred_Y = pred_diag_cond(data_temp_dict_test, model_, nneur, KG)
 
                         elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
                             pred_Y, test_ix = pred_LDS(data_temp, model_, variables, trl_test_ix[i_fold], i_fold)
@@ -842,7 +842,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         else:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5), 'wb'))
 
-def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True, latent_dim = 'full'):
+def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full'):
     '''
     models --> dynamics and dynamics conditioned on action 
     '''
@@ -885,7 +885,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True, late
             except:
                 pass #
 
-    for animal in ['grom']:#, 'jeev']:
+    for animal in ['grom', 'jeev']:
         if animal == 'grom':
             order_dict = analysis_config.data_params['grom_ordered_input_type']
             input_type = analysis_config.data_params['grom_input_type']
@@ -896,7 +896,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = False, latent_LDS = True, late
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'grom' and i_d < 3:
+            if animal == 'grom' and i_d < -1:
                 pass
             else:
                 print('##############################')
@@ -1503,6 +1503,8 @@ def fit_diag(data_temp_dict, nneur):
 
     model_ = {}
 
+    pred_y = [] 
+
     for i_n in range(nneur): 
 
         ### Get the training data; 
@@ -1513,8 +1515,18 @@ def fit_diag(data_temp_dict, nneur):
         model_2 = Ridge(alpha=0., fit_intercept=True)
         model_2.fit(x_train, y_train)
 
+        ### Get the noise of the prediction; 
+        pred_y.append(model_2.predict(x_train)[:, np.newaxis])
+        
+        ### Get the noise :
+        #model_2.w = np.cov(pred_y - y_train)
+
         ### Add model 2; 
         model_[i_n] = model_2
+
+    pred_y = np.hstack((pred_y))
+    dy = (pred_y - data_temp_dict['spks'])
+    model_['w'] = np.cov(dy.T)
 
     return model_
 
@@ -1546,6 +1558,76 @@ def pred_diag(data_temp_dict_test, model_, nneur):
     predY = np.hstack((predY))
 
     return predY
+
+def pred_diag_cond(data_temp_dict_test, model_, nneur, KG):
+    """
+    Construct the prediction now conditioning on acton; 
+    
+    Args:
+        data_temp_dict_test (TYPE): Description
+        model_ (TYPE): Description
+        nneur (TYPE): Description
+    
+    Returns:
+        TYPE: Description
+    """
+
+    predY = []
+    cov = model_['w']
+
+    for i_n in range(nneur):
+
+        ### Model N
+        model_n = model_[i_n]
+
+        ### Test data --> x_test ###
+        x_test = data_temp_dict_test['spk_tm1_n%d'%i_n][:, np.newaxis]
+
+        ### Prediction: 
+        predY.append(model_n.predict(x_test)[:, np.newaxis])
+
+    ### predY --> back together 
+    predY = np.hstack((predY))
+
+    cov12 = np.dot(KG, cov).T
+    cov21 = np.dot(KG, cov)
+    cov22 = np.dot(KG, np.dot(cov, KG.T))
+    cov22I = np.linalg.inv(cov22)
+
+
+    ### Get action from t = 0 ###
+    A = data_temp_dict_test['psh']
+
+    assert(A.shape[0] == predY.shape[0])
+
+    T = predY.shape[0]
+
+    ### For each time point ###
+    predY_w_cond = []; 
+
+    for i_t in range(T):
+
+        ### Get this prediction (mu 1)
+        mu1_i = predY[i_t, :].T
+        mu1_i = mu1_i[:, np.newaxis]
+
+        ### Get predicted value of action; 
+        mu2_i = np.dot(KG, mu1_i)
+
+        ### Actual action; 
+        a_i = A[i_t, :][:, np.newaxis]
+
+        ### Conditon step; 
+        mu1_2_i = mu1_i + np.dot(cov12, np.dot(cov22I, a_i - mu2_i))
+
+        ### Make sure it matches; 
+        assert(np.allclose(np.dot(KG, mu1_2_i), a_i))
+
+        predY_w_cond.append(np.squeeze(np.array(mu1_2_i)))
+
+    predY_w_cond = np.vstack((predY_w_cond))
+
+    return predY_w_cond
 
 def identity_dyn(data_temp_dict, nneur):
     pred_Y = []
