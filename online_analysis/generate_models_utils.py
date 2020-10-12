@@ -1204,8 +1204,7 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
 
     command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]
 
-    print('Check "command_bins" to make sure that there is something labeled as "4"')
-    import pdb; pdb.set_trace()
+    assert(4. in np.unique(command_bins[:, 0]))
     assert(bin_spk.shape[0] == command_bins.shape[0])
 
     #### Get KG ###
@@ -1221,7 +1220,7 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
     shuff_ix = np.zeros((bin_spk.shape[0])) - 1
     big_ix = []
 
-    for i_m in range(4):
+    for i_m in range(5):
         for i_a in range(8):
 
             ### Get indices ######
