@@ -1,7 +1,7 @@
 ############## Methods to plot models generated in 'generate models' ###########
 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=.5, style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -9,12 +9,14 @@ from matplotlib.colors import LinearSegmentedColormap
 import pickle, copy, os, glob
 
 import analysis_config, util_fcns
-import generate_models, generate_models_list
+import generate_models, generate_models_list, generate_models_utils
 from dynamics_sims import plot_flow_field_utils
 
+from sklearn.linear_model import Ridge
 import scipy
 import scipy.io as sio
 from collections import defaultdict
+import time
 
 fig_dir = analysis_config.config['fig_dir3']
 
@@ -1354,6 +1356,12 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
         bar w/ [0, 1, 3, 4] -- 0 = shuff, 1 = R2 dyn, 3 = R2 dyn split by task, 4 = R2 task-spec dyn split by task 
     '''
 
+    def get_dyn(q, col=2):
+        if len(q.shape) == 3:
+            return q[:,:,col]
+        elif len(q.shape) == 2:
+            return q
+
     ### For stats each neuron is an observation ##
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     key = 'spks' 
@@ -1384,11 +1392,9 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
         else:
             xlab = ['shuffled', 
-                    'general\ndynamics', 
-                    'task-spec\ndynamics',
-                    'identity\ndynamics']
-            xkeys = ['shuffled', 'dyn_gen', 'dyn_tsk', 'identity_dyn']
-            nbars = 3
+                    'general\ndynamics']
+            xkeys = ['shuffled', 'dyn_gen']
+            nbars = 2
 
         if plot_act:
             models_colors = [[100, 100, 100], 
@@ -1397,9 +1403,9 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
                          [100, 100, 100]]
         else:
             models_colors = [[100, 100, 100], 
-                         [39, 169, 225], 
-                         [39, 169, 225], 
-                         [100, 100, 100]]
+                         [39, 169, 225]]
+                         #[39, 169, 225], 
+                         #[100, 100, 100]]
 
         if fig4_opt:
             models_colors = [[100, 100, 100], 
@@ -1460,7 +1466,7 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             pred_Y = dict()
 
             ######### General dynamics conditioned on action #########
-            pred_Y['dyn_gen'] =  model_dict[i_d, model_name][:, :, 2]
+            pred_Y['dyn_gen'] =  get_dyn(model_dict[i_d, model_name])
 
             ######### Get task specific #########
             if fig4_opt:
@@ -1469,24 +1475,31 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
                 for tsk in range(2):
                     ix_tsk = np.nonzero(model_dict[i_d, 'task'] == tsk)[0]
-                    pred_Y['dyn_gen_by_tsk'].append(model_dict[i_d, model_name][ix_tsk, :, 2])
-                    pred_Y['dyn_tsk_by_tsk'].append(model_dict[i_d, model_name][ix_tsk, :, tsk])
+                    pred_Y['dyn_gen_by_tsk'].append(get_dyn(model_dict[i_d, model_name][ix_tsk]))
+                    pred_Y['dyn_tsk_by_tsk'].append(get_dyn(model_dict[i_d, model_name][ix_tsk],col=tsk))
 
             else:
-                tsk_spec = np.zeros_like(model_dict[i_d, model_name][:, :, 2])
+                tsk_spec = np.zeros_like(get_dyn(model_dict[i_d, model_name]))
                 for tsk in range(2):
                     ix_tsk = np.nonzero(model_dict[i_d, 'task'] == tsk)[0]
-                    tsk_spec[ix_tsk, :] = model_dict[i_d, model_name][ix_tsk, :, tsk]
+                    tsk_spec[ix_tsk, :] = get_dyn(model_dict[i_d, model_name][ix_tsk], col=tsk)
                 pred_Y['dyn_tsk'] = tsk_spec.copy()
 
             ######### Get shuffled ###############
             if skip_shuffle:
                 pass
             else:
-                pred_Y['shuffled'] = get_shuffled_data(animal, i_d, model_name)
+                t00 = time.time()
+                pred_Y['shuffled'] = get_shuffled_data_v2(animal, i_d, model_name)
+                print('Time post shuffles %.5f' %(time.time() - t00))
+
+            ####### Plot individual day vs. shuffled distribution ####
+            if animal == 'grom' and i_d == 0:   
+                shuff_vs_gen_dyn_plot(pred_Y, model_dict[i_d, 'spks'], i_d, animal, model_name, by_neuron = True,
+                    perc_increase = perc_increase)
 
             ######## Get zero order hold #########
-            pred_Y['identity_dyn'] = model_dict[i_d, 'identity_dyn'][:, :, 2]
+            pred_Y['identity_dyn'] = get_dyn(model_dict[i_d, 'identity_dyn'])
 
             ######## PLotting #########
             for i_mod, (mod, xl) in enumerate(zip(xkeys, xlab)):
@@ -1608,12 +1621,12 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
         shuff_vs_dyn = np.zeros((ndays[animal]))
         
         if skip_task_spec:
-            ax.set_xticks(np.arange(len(xlab)-2))
-            ax.set_xticklabels(xlab[:-2], rotation = 45)
+            ax.set_xticks(np.arange(len(xlab)))
+            ax.set_xticklabels(xlab[:], rotation = 45)
             lme_shuff_vs_gen = dict(day = [], shuf_vs_gen = [], r2 = [])
 
             for i_d in range(ndays[animal]):
-                ax.plot(np.arange(len(xkeys)-2) + ax_offset, day_r2[i_d, :-2], '-', color='gray', linewidth=1.)
+                ax.plot(np.arange(len(xkeys)) + ax_offset, day_r2[i_d, :], '-', color='gray', linewidth=1.)
                 shuff_vs_dyn[i_d] = get_perc(R2s[i_d, 'shuffled'], R2s[i_d, 'dyn_gen'])
                 lme_shuff_vs_gen['day'].append([i_d, i_d])
                 lme_shuff_vs_gen['shuf_vs_gen'].append([0, 1])                
@@ -1763,7 +1776,318 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             str(plot_act),
             str(skip_shuffle)))
 
-def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept = True):
+def shuff_vs_gen_dyn_plot(pred_Y, true_Y, i_d, animal, model_name, by_neuron = False, 
+    perc_increase = False):
+    
+    ###### Get R2 ########
+    n_shuff = pred_Y['shuffled'].shape[2]
+    assert(pred_Y['shuffled'].shape[0] == true_Y.shape[0] == pred_Y['dyn_gen'].shape[0])
+    assert(pred_Y['shuffled'].shape[1] == true_Y.shape[1] == pred_Y['dyn_gen'].shape[1])
+
+    if by_neuron:
+        nneur = true_Y.shape[1] 
+        r2_shuff = np.zeros((n_shuff, nneur))
+        r2_true = np.zeros((nneur))
+
+    else:
+        f, ax = plt.subplots()
+        r2_shuff = np.zeros((n_shuff, ))
+        r2_true = 0.
+
+    for i_shuff in range(pred_Y['shuffled'].shape[2]):
+        if by_neuron:
+            for i_n in range(nneur):
+                r2_shuff[i_shuff, i_n] = util_fcns.get_R2(true_Y[:, i_n], pred_Y['shuffled'][:, i_n, i_shuff])
+        else:
+            r2_shuff[i_shuff] = util_fcns.get_R2(true_Y, pred_Y['shuffled'][:, :, i_shuff])
+
+    if by_neuron:
+        for i_n in range(nneur):
+            r2_true[i_n] = util_fcns.get_R2(true_Y[:, i_n], pred_Y['dyn_gen'][:, i_n])
+    else:
+        r2_true = util_fcns.get_R2(true_Y, pred_Y['dyn_gen'])
+
+    ####### Make plots ########
+    if by_neuron:
+        f, ax = plt.subplots(ncols = 4, nrows = 11, figsize = (10, 22))
+            
+        for i_n in range(nneur): 
+            axi = ax[i_n/4, i_n%4]
+            
+            if perc_increase:
+                mean_r2_i = np.abs(np.mean(r2_shuff[:, i_n]))
+                axi.hist( (r2_shuff[:, i_n] - mean_r2_i) / mean_r2_i)
+                axi.vlines(np.mean( (r2_shuff[:, i_n] - mean_r2_i) / mean_r2_i), 0, 50, 'b')
+                axi.vlines((r2_true[i_n] - mean_r2_i) / mean_r2_i, 0, 50, 'k')
+            else:
+                axi.hist(r2_shuff[:, i_n])
+                axi.vlines(r2_true[i_n], 0, 50, 'k')
+
+            axi.set_title('n%d'%(i_n))
+
+        f.tight_layout()
+
+    else:
+        f, ax = plt.subplots()
+
+        if perc_increase:
+            mean_r2 = np.mean(r2_shuff)
+            ax.hist((r2_shuff - mean_r2) / mean_r2)
+            ax.vlines((r2_true - mean_r2) / mean_r2, 0., 50, 'k')
+            ax.set_xlabel('Perc Increase gt mean shuff')
+        else:
+            ax.hist(r2_shuff)
+            ax.vlines(r2_true, 0., 100, 'k')
+            ax.set_xlabel('Population R2')
+
+        ax.set_title('%s, Day%d, mod%s'%(animal, i_d, model_name))
+
+def get_shuffled_data_v2(animal, day, model_name, nshuffs = 1000, testing_mode = False):
+    """
+    New method to get shuffled predictions 
+    """
+    #### With intercept #####
+
+    t0 = time.time()
+    pref = analysis_config.config['shuff_fig_dir']
+           
+    #### Open the file #####
+    data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day)))
+    full_spks = data_file['Data']['spks']
+    full_push = data_file['Data']['push']
+    full_bin_num = data_file['Data']['bin_num']
+    temp_N = data_file['temp_n']
+
+    #### Test indices #####
+    test_ix = data_file['test_ix']
+    type_of_model = np.zeros((5, ))
+
+    nneur = full_spks.shape[1]
+
+    ### 2 x N decoder 
+    KG = util_fcns.get_decoder(animal, day)
+
+    model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(6)
+    models_to_include = [m[1] for m in model_var_list]
+    variables_list = generate_models.return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
+    pred_Y = np.zeros((temp_N, nneur, nshuffs))
+
+    if testing_mode:
+        day_mat = analysis_config.data_params['%s_input_type'%animal] 
+        order_mat = analysis_config.data_params['%s_ordered_input_type'%animal] 
+        test_Data, test_Data_temp, test_Sub_spikes, test_Sub_spk_temp_all, test_Sub_push = generate_models_utils.get_spike_kinematics(animal, day_mat[day], 
+                    order_mat[day], 1, within_bin_shuffle = False, day_ix = day, nshuffs = 1)
+    t0 = time.time()
+    
+    #### Get teh spike indices ###
+    tm0ix, tm1ix = generate_models.get_temp_spks_ix(data_file['Data'])
+
+    ### Shuffle indices: 
+    for shuffle in range(nshuffs):
+        if shuffle % 10 == 0:
+            print('Shuffle %d, %.5f' %(shuffle, time.time() - t0))
+        
+        shuff_ix = data_file[shuffle]
+
+        if testing_mode: 
+            shuff_ix = np.arange(full_spks.shape[0])
+
+        #### shuffled + subselected ####
+        sub_spikes = data_file['Data']['spks'][shuff_ix[tm0ix]]
+        sub_spikes_tm1 = data_file['Data']['spks'][shuff_ix[tm1ix]]
+        sub_push = data_file['Data']['push'][shuff_ix[tm0ix]]
+        
+        #sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = generate_models.get_temp_spks(data_file['Data'], shuff_ix)
+        #print('Time to shuffles and subselect %.5f '%(time.time() - t0))
+
+        if testing_mode: 
+            assert(np.allclose(sub_spikes, test_Sub_spikes))
+            assert(np.allclose(sub_spikes_tm1, test_Sub_spk_temp_all[:, 0, :]))
+            assert(np.allclose(sub_push[:, [3, 5]], test_Sub_push))
+            
+        shuff_str = str(shuffle)
+        shuff_str = shuff_str.zfill(3)
+        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, model_name))
+        
+        #### Build the data dictionary ####
+        data_temp_dict = {}
+        for i_n in range(nneur):
+            data_temp_dict['spk_tm1_n%d'%i_n] = sub_spikes_tm1[:, i_n]
+            data_temp_dict['spk_tm0_n%d'%i_n] = sub_spikes[:, i_n]
+        data_temp_dict['pshx_tm0'] = sub_push[:, 3]
+        data_temp_dict['pshy_tm0'] = sub_push[:, 5]
+
+        #### For each data fold #####
+        for i_fold in range(5): 
+            
+            coef = model_file[str((i_fold, 'coef_'))]
+            intc = model_file[str((i_fold, 'intc_'))]
+            assert(model_file['shuff_num'] == shuffle)
+            test_ix_fold = test_ix[i_fold]
+
+            if testing_mode:
+                coef[:,:] = np.eye(nneur)
+                intc[:] = 0.
+
+            #### Get W if conditinoing on action ####
+            if 'psh_2' in model_name: 
+                W = model_file[str((i_fold, 'W'))]
+
+                if testing_mode:
+                    ### No uncertainty/error in dynamics model 
+                    W[:,:] = 0.
+
+            for i_m, (model_nm, variables) in enumerate(zip(models_to_include, variables_list)):
+
+                if model_nm == model_name: 
+                    if 'psh_2' in model_name: 
+
+                        pred_wc = pred_w_cond(coef, intc, data_temp_dict,
+                            test_ix_fold, variables, nneur, w_ = W, KG = KG) 
+
+                        pred_Y[test_ix_fold, :, shuffle] = pred_wc.copy()
+
+                        if testing_mode:
+                            ### Set the "W" equal to zero so wont match actions 
+                            ### Want to test for equality to the previous action/spks
+                            pass
+                        else:
+                            #### Make sure the push actuall matches intended push: #### 
+                            assert(np.allclose(np.dot(KG, pred_wc.T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
+                            assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold, :, shuffle].T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
+
+                    else:
+                        pred_Y[test_ix_fold, :, shuffle] = pred_wo_cond(coef, intc, data_temp_dict,
+                            test_ix_fold, variables, nneur) 
+        ### After all folds, if in testing mode, pred_Y should be equal to sub_spikes_tm1; 
+        if testing_mode:
+            assert(np.allclose(sub_spikes_tm1, pred_Y[:, :, shuffle]))
+                 
+    return pred_Y
+
+def pred_wo_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneur, **kwargs): 
+    """Summary
+    
+    Parameters
+    ----------
+    coef_ : TYPE
+        model coefficients 
+    intc_ : TYPE
+        model intercepts
+    data_temp_dict : TYPE
+        Description
+    test_ix_fold : TYPE
+        Description
+    variable_names : TYPE
+        Description
+    nneur : TYPE
+        Description
+    **kwargs
+        Description
+    """
+
+    assert(intc_.shape[1] == nneur == coef_.shape[0] == coef_.shape[1])
+    model = Ridge()
+    model.coef_ = np.squeeze(coef_.copy())
+    model.intercept_ = np.squeeze(intc_.copy())
+
+    generate_models.check_variables_order(variable_names, nneur)
+    
+    ### Get variables #### 
+    x_test = [] 
+    for vr in variable_names:
+        x_test.append(data_temp_dict[vr][test_ix_fold, np.newaxis])
+        X = np.mat(np.hstack((x_test)))
+
+    predy = model.predict(X)
+    return predy
+
+def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneur, w_ = None, 
+    KG = None, **kwargs):
+    
+    assert(intc_.shape[1] == nneur == coef_.shape[0] == coef_.shape[1] == w_.shape[0] == w_.shape[1])
+    model = Ridge()
+    model.coef_ = np.squeeze(coef_.copy())
+    model.intercept_ = np.squeeze(intc_.copy())
+    model.W = np.squeeze(w_.copy())
+
+    ##### check that variables iare in the right order ####
+    generate_models.check_variables_order(variable_names, nneur)
+    
+    ### Get variables #### 
+    x_test = [] 
+    for vr in variable_names:
+        x_test.append(data_temp_dict[vr][test_ix_fold, np.newaxis])
+        X = np.mat(np.hstack((x_test)))
+
+    #### Make non-action prediction ###
+    pred = np.mat(model.predict(X))
+
+    ### Get action ###
+    A = []
+    for v in ['pshx_tm0', 'pshy_tm0']: 
+        A.append(data_temp_dict[v][test_ix_fold, np.newaxis])
+    A = np.hstack((A))
+    assert(A.shape[0] == X.shape[0])
+
+    ### Condition on action! 
+    ### For each datapoint, estimate 
+    ## y  ~ N (Ayt+b, W)
+    ## a  ~ N (K(Ayt+b), KWK') 
+    ## E(y_t | a_t) = (Ayt + b) + WK'()
+    cov = model.W; 
+    cov12 = np.dot(KG, cov).T
+    cov21 = np.dot(KG, cov)
+    cov22 = np.dot(KG, np.dot(cov, KG.T))
+
+    try:
+        cov22I = np.linalg.inv(cov22)
+        testing_mode = False
+    except:
+        print('Should only be in testing mode --> W is singular')
+        cov22I = np.zeros_like(cov22)
+        testing_mode = True
+
+    T = A.shape[0]
+
+    pred_w_cond = []
+
+    #### Ge prediction: T x N 
+    mu2_i = np.dot(KG, pred.T).T                
+    pred_w_cond = pred + np.dot(cov12, np.dot(cov22I, (A - mu2_i).T)).T
+
+    if testing_mode:
+        pass
+    else:
+        assert(np.allclose(np.dot(KG, pred_w_cond.T).T, A))
+    return pred_w_cond
+
+    # for i_t in range(T):
+
+    #     ### Get this prediction (mu 1)
+    #     mu1_i = pred[i_t, :].T
+
+    #     ### Get predicted value of action; 
+    #     mu2_i = np.dot(KG, mu1_i)
+
+    #     ### Actual action; 
+    #     a_i = A[i_t, :][:, np.newaxis]
+
+    #     ### Conditon step; 
+    #     mu1_2_i = mu1_i + np.dot(cov12, np.dot(cov22I, a_i - mu2_i))
+
+    #     ### Make sure it matches; 
+    #     if testing_mode:
+    #         pass
+    #     else:
+    #         assert(np.allclose(np.dot(KG, mu1_2_i), a_i))
+
+    #     pred_w_cond.append(np.squeeze(np.array(mu1_2_i)))
+
+    # pred = np.vstack((pred_w_cond))
+    
+    
+def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept = True, nshuffs = 100):
     
     if with_intercept:
         pref = analysis_config.config['shuff_fig_dir']
@@ -1772,8 +2096,72 @@ def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept =
     if 'latent' in model_nm:
         pref = analysis_config.config['shuff_fig_dir_latentLDS']
 
+    #### Deprecated as of 10/2020 --> from when saved output predictions ####
+    data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day)))
+    data_temp = data_file['Data_temp']
+    Sub_push_all = data_file['Sub_push']
+    Sub_spikes_all = data_file['Sub_spikes']
+
+    #### models #### grom_0_shuff009_hist_1pos_0psh_2spksm_1_spksp_0_models
+    files = np.sort(glob.glob(pref + '%s_%s_shuff*_%s.pkl'%(animal, day, model_nm)))
+    files = files[:nshuffs]
+
+    #### Predictions 
+    pred_y = [] 
+    for i_f, fl in enumerate(files): 
+
+        #### Get shuffle indices; 
+        model_file = pickle.load(open(fl, 'rb'))
+        shuff_num = model_file['shuff_num']
+        shuffle_indices = data_file[int(shuff_num)]
+
+        ### Shuffled --> matched ####
+        sub_push = Sub_push_all[shuffle_indices, :]
+        sub_spikes = Sub_spikes_all[shuffle_indices, :]
+
+        for i_fold in range(model_file['model_set'].keys()):
+
+            #### Get the model ######
+            ridge_model = model_file['model_set'][i_fold]
+
+            ### TEST DATA ####
+            data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
+            data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
+            data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
+            data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
+            data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
+
+            ### TRAIN DATA ####
+            data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
+            data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
+            data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
+            data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
+            data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
+
+            ## Store the params; 
+            alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+
+            model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
+                only_potent_predictor = False, KG_pot = KG_potent_orth, 
+                fit_task_specific_model_test_task_spec = False,
+                fit_intercept = fit_intercept, model_nm = model_nm)
+            
+            # h5file, model_, pred_Y = generate_models_utils.h5_add_model(None, model_, i_d, first=i_d==0, model_nm=model_nm, 
+            #     test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
+            #     only_potent_predictor = False, KG_pot = KG_potent_orth, KG = KG,
+            #     fit_task_specific_model_test_task_spec = False,
+            #     fit_intercept = fit_intercept)
+
+
+
+
+
+
+
+
+
     files = np.sort(glob.glob(pref + '%s_%d_shuff*_%s.mat' %(animal, day, model_nm)))
-    files = files[:200]
+    files = files[:nshuffs]
     pred_Y = []; coef = []; intec = []; coef2 = []; keepix = []; 
     
     for i_f, fl in enumerate(files):
