@@ -844,7 +844,16 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
 def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full'):
     '''
-    models --> dynamics and dynamics conditioned on action 
+    general model tuning curves for shuffled data
+    
+    Parameters
+    ----------
+    fit_intercept : bool, optional
+        Description
+    latent_LDS : bool, optional
+        Description
+    latent_dim : str, optional
+        Description
     '''
     if latent_LDS:
         model_set_number = 11
@@ -861,6 +870,9 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
     n_folds = 5
     model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(model_set_number)
     models_to_include = [m[1] for m in model_var_list]
+
+    ### Get magnitude boundaries ####
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
     ### Place to save models: 
     model_data = dict(); 
@@ -896,7 +908,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'grom' and i_d < -1:
+            if animal == 'grom' and i_d < 10:
                 pass
             else:
                 print('##############################')
@@ -911,16 +923,58 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                     KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
 
                 # Get spike data from data fcn
-                Data_temp, Sub_spikes, Sub_push = generate_models_utils.get_spike_kinematics(animal, day, 
+                Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
                     order_dict[i_d], history_bins_max, within_bin_shuffle = True,
-                    day_ix = i_d, nshuffs = 200)
+                    day_ix = i_d, nshuffs = 1000)
 
-                for shuffle in range(200):
+                #### Save shuffle indices ####### 
+                shuff_ix_fname = save_directory + '%s_%d_shuff_ix.pkl' %(animal, i_d)
 
-                    data_temp = Data_temp[shuffle]
-                    sub_spikes = Sub_spikes[shuffle]
-                    sub_push_all = Sub_push[shuffle]
+                nshuffs = len(Shuff_ix.keys())
 
+                ### Re make data to be smaller 
+                Data2 = dict(spks=Data['spks'], push=Data['push'], bin_num=Data['bin_num'])
+
+                #### Save data in this guy too ####
+                Shuff_ix['Data'] = Data2
+
+                #### Get training / testing sets split up --- test on 80% one task, test on 20% same tasks 20% other task
+                test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, Data_temp)
+                type_of_model = np.zeros((5, ))
+
+                #### Save the test and train indices ####
+                Shuff_ix['test_ix'] = test_ix
+                Shuff_ix['train_ix'] = train_ix
+                Shuff_ix['temp_n']  = Sub_push.shape[0]
+                command_bins_disc = util_fcns.commands2bins([Sub_push], mag_boundaries, animal, i_d, vel_ix = [0, 1], ndiv=8)[0]
+
+                #### Save these guys ###
+                pickle.dump(Shuff_ix, open(shuff_ix_fname, 'wb'))
+
+                for shuffle in range(nshuffs):
+
+                    ##### Shuffles and get trial starts #####
+                    sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks(Data2, Shuff_ix[shuffle])
+
+                    assert(np.allclose(Sub_spikes, Data2['spks'][tm0ix, :]))
+                    assert(np.allclose(Sub_spk_temp_all[:, 0, :], Data2['spks'][tm1ix]))
+
+                    #### Split up #####
+                    shuff_com_bins_disc = util_fcns.commands2bins([sub_push], mag_boundaries, animal, i_d, vel_ix = [3, 5], ndiv=8)[0]
+
+                    #### Check that these are linked still; 
+                    if animal == 'grom':
+                        assert(np.allclose(sub_push[:, [3, 5]], np.dot(KG, sub_spikes.T).T))
+                    elif animal == 'jeev':
+                        assert(generate_models_utils.quick_reg(  np.array(np.dot(KG, sub_spikes.T).T), 
+                            np.array(sub_push[:, [3, 5]])) > .99)
+
+                    ### Now make sure the discretized version are ok: 
+                    assert(np.allclose(command_bins_disc, shuff_com_bins_disc))
+
+                    ### Make sure not exact match ###
+                    assert(np.sum(np.sum(sub_spikes, axis=1) != np.sum(Sub_spikes, axis=1)) > 0)
+                    
                     nneur = sub_spikes.shape[1]
                     variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
                     
@@ -934,7 +988,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                         nT, nneur = sub_spikes.shape
                         model_data = np.zeros((nT, nneur, 3)) 
                     
-                        ######### Ridge #########
+                        ######### Ridge / LDS #########
                         if latent_LDS: 
                             #### This gets trials instead of time points ###
                             trl_test_ix, trl_train_ix, type_of_model = generate_models_utils.get_training_testings_generalization_LDS_trial(n_folds, data_temp,
@@ -952,12 +1006,8 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
                         ######### Ridge #########
                         else:
-                            #### Get training / testing sets split up --- test on 80% one task, test on 20% same tasks 20% other task
-                            test_ix, train_ix, type_of_model = generate_models_utils.get_training_testings_generalization(n_folds, data_temp,
-                                match_task_spec_n = True)
                             save_dat = dict()
-                            save_dat['model_coef'] = []
-                            save_dat['model_intc'] = []
+                            save_dat['model_set'] = {}
                         
                         ###### Go through the all the models #####
                         for i_fold, type_of_model_index in enumerate(type_of_model):
@@ -966,6 +1016,8 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                                 pass
                             else:
                                 if latent_LDS:
+                                    raise Exception('Need to re-order spk_tm1')
+
                                     assert(type_of_model_index in [0, 1, 2])
                                     if latent_dim == 'full':
                                         ndims = 'full'
@@ -988,19 +1040,26 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                                                 
                                 else:
                                     ### TEST DATA ####
-                                    data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
-                                    data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
-                                    data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
-                                    data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
-                                    data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
+                                    # data_temp_dict_test = panda_to_dict(data_temp.iloc[test_ix[i_fold]])
+                                    # data_temp_dict_test['spks'] = sub_spikes[test_ix[i_fold]]
+                                    # data_temp_dict_test['pshy'] = sub_push_all[test_ix[i_fold], 1]
+                                    # data_temp_dict_test['pshx'] = sub_push_all[test_ix[i_fold], 0]
+                                    # data_temp_dict_test['psh'] = np.hstack(( data_temp_dict_test['pshx'], data_temp_dict_test['pshy']))
+                                    # data_temp_dict_test['spks_all'] = sub_spikes_all[test_ix[i_fold], :, :]
 
                                     ### TRAIN DATA ####
-                                    data_temp_dict = panda_to_dict(data_temp.iloc[train_ix[i_fold]])
-                                    data_temp_dict['spks'] = sub_spikes[train_ix[i_fold]]
-                                    data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
-                                    data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
-                                    data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
-
+                                    #data_temp_dict = panda_to_dict(Data_temp.iloc[train_ix[i_fold]])
+                                    data_temp_dict = {}
+                                    data_temp_dict['spks'] = sub_spikes[train_ix[i_fold], :]
+                                    #data_temp_dict['pshy'] = sub_push[train_ix[i_fold], 1]
+                                    #data_temp_dict['pshx'] = sub_push[train_ix[i_fold], 0]
+                                    #data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
+                                    data_temp_dict['spks_tm1'] = sub_spikes_tm1[train_ix[i_fold], :]
+                                    
+                                    #### Replace spk_tm1 and spk_tp1 with sub_spks_all --> Shuffled 
+                                    for i_n in range(nneur):
+                                        data_temp_dict['spk_tm1_n%d'%i_n] = data_temp_dict['spks_tm1'][:, i_n]
+                                        
                                     ## Store the params; 
                                     alpha_spec = ridge_dict[animal][0][i_d, model_nm]
 
@@ -1009,27 +1068,34 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                                         fit_task_specific_model_test_task_spec = False,
                                         fit_intercept = fit_intercept, model_nm = model_nm)
                                     
-                                    h5file, model_, pred_Y = generate_models_utils.h5_add_model(None, model_, i_d, first=i_d==0, model_nm=model_nm, 
-                                        test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
-                                        only_potent_predictor = False, KG_pot = KG_potent_orth, KG = KG,
-                                        fit_task_specific_model_test_task_spec = False,
-                                        fit_intercept = fit_intercept)
+                                    # h5file, model_, pred_Y = generate_models_utils.h5_add_model(None, model_, i_d, first=i_d==0, model_nm=model_nm, 
+                                    #     test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
+                                    #     only_potent_predictor = False, KG_pot = KG_potent_orth, KG = KG,
+                                    #     fit_task_specific_model_test_task_spec = False,
+                                    #     fit_intercept = fit_intercept)
 
-                                    if type_of_model_index == 2:
-                                        save_dat['model_coef'].append(model_.coef_)
+                                    # if type_of_model_index == 2:
+                                    #     save_dat['model_coef'].append(model_.coef_)
 
-                                        if fit_intercept:
-                                            save_dat['model_intc'].append(model_.intercept_)
+                                    #     if fit_intercept:
+                                    #         save_dat['model_intc'].append(model_.intercept_)
+
+                                    ### Save the model 
+                                    save_dat[i_fold, 'coef_'] = model_.coef_
+                                    save_dat[i_fold, 'intc_'] = model_.intercept_
+
+                                    if 'psh_2' in model_nm:
+                                        save_dat[i_fold, 'W'] = model_.W
 
                                 ####### Save model data #############
-                                model_data[test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
+                                #model_data[test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
                                 
                         #### Save Animal/Day/Shuffle/Model Name ###
                         shuff_str = str(shuffle)
                         shuff_str = shuff_str.zfill(3)
 
                         ### Only save the general model for space; 
-                        save_dat['model_data'] = model_data[:, :, 2]
+                        #save_dat['model_data'] = model_data[:, :, 2]
                         plt.close('all')
                     
                         if latent_LDS:
@@ -1042,7 +1108,69 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                             pickle.dump(save_dat, open(save_directory+'%s_%d_shuff%s_%s.pkl' %(animal, i_d, shuff_str, model_nm), 'wb'))
 
                         else:
-                            sio.savemat(save_directory+'%s_%d_shuff%s_%s.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
+                            save_dat['shuff_num'] = shuffle
+                            sio.savemat(save_directory+'%s_%d_shuff%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
+
+                        fname = save_directory+'%s_%d_shuff%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm)
+                        print('file %s' %(fname))
+
+def get_temp_spks_ix(Data2):
+    ##### Shuffles and get trial starts #####
+    bin_num = np.hstack((Data2['bin_num']))
+
+    ### Get ones that are > first bin; 
+    spks_t1 = np.nonzero(bin_num > 0)[0]
+
+    ### Get the zero bins 
+    spks_not_t2 = np.nonzero(bin_num == 0)[0]
+
+    ### Remove the first one 
+    spks_not_t2 = spks_not_t2[spks_not_t2 > 0]
+
+    ### Add teh last bine 
+    spks_not_t2 = np.hstack((spks_not_t2, len(bin_num)))
+
+    ### subtract by 1 to get the last bin
+    spks_not_t2 = spks_not_t2 - 1
+
+    assert(np.all(bin_num[spks_not_t2[:-1] + 1] == 0))
+    spks_t2 = np.array([i for i in range(len(bin_num)) if i not in spks_not_t2])
+
+    ##### Keep these guys 
+    spks_keep = np.intersect1d(spks_t1, spks_t2)
+
+    return spks_keep, spks_keep - 1
+
+
+def get_temp_spks(Data2, shuff_ix):
+    ##### Shuffles and get trial starts #####
+    bin_num = np.hstack((Data2['bin_num']))
+
+    ### Get ones that are > first bin; 
+    spks_t1 = np.nonzero(bin_num > 0)[0]
+
+    ### Get the zero bins 
+    spks_not_t2 = np.nonzero(bin_num == 0)[0]
+
+    ### Remove the first one 
+    spks_not_t2 = spks_not_t2[spks_not_t2 > 0]
+
+    ### Add teh last bine 
+    spks_not_t2 = np.hstack((spks_not_t2, len(bin_num)))
+
+    ### subtract by 1 to get the last bin
+    spks_not_t2 = spks_not_t2 - 1
+
+    assert(np.all(bin_num[spks_not_t2[:-1] + 1] == 0))
+    spks_t2 = np.array([i for i in range(len(bin_num)) if i not in spks_not_t2])
+
+    ##### Keep these guys 
+    spks_keep = np.intersect1d(spks_t1, spks_t2)
+
+    spks_shuff = Data2['spks'][shuff_ix, :]
+    push_shuff = Data2['push'][shuff_ix, :]
+
+    return spks_shuff[spks_keep], spks_shuff[spks_keep - 1], push_shuff[spks_keep], spks_keep, spks_keep - 1
 
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
