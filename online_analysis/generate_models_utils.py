@@ -290,7 +290,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             # Add to list: 
             ### Stack up the binned spikes; 
             spks.append(np.vstack(([bin_spk[x] for x in ix_mod])))
-            bin_num.append(np.arange(bin_spk[x].shape[0]) for x in ix_mod)
+            bin_num.append([np.arange(bin_spk[x].shape[0]) for x in ix_mod])
             
             # We need the real velocity: 
             vel.append(np.vstack(([cursor_vel[x] for x in ix_mod])))
@@ -332,27 +332,26 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     ########################################################
     ##### Here we can safely add shuffles if we want #######
     ########################################################
-    Data_temp = []; Sub_spk0_temp_all = []; Sub_push_all = []; 
+    ##########################################
+    ##########################################
+    ####### Let's do the shuffling here ######
+    ##########################################
+    ##########################################
+    Shuffle_index = dict()
+
+    _, KG = within_bin_shuffling(spks, push[:, [3, 5]], animal, day_ix)
+
+    ##### Make sure these are lined up: ####
+    #### 2 x N    N x T --> 2 x T --> T x 2
+    if animal == 'grom':
+        assert(np.allclose(np.dot(KG[[3, 5], :], spks.T).T, push[:, [3, 5]]))
+    elif animal == 'jeev':
+        assert(quick_reg(np.dot(KG[[3, 5], :], spks.T).T, push[:, [3, 5]]) > .99)
+
+
+
 
     for nsi in range(nshuffs):
-        if nsi % 10 == 0:
-            print('Staring shuff %d' %(nsi))
-
-        ### These are the things we want to save: 
-        temp_tune = {}
-        temp_tune['spks'] = [] ### Time window of spikes; 
-        temp_tune['spk0'] = [] ### spks at a given time point
-        temp_tune['vel'] = []
-        temp_tune['pos'] = []
-        temp_tune['tsk'] = []
-        temp_tune['trl'] = []
-        temp_tune['psh'] = [] ### xy push 
-        
-        temp_tune['trg'] = [] ### Index 
-        temp_tune['trg_pos'] = [] ### position in space 
-        temp_tune['trl_bin_ix'] = [] ### index from onset 
-        temp_tune['day_bin_ix'] = [] ### Which bin number (from the full day) is this? 
-        temp_tune['day_bin_ix_shuff'] = []
 
         ################## INIT the shuffle seed #################
         if shuffix is not None:
@@ -362,246 +361,258 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
         ################## Run the shuffle ######################
         ####### shuff_ix --> full indices ######
-
         if full_shuffle:
-            shuff_ix = full_shuffling(spks, push, animal, day_ix)
+            shuff_ix = full_shuffling(spks, push[:, [3, 5]], animal, day_ix)
 
         elif within_bin_shuffle:
-            shuff_ix, KG = within_bin_shuffling(spks, push, animal, day_ix)
+            shuff_ix, KG = within_bin_shuffling(spks, push[:, [3, 5]], animal, day_ix)
 
         else:
             shuff_ix = np.arange(spks.shape[0])
 
         assert(spks.shape[0] == push.shape[0] == len(shuff_ix))
 
-        ### Modify the spikes and pushes; 
-        spks = spks[shuff_ix, :]
-        push = push[shuff_ix, :]
+        Shuffle_index[nsi] = shuff_ix.copy()
 
-        if animal == 'grom':
-            assert(np.allclose(np.dot(KG, spks.T).T, push))
+    ### These are the things we want to save: 
+    temp_tune = {}
+    temp_tune['spks'] = [] ### Time window of spikes; 
+    temp_tune['spk0'] = [] ### spks at a given time point
+    temp_tune['vel'] = []
+    temp_tune['pos'] = []
+    temp_tune['tsk'] = []
+    temp_tune['trl'] = []
+    temp_tune['psh'] = [] ### xy push 
+    
+    temp_tune['trg'] = [] ### Index 
+    temp_tune['trg_pos'] = [] ### position in space 
+    temp_tune['trl_bin_ix'] = [] ### index from onset 
+    temp_tune['day_bin_ix'] = [] ### Which bin number (from the full day) is this? 
+    temp_tune['day_bin_ix_shuff'] = []
 
-        ########################################
-        ######### For each trial ###############
-        ########################################
-        for t in np.unique(trl):
-            assert(int(t) == t)
-            t = int(t)
+    if animal == 'grom':
+        assert(np.allclose(np.dot(KG, spks.T).T, push))
 
-            trl_ix = np.nonzero(trl == t)[0]
+    ########################################
+    ######### For each trial ###############
+    ########################################
+    for t in np.unique(trl):
+        assert(int(t) == t)
+        t = int(t)
 
-            ##### Get all the trial activity ####
-            spk_trl = spks[trl_ix, :]
-            vel_trl = vel[trl_ix, :]
-            push_trl = push[trl_ix, :]
-            pos_trl = pos[trl_ix, :]
-            tsk_trl = tsk[trl_ix]
-            assert(np.all(tsk_trl[0] == tsk_trl))
+        trl_ix = np.nonzero(trl == t)[0]
 
-            nt = len(trl_ix)
-            nneurons = spks.shape[1]
+        ##### Get all the trial activity ####
+        spk_trl = spks[trl_ix, :]
+        vel_trl = vel[trl_ix, :]
+        push_trl = push[trl_ix, :]
+        pos_trl = pos[trl_ix, :]
+        tsk_trl = tsk[trl_ix]
+        assert(np.all(tsk_trl[0] == tsk_trl))
 
-            ### Modified on 9/13/19 and 6/16/20
-            spk_temp =  np.zeros((nt-(2*history_bins),    (1+(2*history_bins)), nneurons))
-            
-            ### EOM
-            spk_temp0 = np.zeros((nt-(2*history_bins),                          nneurons))
-            velo =      np.zeros((nt-(2*history_bins), 2*(1+(2*history_bins))))
-            
-            poso = np.zeros_like(velo)
-            pusho = np.zeros_like(velo)
-            
-            ### EOM
-            task = np.zeros((nt-(2*history_bins), )) + tsk_trl[0]
-            targ = np.zeros((nt-(2*history_bins), )) + trg_trl[t]
-            targ_pos = np.zeros((nt - (2*history_bins), 2))
-            targ_pos[:, 0] = trg_trl_pos[t][0]
-            targ_pos[:, 1] = trg_trl_pos[t][1]
+        nt = len(trl_ix)
+        nneurons = spks.shape[1]
 
-            ix_ = np.zeros((len(task), 2))# + t
-            ix_[:, 0] = t # Full set of trials 
-            ix_[:, 1] = trl_order_ix[t] # Order
-
-            XY_div = (2*history_bins)+1
-
-            # # Add to temporal timing model
-            # for t in range(len(bin_spk)):
-            #     if t in ix_mod:
-            #         trl = bin_spk[t]
-            #         nt, nneurons = trl.shape
-
-            #         ### Modified on 9/13/19
-            #         spk = np.zeros((nt-(2*history_bins), (1+(2*history_bins)), nneurons))
-            #         ### EOM
-            #         spk0 = np.zeros((nt - (2*history_bins), nneurons))
-
-            #         velo = np.zeros((nt-(2*history_bins), 2*(1+(2*history_bins))))
-            #         poso = np.zeros_like(velo)
-
-            #         ### Modified 9/16/19 -- adding lags to push
-            #         pusho = np.zeros_like(velo)
-                    
-            #         ### EOM
-            #         task = np.zeros((nt-(2*history_bins), ))+i_t
-
-            #         ### So this needs to 
-            #         targ = np.zeros((nt-(2*history_bins), ))+trg_trl[t]
-            #         targ_pos = np.zeros((nt - (2*history_bins), 2)) + trg_trl_pos[t]
-
-            #         ix_ = np.zeros((len(task), 2))# + t
-            #         ix_[:, 0] = t # Full set of trials 
-            #         ix_[:, 1] = order[i_t][i] # Order
-
-            #         XY_div = (2*history_bins)+1
-
-            ### For each time bin that we can actually capture: 
-            for tmi, tm in enumerate(np.arange(history_bins, nt-history_bins)):
-                
-                ### for the individual time bins; 
-                for tmpi, tmpii in enumerate(np.arange(tm - history_bins, tm + history_bins + 1)):
-                    spk_temp[tmi, tmpi, :] = spk_trl[tmpii, :]
-
-                spk_temp0[tmi, :] = spk_trl[tm, :]
-                velo[tmi, :XY_div] = np.squeeze(np.array(vel_trl[tm-history_bins:tm+history_bins+1, 0]))
-                velo[tmi, XY_div:] = np.squeeze(np.array(vel_trl[tm-history_bins:tm+history_bins+1, 1]))
-                
-                poso[tmi, :XY_div] = np.squeeze(np.array(pos_trl[tm-history_bins:tm+history_bins+1, 0]))
-                poso[tmi, XY_div:] = np.squeeze(np.array(pos_trl[tm-history_bins:tm+history_bins+1, 1]))
-                
-                pusho[tmi, :XY_div] = np.squeeze(np.array(push_trl[tm-history_bins:tm+history_bins+1, 3]))
-                pusho[tmi, XY_div:] = np.squeeze(np.array(push_trl[tm-history_bins:tm+history_bins+1, 5]))
-            
-            temp_tune['spk0'].append(spk_temp0)
-            temp_tune['spks'].append(spk_temp)
-            temp_tune['vel'].append(velo)
-            temp_tune['tsk'].append(task)
-            temp_tune['pos'].append(poso)
-            temp_tune['trl'].append(ix_)
-            temp_tune['trg'].append(targ)
-            temp_tune['trg_pos'].append(targ_pos)
-            temp_tune['psh'].append(pusho)
-            temp_tune['trl_bin_ix'].append(np.arange(history_bins, nt-history_bins))
-            temp_tune['day_bin_ix'].append(trl_ix[np.arange(history_bins, nt-history_bins)]) ### Which bin number (from the full day) is this? 
-            temp_tune['day_bin_ix_shuff'].append(shuff_ix[trl_ix[np.arange(history_bins, nt-history_bins)]])
-            
-            #import pdb; pdb.set_trace()
+        ### Modified on 9/13/19 and 6/16/20
+        spk_temp =  np.zeros((nt-(2*history_bins),    (1+(2*history_bins)), nneurons))
         
-        ################################################
-        #### STACK UP EVERYTHING WITHOUT TIME SHIFTS ###
-        ################################################
-        # spikes = np.vstack((spks))
-        # velocity = np.vstack((vel))
-        spikes = spks.copy()
-        velocity = vel.copy()
-
-        if velocity.shape[1] == 7:
-            velocity = np.array(velocity[:, [3, 5]])
+        ### EOM
+        spk_temp0 = np.zeros((nt-(2*history_bins),                          nneurons))
+        velo =      np.zeros((nt-(2*history_bins), 2*(1+(2*history_bins))))
         
-        position = pos.copy()
-        task_index = tsk.copy()
+        poso = np.zeros_like(velo)
+        pusho = np.zeros_like(velo)
         
-        #################################
-        ######## Model Options ##########
-        #################################
+        ### EOM
+        task = np.zeros((nt-(2*history_bins), )) + tsk_trl[0]
+        targ = np.zeros((nt-(2*history_bins), )) + trg_trl[t]
+        targ_pos = np.zeros((nt - (2*history_bins), 2))
+        targ_pos[:, 0] = trg_trl_pos[t][0]
+        targ_pos[:, 1] = trg_trl_pos[t][1]
 
-        sub_spk_temp_all = np.vstack((temp_tune['spks']))
-        sub_spk0_temp_all = np.vstack((temp_tune['spk0']))
-        nneur = sub_spk_temp_all.shape[2]
+        ix_ = np.zeros((len(task), 2))# + t
+        ix_[:, 0] = t # Full set of trials 
+        ix_[:, 1] = trl_order_ix[t] # Order
 
-        #### Time lags ####
-        TL = np.arange(-1*history_bins, history_bins+1)
-        i_zero = np.nonzero(TL==0)[0]
+        XY_div = (2*history_bins)+1
 
-        #### Push at time zero and time zero + future ####
-        #### Current push X / Y 
-        sub_push_all = np.vstack((temp_tune['psh']))[:, [i_zero, i_zero+XY_div]]
+        # # Add to temporal timing model
+        # for t in range(len(bin_spk)):
+        #     if t in ix_mod:
+        #         trl = bin_spk[t]
+        #         nt, nneurons = trl.shape
 
-        ### Double checking; #####
-        tmp_psh = []
-        for trltmp in range(len(temp_tune['trl_bin_ix'])):
-            trl_ix = np.nonzero(trl == trltmp)[0]
-            subtrlix = temp_tune['trl_bin_ix'][trltmp]
-            tmp_psh.append(push[np.ix_(trl_ix[subtrlix], [3, 5])])
-        assert(np.allclose(np.vstack((tmp_psh)), sub_push_all[:, :, 0]))
+        #         ### Modified on 9/13/19
+        #         spk = np.zeros((nt-(2*history_bins), (1+(2*history_bins)), nneurons))
+        #         ### EOM
+        #         spk0 = np.zeros((nt - (2*history_bins), nneurons))
 
-        #### Get all the temporally shifted data ###
-        psh_temp = np.vstack((temp_tune['psh']))
-        vel_temp = np.vstack((temp_tune['vel']))
-        tsk_temp = np.hstack((temp_tune['tsk']))
-        pos_temp = np.vstack((temp_tune['pos']))
-        trg_temp = np.hstack((temp_tune['trg']))
+        #         velo = np.zeros((nt-(2*history_bins), 2*(1+(2*history_bins))))
+        #         poso = np.zeros_like(velo)
 
-        #### Target positions / trial bin indices / trial number 
-        trg_pos_temp = np.vstack((temp_tune['trg_pos']))
-        bin_temp = np.hstack((temp_tune['trl_bin_ix']))
-        trl_temp = np.vstack((temp_tune['trl']))[:, 0]
-        day_bin_ix_temp = np.hstack((temp_tune['day_bin_ix']))
-        day_bin_ix_shuff_temp = np.hstack((temp_tune['day_bin_ix_shuff']))
+        #         ### Modified 9/16/19 -- adding lags to push
+        #         pusho = np.zeros_like(velo)
+                
+        #         ### EOM
+        #         task = np.zeros((nt-(2*history_bins), ))+i_t
 
-        ### Generate acceleration #####
-        accx = np.hstack((np.array([0.]), np.diff(velocity[:, 0])))
-        accy = np.hstack((np.array([0.]), np.diff(velocity[:, 1])))
+        #         ### So this needs to 
+        #         targ = np.zeros((nt-(2*history_bins), ))+trg_trl[t]
+        #         targ_pos = np.zeros((nt - (2*history_bins), 2)) + trg_trl_pos[t]
 
-        ########################################################################
-        ### Add all the data to the pandas frame with t, VEL, POS, ACC ###
-        #######################################################################
+        #         ix_ = np.zeros((len(task), 2))# + t
+        #         ix_[:, 0] = t # Full set of trials 
+        #         ix_[:, 1] = order[i_t][i] # Order
 
-        data = pandas.DataFrame({'velx': velocity[:, 0], 'vely': velocity[:, 1],'tsk': task_index, 
-            'posx': position[:, 0], 'posy': position[:, 1]})
+        #         XY_div = (2*history_bins)+1
 
-        ### Add it to the end 
-        data['accx'] = pandas.Series(accx, index=data.index)
-        data['accy'] = pandas.Series(accy, index=data.index)
-
-        ### Time lags 
-        TL = np.arange(-1*history_bins, history_bins+1)
-
-        tmp_dict = {}
-        for i, tli in enumerate(TL):
-            if tli <= 0:
-                nm0 = 'm'
-            elif tli > 0:
-                nm0 = 'p'
-
-            for vl in ['vel', 'pos', 'psh']:
-                for ixy, (nm, xy_ad) in enumerate(zip(['x', 'y'], [0, XY_div])):
-                    if vl=='vel':
-                        tmp = vel_temp[:, i + xy_ad]
-                    elif vl == 'pos':
-                        tmp = pos_temp[:, i + xy_ad]
-                    elif vl == 'psh':
-                        tmp = psh_temp[:, i + xy_ad]
-
-                    tmp_dict[vl+nm+'_t'+nm0+str(np.abs(TL[i]))] = copy.deepcopy(tmp)
-
-            for n in range(nneur):
-                tmp_dict['spk_t'+nm0+str(np.abs(TL[i]))+'_n'+str(n)] = sub_spk_temp_all[:, i, n]
-
-        tmp_dict['tsk'] = tsk_temp
-        tmp_dict['trg'] = trg_temp
-        tmp_dict['trg_posx'] = trg_pos_temp[:, 0]
-        tmp_dict['trg_posy'] = trg_pos_temp[:, 1]
-        tmp_dict['bin_num'] = bin_temp
-        tmp_dict['trl'] = trl_temp; 
-        tmp_dict['day_bin_ix'] = day_bin_ix_temp
-        tmp_dict['day_bin_ix_shuff'] = day_bin_ix_shuff_temp
-
-        ##################################
-        ### MODEL with HISTORY +FUTURE ###
-        ##################################
-        data_temp = pandas.DataFrame(tmp_dict)
-        if nsi == 0:
-            plot_data_temp(data_temp, animal, True)
-
-        if nshuffs == 1:
-            return data, data_temp, sub_spk0_temp_all, sub_spk_temp_all, sub_push_all
-        else:
-            Data_temp.append(copy.copy(data_temp)); 
-            Sub_spk0_temp_all.append(copy.copy(sub_spk0_temp_all));
-            Sub_push_all.append(copy.copy(sub_push_all))
-
-    return Data_temp, Sub_spk0_temp_all, Sub_push_all
+        ### For each time bin that we can actually capture: 
+        for tmi, tm in enumerate(np.arange(history_bins, nt-history_bins)):
             
+            ### for the individual time bins; 
+            for tmpi, tmpii in enumerate(np.arange(tm - history_bins, tm + history_bins + 1)):
+                spk_temp[tmi, tmpi, :] = spk_trl[tmpii, :]
+
+            spk_temp0[tmi, :] = spk_trl[tm, :]
+            velo[tmi, :XY_div] = np.squeeze(np.array(vel_trl[tm-history_bins:tm+history_bins+1, 0]))
+            velo[tmi, XY_div:] = np.squeeze(np.array(vel_trl[tm-history_bins:tm+history_bins+1, 1]))
+            
+            poso[tmi, :XY_div] = np.squeeze(np.array(pos_trl[tm-history_bins:tm+history_bins+1, 0]))
+            poso[tmi, XY_div:] = np.squeeze(np.array(pos_trl[tm-history_bins:tm+history_bins+1, 1]))
+            
+            pusho[tmi, :XY_div] = np.squeeze(np.array(push_trl[tm-history_bins:tm+history_bins+1, 3]))
+            pusho[tmi, XY_div:] = np.squeeze(np.array(push_trl[tm-history_bins:tm+history_bins+1, 5]))
+        
+        temp_tune['spk0'].append(spk_temp0)
+        temp_tune['spks'].append(spk_temp)
+        temp_tune['vel'].append(velo)
+        temp_tune['tsk'].append(task)
+        temp_tune['pos'].append(poso)
+        temp_tune['trl'].append(ix_)
+        temp_tune['trg'].append(targ)
+        temp_tune['trg_pos'].append(targ_pos)
+        temp_tune['psh'].append(pusho)
+        temp_tune['trl_bin_ix'].append(np.arange(history_bins, nt-history_bins))
+        temp_tune['day_bin_ix'].append(trl_ix[np.arange(history_bins, nt-history_bins)]) ### Which bin number (from the full day) is this? 
+        #temp_tune['day_bin_ix_shuff'].append(shuff_ix[trl_ix[np.arange(history_bins, nt-history_bins)]])
+        
+        #import pdb; pdb.set_trace()
+    
+    ################################################
+    #### STACK UP EVERYTHING WITHOUT TIME SHIFTS ###
+    ################################################
+    # spikes = np.vstack((spks))
+    # velocity = np.vstack((vel))
+    spikes = spks.copy()
+    velocity = vel.copy()
+
+    if velocity.shape[1] == 7:
+        velocity = np.array(velocity[:, [3, 5]])
+    
+    position = pos.copy()
+    task_index = tsk.copy()
+    
+    #################################
+    ######## Model Options ##########
+    #################################
+
+    sub_spk_temp_all = np.vstack((temp_tune['spks']))
+    sub_spk0_temp_all = np.vstack((temp_tune['spk0']))
+    nneur = sub_spk_temp_all.shape[2]
+
+    #### Time lags ####
+    TL = np.arange(-1*history_bins, history_bins+1)
+    i_zero = np.nonzero(TL==0)[0]
+
+    #### Push at time zero and time zero + future ####
+    #### Current push X / Y 
+    sub_push_all = np.squeeze(np.vstack((temp_tune['psh']))[:, [i_zero, i_zero+XY_div]])
+
+    ### Double checking; #####
+    tmp_psh = []
+    for trltmp in range(len(temp_tune['trl_bin_ix'])):
+        trl_ix = np.nonzero(trl == trltmp)[0]
+        subtrlix = temp_tune['trl_bin_ix'][trltmp]
+        tmp_psh.append(push[np.ix_(trl_ix[subtrlix], [3, 5])])
+    assert(np.allclose(np.vstack((tmp_psh)), sub_push_all))
+
+    #### Get all the temporally shifted data ###
+    psh_temp = np.vstack((temp_tune['psh']))
+    vel_temp = np.vstack((temp_tune['vel']))
+    tsk_temp = np.hstack((temp_tune['tsk']))
+    pos_temp = np.vstack((temp_tune['pos']))
+    trg_temp = np.hstack((temp_tune['trg']))
+
+    #### Target positions / trial bin indices / trial number 
+    trg_pos_temp = np.vstack((temp_tune['trg_pos']))
+    bin_temp = np.hstack((temp_tune['trl_bin_ix']))
+    trl_temp = np.vstack((temp_tune['trl']))[:, 0]
+    day_bin_ix_temp = np.hstack((temp_tune['day_bin_ix']))
+    #day_bin_ix_shuff_temp = np.hstack((temp_tune['day_bin_ix_shuff']))
+
+    ### Generate acceleration #####
+    accx = np.hstack((np.array([0.]), np.diff(velocity[:, 0])))
+    accy = np.hstack((np.array([0.]), np.diff(velocity[:, 1])))
+
+    ########################################################################
+    ### Add all the data to the pandas frame with t, VEL, POS, ACC ###
+    #######################################################################
+    # data = pandas.DataFrame({'velx': velocity[:, 0], 'vely': velocity[:, 1],'tsk': task_index, 
+    #     'posx': position[:, 0], 'posy': position[:, 1]})
+
+    data = dict(tsk=task_index, pos=position, vel=velocity, push=push, spks=spks, bin_num=bin_num,
+        accx=accx, accy=accy)
+
+    ### Add it to the end 
+    # data['accx'] = pandas.Series(accx, index=data.index)
+    # data['accy'] = pandas.Series(accy, index=data.index)
+
+    ### Time lags 
+    TL = np.arange(-1*history_bins, history_bins+1)
+
+    tmp_dict = {}
+    for i, tli in enumerate(TL):
+        if tli <= 0:
+            nm0 = 'm'
+        elif tli > 0:
+            nm0 = 'p'
+
+        for vl in ['vel', 'pos', 'psh']:
+            for ixy, (nm, xy_ad) in enumerate(zip(['x', 'y'], [0, XY_div])):
+                if vl=='vel':
+                    tmp = vel_temp[:, i + xy_ad]
+                elif vl == 'pos':
+                    tmp = pos_temp[:, i + xy_ad]
+                elif vl == 'psh':
+                    tmp = psh_temp[:, i + xy_ad]
+
+                tmp_dict[vl+nm+'_t'+nm0+str(np.abs(TL[i]))] = copy.deepcopy(tmp)
+
+        for n in range(nneur):
+            tmp_dict['spk_t'+nm0+str(np.abs(TL[i]))+'_n'+str(n)] = sub_spk_temp_all[:, i, n]
+
+    tmp_dict['tsk'] = tsk_temp
+    tmp_dict['trg'] = trg_temp
+    tmp_dict['trg_posx'] = trg_pos_temp[:, 0]
+    tmp_dict['trg_posy'] = trg_pos_temp[:, 1]
+    tmp_dict['bin_num'] = bin_temp
+    tmp_dict['trl'] = trl_temp; 
+    tmp_dict['day_bin_ix'] = day_bin_ix_temp
+    #tmp_dict['day_bin_ix_shuff'] = day_bin_ix_shuff_temp
+
+    ##################################
+    ### MODEL with HISTORY +FUTURE ###
+    ##################################
+    data_temp = pandas.DataFrame(tmp_dict)
+    if nsi == 0:
+        plot_data_temp(data_temp, animal, True)
+
+    if nshuffs == 1:
+        return data, data_temp, sub_spk0_temp_all, sub_spk_temp_all, sub_push_all
+
+    else:
+        return data, data_temp, sub_spk0_temp_all, sub_spk_temp_all, sub_push_all, Shuffle_index
+
 ### Confirmation that extracted data looks right ###
 def plot_data_temp(data_temp, animal, use_bg = False):
     
@@ -1200,12 +1211,11 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
 
     #### Mag boundaries #######
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
-    print('using animal %s, day_ix %d for mag boundaries' %(animal, day_ix))
+    #print('using animal %s, day_ix %d for mag boundaries' %(animal, day_ix))
 
-    command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]
+    command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [0, 1])[0]
 
-    print('Check "command_bins" to make sure that there is something labeled as "4"')
-    import pdb; pdb.set_trace()
+    assert(4. in np.unique(command_bins[:, 0]))
     assert(bin_spk.shape[0] == command_bins.shape[0])
 
     #### Get KG ###
@@ -1221,7 +1231,7 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
     shuff_ix = np.zeros((bin_spk.shape[0])) - 1
     big_ix = []
 
-    for i_m in range(4):
+    for i_m in range(5):
         for i_a in range(8):
 
             ### Get indices ######
