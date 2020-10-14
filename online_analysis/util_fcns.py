@@ -352,6 +352,7 @@ def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
     if np.logical_and(len(y_true.shape) == 1, len(y_pred.shape) == 1):
         y_true = y_true[:, np.newaxis]
         y_pred = y_pred[:, np.newaxis]
+    
     if ignore_nans:
         ### Assume Y-true, y_pred are T x N matrices: 
         SSR_i = np.nansum(np.square(y_true - y_pred), axis=0)
@@ -371,6 +372,7 @@ def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
             return 1 - np.sum(SSR_i)/np.sum(SST_i)
         else:
             return 1 - (SSR_i / SST_i)
+
 
 ### Plotting ###
 def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):

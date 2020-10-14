@@ -1495,7 +1495,11 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
             ####### Plot individual day vs. shuffled distribution ####
             if animal == 'grom' and i_d == 0:   
+                ### Plot both ####
                 shuff_vs_gen_dyn_plot(pred_Y, model_dict[i_d, 'spks'], i_d, animal, model_name, by_neuron = True,
+                    perc_increase = perc_increase)
+                
+                shuff_vs_gen_dyn_plot(pred_Y, model_dict[i_d, 'spks'], i_d, animal, model_name, by_neuron = False,
                     perc_increase = perc_increase)
 
             ######## Get zero order hold #########
@@ -1842,7 +1846,7 @@ def shuff_vs_gen_dyn_plot(pred_Y, true_Y, i_d, animal, model_name, by_neuron = F
 
         ax.set_title('%s, Day%d, mod%s'%(animal, i_d, model_name))
 
-def get_shuffled_data_v2(animal, day, model_name, nshuffs = 1000, testing_mode = False):
+def get_shuffled_data_v2(animal, day, model_name, nshuffs = 100, testing_mode = False):
     """
     New method to get shuffled predictions 
     """
@@ -1966,24 +1970,27 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 1000, testing_mode =
     return pred_Y
 
 def pred_wo_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneur, **kwargs): 
-    """Summary
+    """
+    Make predictions from saved data and saved Ridge models, NOT conditioned on action 
     
     Parameters
     ----------
-    coef_ : TYPE
-        model coefficients 
-    intc_ : TYPE
-        model intercepts
-    data_temp_dict : TYPE
-        Description
-    test_ix_fold : TYPE
-        Description
-    variable_names : TYPE
-        Description
-    nneur : TYPE
-        Description
-    **kwargs
-        Description
+    coef_ : np.array (n x n )
+        coef matrix from shuffled file (Ridge.coef_)
+    intc_ : np.array (1 x n)
+        intc array from shuffled file (Ridge.intercept_)
+    data_temp_dict : dictionary 
+        holds data 
+    test_ix_fold : np.array
+        indices corresonding to held out data for this model 
+    variable_names : list
+        list of variable names -- output from generate_models.return_variables_associated_with_model_var
+    nneur : int
+        number of neurons 
+    
+    Returns
+    -------
+    np.array (T x N ) of dynamcis predictions 
     """
 
     assert(intc_.shape[1] == nneur == coef_.shape[0] == coef_.shape[1])
@@ -2004,7 +2011,35 @@ def pred_wo_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nne
 
 def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneur, w_ = None, 
     KG = None, **kwargs):
+    """
+    Make predictions from saved data and saved Ridge models, conditioned on action 
     
+    Parameters
+    ----------
+    coef_ : np.array (n x n )
+        coef matrix from shuffled file (Ridge.coef_)
+    intc_ : np.array (1 x n)
+        intc array from shuffled file (Ridge.intercept_)
+    data_temp_dict : dictionary 
+        holds data 
+    test_ix_fold : np.array
+        indices corresonding to held out data for this model 
+    variable_names : list
+        list of variable names -- output from generate_models.return_variables_associated_with_model_var
+    nneur : int
+        number of neurons 
+    w_ : None, optional
+        np.array (n x n) error covariance of Ridge dynamics model 
+    KG : None, optional
+        (2 x N) np.array, Kalman gain 
+
+    **kwargs
+        Description
+    
+    Returns
+    -------
+    np.array (T x N ) of dynamcis predictions 
+    """
     assert(intc_.shape[1] == nneur == coef_.shape[0] == coef_.shape[1] == w_.shape[0] == w_.shape[1])
     model = Ridge()
     model.coef_ = np.squeeze(coef_.copy())
@@ -2020,7 +2055,7 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
         x_test.append(data_temp_dict[vr][test_ix_fold, np.newaxis])
         X = np.mat(np.hstack((x_test)))
 
-    #### Make non-action prediction ###
+    #### Make non-action conditioned prediction ###
     pred = np.mat(model.predict(X))
 
     ### Get action ###
@@ -2035,6 +2070,7 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
     ## y  ~ N (Ayt+b, W)
     ## a  ~ N (K(Ayt+b), KWK') 
     ## E(y_t | a_t) = (Ayt + b) + WK'()
+
     cov = model.W; 
     cov12 = np.dot(KG, cov).T
     cov21 = np.dot(KG, cov)
@@ -2061,34 +2097,32 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
     else:
         assert(np.allclose(np.dot(KG, pred_w_cond.T).T, A))
     return pred_w_cond
-
-    # for i_t in range(T):
-
-    #     ### Get this prediction (mu 1)
-    #     mu1_i = pred[i_t, :].T
-
-    #     ### Get predicted value of action; 
-    #     mu2_i = np.dot(KG, mu1_i)
-
-    #     ### Actual action; 
-    #     a_i = A[i_t, :][:, np.newaxis]
-
-    #     ### Conditon step; 
-    #     mu1_2_i = mu1_i + np.dot(cov12, np.dot(cov22I, a_i - mu2_i))
-
-    #     ### Make sure it matches; 
-    #     if testing_mode:
-    #         pass
-    #     else:
-    #         assert(np.allclose(np.dot(KG, mu1_2_i), a_i))
-
-    #     pred_w_cond.append(np.squeeze(np.array(mu1_2_i)))
-
-    # pred = np.vstack((pred_w_cond))
-    
-    
+       
 def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept = True, nshuffs = 100):
+    """
+
+
     
+    Parameters
+    ----------
+    animal : TYPE
+        Description
+    day : TYPE
+        Description
+    model_nm : TYPE
+        Description
+    get_model : bool, optional
+        Description
+    with_intercept : bool, optional
+        Description
+    nshuffs : int, optional
+        Description
+    
+    Returns
+    -------
+    TYPE
+        Description
+    """
     if with_intercept:
         pref = analysis_config.config['shuff_fig_dir']
     else:
