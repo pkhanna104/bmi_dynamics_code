@@ -3,29 +3,29 @@ co = [4377]
 obs = [4378, 4382]
 
 def get_cursor_state_and_neural_push(co, obs, animal='grom', 
-    binsize_ms=100., savename='for_v.pkl', pre_go=1.):
+    binsize_ms=100., savename='for_v_v5.pkl', pre_go=0.):
 
-    from online_analysis import fit_LDS, co_obs_tuning_matrices
+    import analysis_config
     import prelim_analysis as pa
     import pickle
     import tables
 
     data = {}
-    for te_num in [co, obs]:
+    for te_num in np.hstack((co, obs)):
         
         ### Get cursor state and neural push
-        co_obs_dict = pickle.load(open(co_obs_tuning_matrices.pref+'co_obs_file_dict.pkl'))
+        co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
 
         ### Open task data file
         hdf = co_obs_dict[te_num, 'hdf']
         hdfix = hdf.rfind('/')
-        hdf = tables.openFile(co_obs_tuning_matrices.pref+hdf[hdfix:])
+        hdf = tables.openFile(analysis_config.config['grom_pref']+hdf[hdfix:])
 
 
         ### Open decoder file
         dec = co_obs_dict[te_num, 'dec']
         decix = dec.rfind('/')
-        decoder = pickle.load(open(co_obs_tuning_matrices.pref+dec[decix:]))
+        decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
 
         ### Get steady state kalman filter matrices
         F, KG = decoder.filt.get_sskf()
@@ -37,6 +37,11 @@ def get_cursor_state_and_neural_push(co, obs, animal='grom',
         ### Get task indices for rewarded trials
         rew_ix = np.array([t[1] for it, t in enumerate(hdf.root.task_msgs[:]) if t[0]=='reward'])
         
+        ## Extract all trial data
+        bin_spk_16_67ms, _, _, _, _ = pa.extract_trials_all(hdf, rew_ix, neural_bins = 1000/60.,
+            drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
+            reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, include_pre_go= pre_go, **dict(kalman_gain=KG))
+
         ## Extract all trial data
         bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all = pa.extract_trials_all(hdf, rew_ix, neural_bins = binsize_ms,
             drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
@@ -52,6 +57,19 @@ def get_cursor_state_and_neural_push(co, obs, animal='grom',
             drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
             reach_tm_is_hdf_cursor_pos=False, reach_tm_is_hdf_cursor_state=True, 
             reach_tm_is_kg_vel=False, include_pre_go= pre_go, **dict(kalman_gain=KG))
+
+        # Decoder matrices: 
+        data[te_num, 'decA'] = decoder.filt.A
+        data[te_num, 'decW'] = decoder.filt.W
+        data[te_num, 'decC'] = decoder.filt.C
+        data[te_num, 'decQ'] = decoder.filt.Q
+        data[te_num, 'dec_KG'] = KG
+        data[te_num, 'decF'] = F
+        
+        # Binned spike counts:    
+        import pdb; pdb.set_trace()     
+        data[te_num, 'binned_spk_cnts'] = bin_spk
+        data[te_num, 'binned_spk_cnts_60Hz'] = bin_spk_16_67ms
 
         # Pos x, pos y, vel x, vel y -- each list entry is a trial
         data[te_num, 'neural_push'] = [d[:, [0, 2, 3, 5]] for d in decoder_all]
