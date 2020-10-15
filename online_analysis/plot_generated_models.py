@@ -1,7 +1,7 @@
 ############## Methods to plot models generated in 'generate models' ###########
 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=.5, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -1342,7 +1342,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 def plot_r2_bar_model_dynamics_only(min_obs = 15, 
     r2_pop = True, perc_increase = True, model_dicts = None, 
     cond_on_act = True, plot_act = False, skip_task_spec = False, 
-    skip_shuffle = False, fig4_opt = False):
+    skip_shuffle = False, fig4_opt = False, nshuffs = 20):
 
     '''
     inputs: min_obs -- number of obs need to count as worthy of comparison; 
@@ -1379,6 +1379,13 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
     f, ax = plt.subplots(figsize = (5, 5))
     
+    fax_frac_sig, ax_frac_sig = plt.subplots(figsize = (3, 4))
+    frac_sig = dict(grom=[], jeev=[])
+
+    fax_gte_shuff, ax_gte_shuff = plt.subplots(figsize = (6, 4))
+
+    fax_r2, ax_r2 = plt.subplots(figsize = (6, 4))
+
     for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
         
         if fig4_opt:
@@ -1465,6 +1472,9 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             ###### True data #####
             pred_Y = dict()
 
+            ##### Get neural activity conditioned on action ####
+            pred_Y['cond'] = cond_act_on_psh(animal, i_d)
+
             ######### General dynamics conditioned on action #########
             pred_Y['dyn_gen'] =  get_dyn(model_dict[i_d, model_name])
 
@@ -1490,17 +1500,23 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
                 pass
             else:
                 t00 = time.time()
-                pred_Y['shuffled'] = get_shuffled_data_v2(animal, i_d, model_name)
+                pred_Y['shuffled'] = get_shuffled_data_v2(animal, i_d, model_name, nshuffs = nshuffs)
                 print('Time post shuffles %.5f' %(time.time() - t00))
 
+            ##########################################################
             ####### Plot individual day vs. shuffled distribution ####
+            ##########################################################
             if animal == 'grom' and i_d == 0:   
                 ### Plot both ####
                 shuff_vs_gen_dyn_plot(pred_Y, model_dict[i_d, 'spks'], i_d, animal, model_name, by_neuron = True,
                     perc_increase = perc_increase)
                 
-                shuff_vs_gen_dyn_plot(pred_Y, model_dict[i_d, 'spks'], i_d, animal, model_name, by_neuron = False,
-                    perc_increase = perc_increase)
+            ###########################################################################
+            ####### For each day plot fraction of significant neurons > shuffle #######
+            ###########################################################################
+            frac_sig[animal].append(shuff_vs_gen_frac_sig(pred_Y, model_dict[i_d, 'spks'], i_d, animal, model_name, 
+                ax_frac_sig, ax_gte_shuff, ax_r2))
+
 
             ######## Get zero order hold #########
             pred_Y['identity_dyn'] = get_dyn(model_dict[i_d, 'identity_dyn'])
@@ -1606,8 +1622,11 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             ###### Plot mean ####
                 else:
                     r2_tmp = [R2s[i_d, mod] for i_d in range(ndays[animal])]
+                    
+                    #### Skip the bar plot ####
                     ax.bar(i_mod + ax_offset, np.mean(r2_tmp), width=.9, color = models_colors[i_mod])
                     ax.errorbar(i_mod + ax_offset, np.mean(r2_tmp), np.std(r2_tmp), marker = '|', color = 'k')
+                    ax.plot(i_d, R2s[i_d, mod])
 
             #### For each day ####
             for i_d in range(ndays[animal]):
@@ -1779,9 +1798,107 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             str(cond_on_act), 
             str(plot_act),
             str(skip_shuffle)))
+    
+    ax_frac_sig.set_xlim([-1, 2])
+    for ia, animal in enumerate(['grom', 'jeev']): 
+
+        ax_frac_sig.bar(ia + 0.1*np.random.randn(), 
+            np.mean(frac_sig[animal]), 1, fill=False)
+    ax_frac_sig.set_xticks([0, 1])
+    ax_frac_sig.set_xticklabels(['G', 'J'])
+
+
+    ax_gte_shuff.set_xlim([-1, 14])
+    ax_r2.set_xlim([-1, 14])
+
+    fax_frac_sig.tight_layout()
+    util_fcns.savefig(fax_frac_sig, 'frac_neur_sig_gt_shuff_n%d.svg' %(nshuffs))
+
+    fax_gte_shuff.tight_layout()
+    fax_r2.tight_layout()
+    util_fcns.savefig(fax_r2, 'ax_r2_dyn_cond_act_shuff_n%d.svg' %(nshuffs))
+
+def cond_act_on_psh(animal, i_d, KG=None, dat=None):
+    """
+    estimate neural activity y_t | a_t "most likely" 
+    
+    Parameters
+    ----------
+    animal : str
+        animal name 
+    i_d : int 
+        day 
+    """
+
+    ### Load the data from elements; 
+    if dat is None:
+        dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl' %(animal, i_d), 'rb'))
+    
+        ### Get push / spks; 
+        tm0ix, _ = generate_models.get_temp_spks_ix(dat['Data'])
+
+    else:
+        print('in testing mode')
+        tm0ix = np.arange(dat['Data']['spks'].shape[0])
+
+    if KG is None: 
+        KG = util_fcns.get_decoder(animal, i_d)
+
+
+    spks = dat['Data']['spks'][tm0ix, :]
+    if dat['Data']['push'].shape[1] == 7:
+        act  = dat['Data']['push'][np.ix_(tm0ix, [3, 5])]
+    else:
+        act = dat['Data']['push'][tm0ix, :]
+
+    ### Estiamte covariance; 
+    mu = np.mean(spks, axis=0)
+    cov = np.cov(spks.T)
+
+    cov12 = np.dot(KG, cov).T
+    cov21 = np.dot(KG, cov)
+    cov22 = np.dot(KG, np.dot(cov, KG.T))
+    cov22I = np.linalg.inv(cov22)
+
+    MU = np.zeros_like(spks)
+    MU[:] = mu 
+    assert(np.all(np.diff(MU, axis=0) == 0.))
+
+    mu2_i = np.dot(KG, MU.T).T
+    pred_w_cond = MU + np.dot(cov12, np.dot(cov22I, (act - mu2_i).T)).T
+    assert(np.allclose(np.dot(KG, pred_w_cond.T).T, act))
+    return pred_w_cond
+
+def test_cond_act_on_psh(): 
+    """
+    Method to test conditioning method above
+    Plot: 
+        green --> decoder line 
+        black dots --> data
+        red dots --> E(y_t | a_t)
+        lines --> connect black dots/red dots; (should be perp. to green)
+    """
+    spks = np.random.multivariate_normal(np.array([0, 0]),np.array([[1, .8], [.4, 1]]),200)
+    KG = np.array([[0, 1]])
+    act = np.dot(KG, spks.T).T
+
+    f, ax = plt.subplots()
+    ax.axis('square')
+    ax.plot(spks[:, 0], spks[:, 1], 'k.')
+
+    dat = dict()
+    dat['Data'] = dict(spks=spks, push=act)
+    pred = cond_act_on_psh(None, None, KG=KG, dat=dat)
+    ax.plot(pred[:, 0], pred[:, 1], 'r.')
+    for t in range(pred.shape[0]):
+        ax.plot([spks[t, 0], pred[t, 0]], [spks[t,1], pred[t, 1]], 'k-', linewidth=.5)
+
+    ax.plot([0, KG[0, 0]], [0, KG[0, 1]], 'g--')
+    ax.set_xlim([-5, 5])
+    ax.set_ylim([-5, 5])
 
 def shuff_vs_gen_dyn_plot(pred_Y, true_Y, i_d, animal, model_name, by_neuron = False, 
-    perc_increase = False):
+    perc_increase = False, neur_ix_list = [35, 36, 37, 38, 39, 40, 41, 42]):
     
     ###### Get R2 ########
     n_shuff = pred_Y['shuffled'].shape[2]
@@ -1813,23 +1930,35 @@ def shuff_vs_gen_dyn_plot(pred_Y, true_Y, i_d, animal, model_name, by_neuron = F
 
     ####### Make plots ########
     if by_neuron:
-        f, ax = plt.subplots(ncols = 4, nrows = 11, figsize = (10, 22))
-            
-        for i_n in range(nneur): 
-            axi = ax[i_n/4, i_n%4]
-            
+        for neur_ix in neur_ix_list:
+
+            ################ Plots ####################
+            f, ax = plt.subplots(figsize = (4, 4)) #ncols = 4, nrows = 11, figsize = (10, 22))
+            ### Plot distribution in boxplot form: 
+            r2_shuff_i = r2_shuff[:, neur_ix]
+            r2_true_i = r2_true[neur_ix]
+
+            ### Plot the raw values on left y axis; 
+            util_fcns.draw_plot(0, r2_shuff_i, 'k', 'w', ax, width = 1)
+            ax.plot(0, r2_true_i, '.', markersize=10, color = np.array([39, 169, 225])/255.)
+
+            ### Plot the percent increase on the right y axis: 
+            ylim = np.array(ax.get_ylim())
+
+            ### Make a second y axis: 
+            ax2 = ax.twinx()
+            mean_r2_i = np.mean(r2_shuff_i)
             if perc_increase:
-                mean_r2_i = np.abs(np.mean(r2_shuff[:, i_n]))
-                axi.hist( (r2_shuff[:, i_n] - mean_r2_i) / mean_r2_i)
-                axi.vlines(np.mean( (r2_shuff[:, i_n] - mean_r2_i) / mean_r2_i), 0, 50, 'b')
-                axi.vlines((r2_true[i_n] - mean_r2_i) / mean_r2_i, 0, 50, 'k')
+                ax2.set_ylim((ylim - mean_r2_i)/np.abs(mean_r2_i))
+                ax2.set_ylabel('Frac. > Shuf-Mn', rotation=270, va='bottom')
             else:
-                axi.hist(r2_shuff[:, i_n])
-                axi.vlines(r2_true[i_n], 0, 50, 'k')
+                ax2.set_ylim(ylim - mean_r2_i)
+                ax2.set_ylabel('R2 > Shuf-Mn', rotation=270, va='bottom')
 
-            axi.set_title('n%d'%(i_n))
-
-        f.tight_layout()
+            ax.set_ylabel('$R^2$')
+            ax.set_title('n%d' %(neur_ix))
+            ax.set_xlim([-1, 1])
+            f.tight_layout()
 
     else:
         f, ax = plt.subplots()
@@ -1846,7 +1975,89 @@ def shuff_vs_gen_dyn_plot(pred_Y, true_Y, i_d, animal, model_name, by_neuron = F
 
         ax.set_title('%s, Day%d, mod%s'%(animal, i_d, model_name))
 
-def get_shuffled_data_v2(animal, day, model_name, nshuffs = 100, testing_mode = False):
+def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name, 
+    ax_frac_sig, ax_gte_shuff, ax_r2, frac_gte_flag = False):
+    """
+    plot the fraction of sig neurons for this day; 
+        input: frac_gte_flag: 
+            if True: then plots teh fraction greater than shuffle 
+            if False: plots teh difference in R2 compared to shuffle mean 
+    """
+    ###### Get R2 ########
+    n_shuff = pred_Y['shuffled'].shape[2]
+    assert(pred_Y['shuffled'].shape[0] == true_Y.shape[0] == pred_Y['dyn_gen'].shape[0])
+    assert(pred_Y['shuffled'].shape[1] == true_Y.shape[1] == pred_Y['dyn_gen'].shape[1])
+
+    nneur = true_Y.shape[1] 
+    r2_shuff = np.zeros((n_shuff, nneur))
+    r2_true = np.zeros((nneur))
+
+    cnt_sig = 0; 
+    cnt_tot = 0; 
+
+    frac_gte_shuffle = []
+
+    for i_n in range(nneur):
+        for i_shuff in range(n_shuff):    
+            r2_shuff[i_shuff, i_n] = util_fcns.get_R2(true_Y[:, i_n], pred_Y['shuffled'][:, i_n, i_shuff])
+            r2_true[i_n] = util_fcns.get_R2(true_Y[:, i_n], pred_Y['dyn_gen'][:, i_n])
+
+        pv = float(len(np.nonzero(r2_shuff[:, i_n] >= r2_true[i_n])[0])) / float(n_shuff)
+        if pv < 0.05:
+            cnt_sig += 1
+
+            ### Add to frac > shuffle ### 
+            mn = np.mean(r2_shuff[:, i_n])
+            if frac_gte_flag:
+                frac_gte = (r2_true[i_n] - mn)/mn
+            else:
+                frac_gte = r2_true[i_n] - mn 
+
+            if np.isnan(frac_gte):
+                pass
+            else:
+                frac_gte_shuffle.append(frac_gte)
+
+        cnt_tot += 1
+
+    
+    r2_shuff_pop = np.zeros((n_shuff))
+    for i_shuff in range(n_shuff):
+        r2_shuff_pop[i_shuff] = util_fcns.get_R2(true_Y, pred_Y['shuffled'][:, :, i_shuff])
+
+    r2_true_pop = util_fcns.get_R2(true_Y, pred_Y['dyn_gen'])
+    r2_true_cond = util_fcns.get_R2(true_Y, pred_Y['cond'])
+
+    if animal == 'grom':
+        i_d_plt = 0 
+        i_d_plt2 = i_d 
+    elif animal == 'jeev':
+        i_d_plt = 1 
+        i_d_plt2 = 10 + i_d
+
+    ######## Plot dot for fraction of neurons sig > shuffle 
+    ax_frac_sig.plot(i_d_plt, float(cnt_sig)/float(cnt_tot), 'k.')
+
+    ######## "Effect size": distribution of frac > shuffle for significant neurons 
+    util_fcns.draw_plot(i_d_plt2, frac_gte_shuffle, 'k', 'w', ax_gte_shuff)
+
+    ######## Plot distribution of cond + shuffle distribution of R2 + true data #####
+    util_fcns.draw_plot(i_d_plt2, r2_shuff_pop, 'k', 'w', ax_r2)
+    ax_r2.plot(i_d_plt2, r2_true_pop, '.', color=np.array([39, 169, 225])/256.)
+    ax_r2.plot(np.array([-.25, .25]) + i_d_plt2, [r2_true_cond, r2_true_cond], '--', color='gray')
+
+    ######## Aesthetics ########
+    ######## Set Ylabel 
+    ax_frac_sig.set_ylabel('Frac Neurons Pred. Sig > Shuff', fontsize=14)
+
+    if frac_gte_flag:
+        ax_gte_shuff.set_ylabel('Frac. > Shuf-Mn (sig neur)', fontsize=14)
+    else:
+        ax_gte_shuff.set_ylabel('R2 > Shuf-Mn (sig neur)', fontsize=14)
+
+    return float(cnt_sig)/float(cnt_tot)
+
+def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = False):
     """
     New method to get shuffled predictions 
     """
@@ -2084,9 +2295,6 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
         cov22I = np.zeros_like(cov22)
         testing_mode = True
 
-    T = A.shape[0]
-
-    pred_w_cond = []
 
     #### Ge prediction: T x N 
     mu2_i = np.dot(KG, pred.T).T                
@@ -2097,7 +2305,8 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
     else:
         assert(np.allclose(np.dot(KG, pred_w_cond.T).T, A))
     return pred_w_cond
-       
+      
+#### Deprecated shuffles #### 
 def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept = True, nshuffs = 100):
     """
 
@@ -2224,6 +2433,7 @@ def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept =
         
     else:
         return np.dstack((pred_Y))
+
 
 def get_perc(dist, value):
     ix = np.nonzero(dist >= value)[0]
