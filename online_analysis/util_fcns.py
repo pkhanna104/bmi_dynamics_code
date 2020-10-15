@@ -373,6 +373,12 @@ def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
         else:
             return 1 - (SSR_i / SST_i)
 
+def savefig(f, name):
+    '''
+    save figure 
+    '''
+    f.savefig(analysis_config.config['fig_dir'] + name + '.svg')
+
 
 ### Plotting ###
 def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):
