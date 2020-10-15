@@ -1384,7 +1384,7 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
     fax_gte_shuff, ax_gte_shuff = plt.subplots(figsize = (6, 4))
 
-    fax_r2, ax_r2 = plt.subplots(figsize = (6, 4))
+    fax_r2, ax_r2 = plt.subplots(figsize = (4, 4))
 
     for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
         
@@ -1810,6 +1810,7 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
     ax_gte_shuff.set_xlim([-1, 14])
     ax_r2.set_xlim([-1, 14])
+    ax_r2.set_ylabel('$R^2$')
 
     fax_frac_sig.tight_layout()
     util_fcns.savefig(fax_frac_sig, 'frac_neur_sig_gt_shuff_n%d.svg' %(nshuffs))
@@ -2020,11 +2021,18 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
 
         cnt_tot += 1
 
-    
+    KG = util_fcns.get_decoder(animal, i_d)
     r2_shuff_pop = np.zeros((n_shuff))
     for i_shuff in range(n_shuff):
         r2_shuff_pop[i_shuff] = util_fcns.get_R2(true_Y, pred_Y['shuffled'][:, :, i_shuff])
+        assert(np.allclose(np.dot(KG, pred_Y['shuffled'][:, :, i_shuff].T).T, np.dot(KG, pred_Y['dyn_gen'].T).T))
 
+    assert(np.allclose(np.dot(KG, pred_Y['cond'].T).T, np.dot(KG, pred_Y['dyn_gen'].T).T))
+
+    if animal == 'grom':
+        assert(np.allclose(np.dot(KG, pred_Y['cond'].T).T, np.dot(KG, true_Y.T).T))
+    elif animal == 'jeev':
+        assert(generate_models_utils.quick_reg(np.dot(KG, pred_Y['cond'].T).T, np.dot(KG, true_Y.T).T) > .99) 
     r2_true_pop = util_fcns.get_R2(true_Y, pred_Y['dyn_gen'])
     r2_true_cond = util_fcns.get_R2(true_Y, pred_Y['cond'])
 
@@ -2043,8 +2051,8 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
 
     ######## Plot distribution of cond + shuffle distribution of R2 + true data #####
     util_fcns.draw_plot(i_d_plt2, r2_shuff_pop, 'k', 'w', ax_r2)
-    ax_r2.plot(i_d_plt2, r2_true_pop, '.', color=np.array([39, 169, 225])/256.)
-    ax_r2.plot(np.array([-.25, .25]) + i_d_plt2, [r2_true_cond, r2_true_cond], '--', color='gray')
+    ax_r2.plot(i_d_plt2, r2_true_pop, '.', markersize = 20, color=np.array([39, 169, 225])/256.)
+    #ax_r2.plot(np.array([-.25, .25]) + i_d_plt2, [r2_true_cond, r2_true_cond], '--', color='gray')
 
     ######## Aesthetics ########
     ######## Set Ylabel 
@@ -2110,7 +2118,9 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
         #### shuffled + subselected ####
         sub_spikes = data_file['Data']['spks'][shuff_ix[tm0ix]]
         sub_spikes_tm1 = data_file['Data']['spks'][shuff_ix[tm1ix]]
-        sub_push = data_file['Data']['push'][shuff_ix[tm0ix]]
+
+        ### DO NOT shuffle the pushes; 
+        sub_push = data_file['Data']['push'][tm0ix]
         
         #sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = generate_models.get_temp_spks(data_file['Data'], shuff_ix)
         #print('Time to shuffles and subselect %.5f '%(time.time() - t0))
