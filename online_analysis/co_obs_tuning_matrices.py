@@ -1064,13 +1064,13 @@ def extract_radial_bin_edges_grom_jeev(make_last_bin_95th = False):
         inp = input_type2[animal]
 
         for i_d, day in enumerate(inp):
-
             # For each day get all commands:
             day_dict = []
             for i_t, task_te in enumerate(day):
             
                 # For each task entry
                 for i, te in enumerate(task_te):
+                    print('Task ix: %d' %i_t)
                     day_dict.append(get_spks(animal, te))
                     
             # Squish all bins into an array: 
@@ -1078,15 +1078,15 @@ def extract_radial_bin_edges_grom_jeev(make_last_bin_95th = False):
 
             # Get angle and magnitude of each
             mag = np.sqrt(day_dict[:, 3]**2 + day_dict[:, 5]**2)
-
+            print('Mag size = %d' %mag.shape[0])
             if make_last_bin_95th: 
-                boundaries[animal, i_d] = [np.percentile(mag, 25), np.percentile(mag, 50), np.percentile(mag, 75), np.percentile(mag, 95)]
+                boundaries[animal, i_d] = [np.percentile(mag, 23.75), np.percentile(mag, 47.5), np.percentile(mag, 71.25), np.percentile(mag, 95)]
             else:
                 boundaries[animal, i_d] = [np.percentile(mag, 25), np.percentile(mag, 50), np.percentile(mag, 75)]
-    
+
     pref = analysis_config.config['grom_pref']
 
-    if np.percentile(mag, 95): 
+    if make_last_bin_95th: 
         pickle.dump(boundaries, open(pref+'radial_boundaries_fit_based_on_perc_oct_2020_95th_max.pkl', 'wb'))
         filename = pref+'radial_boundaries_fit_based_on_perc_oct_2020_95th_max.pkl'
     else:
@@ -1121,6 +1121,13 @@ def get_spks(animal, te, keep_trls_sep = False):
         bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all = pa.extract_trials_all(hdf, rew_ix, 
             drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
             reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, **dict(kalman_gain=KG))
+
+        print('# unique trials %d' %(len(np.unique(trial_ix_all))))
+        for trg in np.unique(targ_ix):
+
+            trg_ix = np.nonzero(targ_ix == trg)[0]
+            print('Targ %d, N = %d' %(trg, len(np.unique(trial_ix_all[trg_ix]))))
+
 
     elif animal == 'jeev':
         bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, unbinned, exclude = ppf_pa.get_jeev_trials_from_task_data(te, binsize=.1)
