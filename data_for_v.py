@@ -2,13 +2,16 @@ import numpy as np
 co = [4377]
 obs = [4378, 4382]
 
-def get_cursor_state_and_neural_push(co, obs, animal='grom', 
+def get_cursor_state_and_neural_push(co=[4377], obs=[4378, 4382], animal='grom', 
     binsize_ms=100., savename='for_v_v5.pkl', pre_go=0.):
 
     import analysis_config
     import prelim_analysis as pa
     import pickle
     import tables
+
+    ### Check with old data #####
+    dat_check = pickle.load(open('for_v_v4.pkl', 'rb'))
 
     data = {}
     for te_num in np.hstack((co, obs)):
@@ -67,7 +70,6 @@ def get_cursor_state_and_neural_push(co, obs, animal='grom',
         data[te_num, 'decF'] = F
         
         # Binned spike counts:    
-        import pdb; pdb.set_trace()     
         data[te_num, 'binned_spk_cnts'] = bin_spk
         data[te_num, 'binned_spk_cnts_60Hz'] = bin_spk_16_67ms
 
@@ -92,6 +94,16 @@ def get_cursor_state_and_neural_push(co, obs, animal='grom',
         # Trial number of each time bin, same format as target_index. 
         data[te_num, 'trial_ix'] = trial_ix_all
 
+        if te_num in obs:
+
+            ### Add obstacle size and location 
+            data[te_num, 'obstacle_size']  = hdf.root.task[rew_ix]['obstacle_size']
+            data[te_num, 'obstacle_location'] = hdf.root.task[rew_ix]['obstacle_location'][:, [0, 2]]
+
+            #### Will be diff of fisrt trial, make srue end entries are good ####
+            assert(np.allclose(dat_check[te_num, 'obstacle_size'][-90:], data[te_num, 'obstacle_size'][-90:]))
+            assert(np.allclose(dat_check[te_num, 'obstacle_location'][-90:], data[te_num, 'obstacle_location'][-90:]))
+    
     # list of task entries 
     data['task_entries'] = [co, obs]
 
