@@ -605,4 +605,187 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
     ######  #######
 
 ######### Behavior vs. neural correlations #########
+def neuraldiff_vs_behaviordiff_corr(mode='global', min_bin_indices=0, nshuffs = 10, ncommands_psth = 5): 
+    ### Open mag boundaries 
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+    fr, axr = plt.subplots(figsize = (6, 4))
+    fs, axs = plt.subplots(figsize = (6, 4))
+
+    for ia, animal in enumerate(['grom', 'jeev']):
+        
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+            
+            ### Pull data ### 
+            spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+            spks = spks * 10
+            nneur = spks.shape[1]
+            command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
+                                       vel_ix=[3, 5])[0]
+
+            f, ax = plt.subplots()
+            D = []
+            D_shuff = {}
+            for i in range(nshuffs):
+                D_shuff[i] = []
+
+
+            ### For each command: ###
+            for mag in range(4):
+                
+                for ang in range(8): 
+            
+                    #### Common indices 
+                    #### Get the indices for command ####
+                    ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, mag=mag, ang=ang,
+                                           animal=animal, day_ix=day_ix, min_bin_num=min_bin_indices,
+                                           min_rev_bin_num=min_bin_indices)
+
+                    ##### Which movements go to the global? 
+                    ix_com_global = []
+                    global_comm_indices = {}
+
+                    #### Go through the movements ####
+                    for mov in np.unique(move[ix_com]):
+                        
+                        ### Movement specific command indices 
+                        ix_mc = np.nonzero(move[ix_com] == mov)[0]
+                        ix_mc_all = ix_com[ix_mc]
+                        
+                        ### If enough of these then proceed; 
+                        if len(ix_mc) >= 15:    
+
+                            global_comm_indices[mov] = ix_mc_all
+                            ix_com_global.append(ix_mc_all)
+
+                    if len(ix_com_global) > 0:
+                        ix_com_global = np.hstack((ix_com_global))
+                        relevant_movs = np.array(global_comm_indices.keys())
+
+
+                        shuffle_mean_FR = {}
+
+                        ##### Get the movements that count; 
+                        for imov, mov in enumerate(relevant_movs): 
+
+                            ### MOV specific 
+                            ### movements / command 
+                            ix_mc_all = global_comm_indices[mov]
+                            Nmov = len(ix_mc_all)
+
+                            #### GLOBAL #######
+                            ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
+                            ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
+                                                         push[np.ix_(ix_com_global, [3, 5])])
+                            ### which indices we can use in global distribution for this shuffle ----> #### 
+                            ix_com_global_ok = ix_com_global[ix_ok] 
+                            assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
+                            assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
+                            assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global_ok])))
+                            Nglobal = len(ix_com_global_ok)
+
+                            shuffle_mean_FR[mov] = []
+                            for ishuff in range(nshuffs):
+                                ix_shuff = np.random.permutation(Nglobal)[:Nmov]
+
+                                ### Get the shuflfe mean FR and shuffle PSTH 
+                                shuffle_mean_FR[mov].append(np.mean(spks[ix_com_global_ok[ix_shuff], :], axis=0))
+                                
+                        for imov, mov in enumerate(relevant_movs):
+                            ix_mc_all = global_comm_indices[mov]
+                            mov_mean_FR = np.mean(spks[ix_mc_all, :], axis=0)
+                            mov_PSTH = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all, num_bins=ncommands_psth)
+                            
+                            assert(mov_PSTH.shape[0] == 2*ncommands_psth + 1)
+                            assert(mov_PSTH.shape[1] == 2)
+
+
+                            if mode == 'global':
+                                
+                                ### Use this as global mean for this movement #####
+                                mov2_mean_FR = [np.mean(spks[ix_com_global_ok, :], axis=0)]
+                                mov2_PSTH = [get_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok)]
+
+                            elif mode == 'pairwise':
+
+                                ### Clear these ####
+                                mov2_mean_FR = []
+                                mov2_PSTH = []       
+
+                                ### If not at the end ####
+                                if mov != relevant_movs[-1]:
+
+                                    for imov2, mov2 in enumerate(relevant_movs[imov+1:]):
+                                        assert(mov2!=mov)
+                                        ix_mc_all2 = global_comm_indices[mov2]
+                                        mov2_mean_FR.append(np.mean(spks[ix_mc_all2, :], axis=0))
+                                        mov2_PSTH.append(get_PSTH(bin_num, rev_bin_num, push, ix_mc_all2))
+
+
+                            #### Now do the comparisons #####
+                            for im2 in range(len(mov2_PSTH)):
+
+                                dN = np.linalg.norm(mov_mean_FR - mov2_mean_FR[im2])/nneur
+                                dB = np.linalg.norm(mov_PSTH - mov2_PSTH[im2])
+
+                                ax.plot(dB, dN, 'k.')
+                                D.append([dB, dN])
+
+                                if mode == 'global':
+
+                                    ### Get shuffled vs. global ###
+                                    for i in range(nshuffs): 
+                                        shuff_dN = np.linalg.norm(shuffle_mean_FR[i] - mov2_mean_FR[im2])/nneur
+                                        
+                                        #if i == 0:
+                                        #    ax.plot(dB, shuff_dN, '.', color='gray')
+                                        D_shuff[i].append([dB, shuff_dN])
+
+                                elif mode == 'pairwise':
+
+                                    ### Get shuffled vs. global ###
+                                    for i in range(nshuffs): 
+                                        shuff_dN = np.linalg.norm(shuffle_mean_FR[mov][i] - shuffle_mean_FR[mov2][i])/nneur
+                                        
+                                        #if i == 0:
+                                            #ax.plot(dB, shuff_dN, '.', color='gray')
+                                        D_shuff[i].append([dB, shuff_dN])
+
+
+
+            D = np.vstack((D))
+            slp,_,rv,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
+            ax.set_title('Compare to %s, rv %.5f, N = %d'%(mode, rv, D.shape[0]))
+            ax.set_xlabel('Norm Diff Behav. PSTH (-5:5)')
+            ax.set_ylabel('Norm Diff Pop Neur [0]')
+
+            #### Plto shuffled vs. real R; 
+            axr.plot(ia*10 + day_ix, rv, 'k.')
+            axs.plot(ia*10 + day_ix, slp, 'k.')
+
+            rshuff = []; slpshuff = []
+            for i in range(nshuffs):
+                d_tmp = np.vstack((D_shuff[i]))
+                slp,_,rv,_,_ = scipy.stats.linregress(d_tmp[:, 0], d_tmp[:, 1])
+                rshuff.append(rv)
+                slpshuff.append(slp)
+            util_fcns.draw_plot(ia*10 + day_ix, rshuff, 'k', 'w', axr)
+            util_fcns.draw_plot(ia*10 + day_ix, slpshuff, 'k', 'w', axs)
+
+            axr.set_xlim([-1, 14])
+            axs.set_xlim([-1, 14])
+            
+            axr.set_ylabel('r-value')
+            axs.set_ylabel('slope')
+
+def get_PSTH(bin_num, rev_bin_num, push, indices, num_bins=5):
+
+    all_push = []
+    push_vel = push[:, [3, 5]]
+    for ind in indices:
+
+        if bin_num[ind] >= num_bins and rev_bin_num[ind] >= num_bins:
+            all_push.append(push_vel[ind-num_bins:ind+num_bins+1, :])
+    all_push = np.dstack((all_push))
+    return np.mean(all_push, axis=2)
 
