@@ -5,6 +5,7 @@ import statsmodels.formula.api as smf
 import pandas as pd
 
 import scipy.io as sio
+import scipy.signal
 import matplotlib.pyplot as plt
 import pickle
 
@@ -30,6 +31,7 @@ def get_cov_diffs(ix_co, ix_ob, spks, diffs, method = 1):
 
     return diffs
 
+#### discretize commands #####
 def commands2bins(commands, mag_boundaries, animal, day_ix, vel_ix = [3, 5], ndiv=8):
     mags = mag_boundaries[animal, day_ix]
     rads = np.linspace(0., 2*np.pi, ndiv+1) + np.pi/8
@@ -58,6 +60,26 @@ def commands2bins(commands, mag_boundaries, animal, day_ix, vel_ix = [3, 5], ndi
         command_bins.append(np.hstack((mag_bins[:, np.newaxis], ang_bins[:, np.newaxis])))
     return command_bins
 
+### reverse bin numbers based on trials ####
+def bin_num_relative_to_end(bin_num): 
+    '''
+    method to index bin relative to the end of the trial 
+    '''
+    bin_cnt = []
+    for b in bin_num:
+        bin_cnt.append(b[::-1])
+    bin_cnt = np.hstack((bin_cnt))
+    bin_num = np.hstack((bin_num))
+    
+    ix, _ = scipy.signal.find_peaks(bin_num)
+    assert(np.all(bin_cnt[ix] == 0))
+    
+    ix, _ = scipy.signal.find_peaks(bin_cnt)
+    assert(np.all(bin_num[ix] == 0))
+    
+    return np.hstack((bin_cnt))
+
+### target fcns #######
 def add_targ_locs(data_temp, animal):
 
     targ_ix = data_temp['trg']
@@ -266,6 +288,7 @@ def get_grom_decoder(day_ix):
     dec = co_obs_dict[te_num, 'dec']
     decix = dec.rfind('/')
     decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
+    print(decoder.filt.W)
     F, KG = decoder.filt.get_sskf()
     return F, KG
 
@@ -289,6 +312,26 @@ def get_decoder(animal, day_ix):
         return KG[[3, 5], :]
     elif animal == 'jeev':
         return get_jeev_decoder(day_ix)
+
+def get_data_from_shuff(animal, day_ix, w_intc = True):
+    dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
+    
+    #### Extract the data ####
+    spks = dat['Data']['spks']
+    push = dat['Data']['push']
+    tsk = dat['Data']['task']
+    trg = dat['Data']['targ']
+    move = tsk*10 + trg
+    bin_num = dat['Data']['bin_num']
+    
+    ### Get reversed bin number ####
+    rev_bin_num = bin_num_relative_to_end(bin_num)
+    bin_num = np.hstack((bin_num))
+    
+    ### Make sure all the samse length 
+    assert(spks.shape[0] == push.shape[0] == len(tsk) == len(trg) == len(bin_num) == len(rev_bin_num))
+    return spks, push, tsk, trg, bin_num, rev_bin_num, move, dat
+
 
 #### Linear mixed effect modeling: 
 def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
