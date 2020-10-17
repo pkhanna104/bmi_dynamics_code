@@ -561,7 +561,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     #     'posx': position[:, 0], 'posy': position[:, 1]})
 
     data = dict(tsk=task_index, pos=position, vel=velocity, push=push, spks=spks, bin_num=bin_num,
-        accx=accx, accy=accy)
+        accx=accx, accy=accy, targ=inflate_targ(trg_trl, trl), trl=trl)
 
     ### Add it to the end 
     # data['accx'] = pandas.Series(accx, index=data.index)
@@ -612,6 +612,15 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
     else:
         return data, data_temp, sub_spk0_temp_all, sub_spk_temp_all, sub_push_all, Shuffle_index
+
+def inflate_targ(trg_trl, trl):
+    assert(len(trg_trl) == len(np.unique(trl)))
+    trg = np.zeros((len(trl))) - 1000
+    for i, t in enumerate(np.unique(trl)): 
+        ix = np.nonzero(trl == t)[0]
+        trg[ix] = trg_trl[i]; 
+    assert(np.all(trg >= 0))
+    return trg
 
 ### Confirmation that extracted data looks right ###
 def plot_data_temp(data_temp, animal, use_bg = False):
