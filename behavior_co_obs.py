@@ -1168,7 +1168,7 @@ def preprocess_bmi_df(df, target_pos, num_prefix, num_tasks, num_targets):
     #Pre-processing: 
 
     #Trial boundaries:
-    trial_start = np.where((df['bin']==-10.0))[0]
+    trial_start = np.where((df['trial_start']==1))[0]
     trial_stop = np.where((df['trial_stop']==1))[0]
     trial_bound = np.vstack((trial_start,trial_stop)).T
     num_trials = trial_bound.shape[0]
@@ -1198,6 +1198,27 @@ def preprocess_bmi_df(df, target_pos, num_prefix, num_tasks, num_targets):
             for i,bnd in enumerate(trial_bnd.T):
                 # print(i, bnd)
                 df.loc[bnd[0]:bnd[1], 'trial_cond'] = i
+
+    #-----------------------------------------------------------------------------------------------    
+    #Global Trial number
+    #Loop over trials: 
+    trial_start = (df['bin']==0) 
+    trial_stop = (df['bin_end']==0)
+    trial_bnd = np.vstack((np.where(trial_start)[0], np.where(trial_stop)[0]))
+    for i,bnd in enumerate(trial_bnd.T):
+        # print(i, bnd)
+        df.loc[bnd[0]:bnd[1], 'trial_global'] = i    
+
+
+    for task in range(num_tasks):
+        for target in range(num_targets):
+            cond_sel = (df['task']==task) & (df['target']==target)
+            trial_start = (df['bin']==0) & cond_sel 
+            trial_stop = (df['bin_end']==0) & cond_sel
+            trial_bnd = np.vstack((np.where(trial_start)[0], np.where(trial_stop)[0]))
+            for i,bnd in enumerate(trial_bnd.T):
+                # print(i, bnd)
+                df.loc[bnd[0]:bnd[1], 'trial_cond'] = i                
     
     #-----------------------------------------------------------------------------------------------    
     #Polar coordinates: 
@@ -1271,9 +1292,16 @@ def def_command_bin(df, mag_bin_perc=np.array([0,25,50,75,100]), num_angle_bins=
     T0_angle: the angle corresponding to target 0.  function places the 0th angle bin at this angle.
     """
 
+    #TODO: 
+    #make the lowest mag 0, regardless of 
+
     #1) magnitude bins: 
     #USUAL:
-    mag_data = df['u_v_mag']
+
+    bin_buffer = 0
+    bin_sel = (df['bin'] >= bin_buffer) \
+    & (df['bin_end'] >= bin_buffer)
+    mag_data = df.loc[bin_sel, 'u_v_mag']
     #mag_data = df['u_v_mag'][df['bin']>=0] - we didn't do this, because we want to be able to bin all data, negative bins
     mag_bin = np.percentile(mag_data, mag_bin_perc)
     mag_bin_edges = np.vstack((mag_bin[0:-1], mag_bin[1:]))
@@ -1429,6 +1457,172 @@ def df_idx2da(df, idx, var):
                 dims=['v','observation'])
     #RESULTS:
     return da
+
+def subsample_dataset_to_match_mean_target_dataset(match_var, d_ss, d_target, p_sig=0.05, frac_data_exclude_per_iter=0.05, min_frac_remain=0.1):
+    """
+    This code subsamples data from dataset 'd_ss' to match its mean to dataset 'd_target' for all chosen variables 'match_var'
+
+    Subsampling Approach: 
+    form a 'cost' for each sample.
+    for each iteration where data sets don't match, remove 'frac_data_exclude_per_iter' of samples with highest cost
+
+    Cost: There is a cost associated with each dimension of data.  
+    Cost for each dimension: abs(zscore(data) wrt d_target)
+    We sum the cost over all dimensions.
+
+    INPUT: 
+    match_var: list of variables which should have no significant difference in mean
+    d_list: list of data sets.  
+    each data set is an xarray
+    xarray: num_var X num_observation
+    this code will use the 'observation' label to choose the samples
+
+    OUTPUT: 
+    DataFrame:
+    a data frame with rows for each data_set, columns include: 
+    num_kept: number of observations kept after matching procedure
+    num_discarded: number of observations discarded during matching procedure
+
+    List:
+    kept_list
+    discard_list
+
+    XArray:
+    ttest_results
+    xarray: num_var X num_features
+    features: t-stat, pval, mean_init, mean_match
+
+    XArray: 
+    mean_results
+    xarray: num_var X num_datasets 
+
+    """
+
+    #INITIALIZE:
+    num_obs_ss = d_ss.shape[1]
+    d_list = [d_ss, d_target]
+    num_d = 2
+    #-----------------------------------------------------------------------------------------------------------------------------
+    #DataFrame
+    #Each row is a data set, each column is a property of the subsampling
+    columns = ['num_init', 'num_kept', 'num_discarded']
+    num_col = len(columns)
+    nan_df = pd.DataFrame(np.ones((1,num_col))*np.nan, columns=columns)
+    df_list = []
+    kept_list = []
+    discard_list = []
+    for i,d in enumerate(d_list):
+        df_i = copy.copy(nan_df)
+        #ASSIGN:
+        num_observations = d.shape[1]
+        df_i['num_init'] = num_observations
+        df_i['num_kept'] = num_observations
+        df_i['num_discarded'] = 0
+        df_list.append(df_i)
+        kept_list.append(list(np.array(d.observation))) #list helps us remove entries easily
+        #kept_list.append(range(num_observations))
+        discard_list.append([])
+    df = pd.concat(df_list, ignore_index=True)
+
+    #XArray ttest
+    #NOTE: will need to repeat this at the end of the function:
+    num_var = len(match_var)
+    num_features = 4
+    feature_list = ['tstat_init', 'pval_init', 'tstat_match', 'pval_match']
+    nan_mat = np.ones((num_var, num_features))*np.nan
+    ttest_r = xr.DataArray(nan_mat, coords={'v':match_var, 'features':feature_list}, dims=['v', 'features'])
+    #initialize ttest_r
+    for var in match_var:
+        vd_list = []
+        for i,d in enumerate(d_list):
+            d_i = np.array(d.loc[var,:])
+            vd_list.append(d_i)
+        (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
+        ttest_r.loc[var, 'tstat_init'] = tstat
+        ttest_r.loc[var, 'pval_init'] = pval
+
+    #XArray mean: 
+    num_var = len(match_var)
+    num_features = 4
+    feature_list = ['mean_init', 'var_init', 'mean_match', 'var_match']
+    nan_mat = np.ones((num_var, num_d, num_features))*np.nan
+    mean_r = xr.DataArray(nan_mat, coords={'v':match_var, 'dataset':np.arange(num_d), 'features':feature_list}, \
+        dims=['v', 'dataset', 'features'])
+    #initialize mean_r.  
+    for i,d in enumerate(d_list):
+        mean_r.loc[match_var,i,'mean_init'] = d.loc[match_var,:].mean(dim='observation')
+        mean_r.loc[match_var,i,'var_init'] = d.loc[match_var,:].var(dim='observation')
+
+    #-----------------------------------------------------------------------------------------------------------------------------
+    #PROCEDURE: 
+
+    #COST:
+    #zscore d_ss wrt d_target: 
+    target_mean = d_list[1].mean(dim='observation')
+    target_std = np.sqrt(np.diag(np.cov(d_list[1])))
+    #TODO: convert std to data array
+    d_ss_z = (d_list[0]-target_mean)/target_std.reshape((-1,1))
+    cost = np.abs(d_ss_z).sum(dim='v')
+
+    #iterate, removing samples, till you have a match: 
+    complete = False
+    success = False
+    num_iter = 0
+
+    while not complete: 
+        frac_keep = 1-(num_iter+1)*frac_data_exclude_per_iter
+        print(frac_keep)
+        #----------------------------------------------------------------------------------------------------------------------
+        #update mean_r and ttest_r: 
+        #mean_r: 
+        for i,d in enumerate(d_list):
+            mean_r.loc[match_var,i,'mean_match'] = d.loc[match_var,kept_list[i]].mean(dim='observation')
+            mean_r.loc[match_var,i,'var_match'] = d.loc[match_var,kept_list[i]].var(dim='observation')
+        #ttest_r, var_tochange:
+        var_tochange = []
+        for var in match_var:
+            vd_list = []
+            for i,d in enumerate(d_list):
+                d_i = np.array(d.loc[var,kept_list[i]])
+                vd_list.append(d_i)
+            (tstat,pval) = sio_stat.ttest_ind(vd_list[0], vd_list[1], equal_var=True)
+            ttest_r.loc[var, 'tstat_match'] = tstat
+            ttest_r.loc[var, 'pval_match'] = pval
+            if pval < p_sig:
+                var_tochange.append(var)
+
+        #----------------------------------------------------------------------------------------------------------------------
+        if (len(var_tochange) == 0):
+            print('matched!')
+            complete = True
+            success = True  
+        elif frac_keep < min_frac_remain:
+            print('failed!')
+            complete = True
+            success = False
+        else: 
+            #identify the samples to keep: 
+            num_keep = int(num_obs_ss*frac_keep)
+            print(num_keep)
+            num_discard = num_obs_ss-num_keep
+
+            kept_loc = np.array(cost.argsort()[:num_keep])
+            kept_obs = cost[kept_loc].observation
+            discard_loc = np.array(cost.argsort()[num_discard:])
+            discard_obs = cost[discard_loc].observation
+
+            kept_list[0] = kept_obs
+            discard_list[0] = discard_obs
+            df.loc[0,'num_kept'] = num_keep
+            df.loc[0,'num_discarded'] = num_discard
+        num_iter+=1
+    df_match = df
+    return success, kept_list, discard_list, df_match, ttest_r, mean_r          
+
+
+
+
+
 
 def subsample_2datasets_to_match_mean_v2(match_var, d_list, p_sig=0.05, max_iter=5):
     """

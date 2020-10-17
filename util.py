@@ -453,6 +453,7 @@ def plot_rect(ctr, width, height, color):
 	plt.plot(pts[:,0],pts[:,1],color, linewidth=4.5)	
 	plt.plot(pts[:,0],pts[:,1],'w', linewidth=1.5)
 
+
 def sim_bmi(cursor_state_in, spk_cnts, F, K): 
 	"""
 	Extract the individual contribution of each input variable to the output variable
