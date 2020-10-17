@@ -842,7 +842,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         else:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5), 'wb'))
 
-def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full'):
+def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full',
+    nshuffs = 1000):
     '''
     general model tuning curves for shuffled data
     
@@ -908,7 +909,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'grom' and i_d < 10:
+            if animal == 'grom' and i_d < -1:
                 pass
             else:
                 print('##############################')
@@ -925,15 +926,13 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                 # Get spike data from data fcn
                 Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
                     order_dict[i_d], history_bins_max, within_bin_shuffle = True,
-                    day_ix = i_d, nshuffs = 1000)
+                    day_ix = i_d, nshuffs = nshuffs)
 
                 #### Save shuffle indices ####### 
                 shuff_ix_fname = save_directory + '%s_%d_shuff_ix.pkl' %(animal, i_d)
 
-                nshuffs = len(Shuff_ix.keys())
-
                 ### Re make data to be smaller 
-                Data2 = dict(spks=Data['spks'], push=Data['push'], bin_num=Data['bin_num'])
+                Data2 = dict(spks=Data['spks'], push=Data['push'], bin_num=Data['bin_num'], targ=Data['targ'], task=Data['tsk'])
 
                 #### Save data in this guy too ####
                 Shuff_ix['Data'] = Data2
