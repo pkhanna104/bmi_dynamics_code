@@ -398,7 +398,8 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
         if save:
             util_fcns.savefig(fvect, 'POP_mag%d_ang%d_%s_d%d_min_bin%d'%(mag, ang, animal, day_ix, min_bin_indices))
 
-def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000, min_bin_indices = 0): 
+def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000, min_bin_indices = 0,
+    save = False): 
     
     '''
     Method to plot distribution of command-PSTH compared to the global distribution; 
@@ -414,7 +415,9 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
+
     f, ax = plt.subplots(figsize=(4,4))
+    f2, ax2 = plt.subplots(figsize=(4,4))
     
     ### Return indices for the command ### 
     ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal=animal, 
@@ -460,6 +463,7 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             ### PSTH for command-movement ### 
             ix_mc_all = global_comm_indices[mov]
             mean_mc_PSTH = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all, num_bins=5)
+            mean_mc_PSTH_osa = get_osa_PSTH(bin_num, rev_bin_num, push, ix_mc_all)
 
             ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
             ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
@@ -469,8 +473,12 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             ### which indices we can use in global distribution for this shuffle ----> #### 
             ix_com_global_ok = ix_com_global[ix_ok] 
             global_com_PSTH_mov = get_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok, num_bins=5)
+            global_com_PSTH_mov_osa = get_osa_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok)
+            
             dPSTH = np.linalg.norm(mean_mc_PSTH - global_com_PSTH_mov)
-            beh_diff[mov] = dPSTH
+            dPSTH_osa = np.linalg.norm(mean_mc_PSTH_osa - global_com_PSTH_mov_osa)
+
+            beh_diff[mov] = [dPSTH, dPSTH_osa]
 
             assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
             assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
@@ -487,7 +495,11 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             for i_shuff in range(nshuffs):
                 ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
                 shuff_psth = get_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok[ix_sub], num_bins=5)
-                beh_shuffle[mov].append(np.linalg.norm(shuff_psth - global_com_PSTH_mov))
+                shuff_psth_osa = get_osa_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok[ix_sub])
+
+                dff = np.linalg.norm(shuff_psth - global_com_PSTH_mov)
+                dff_osa = np.linalg.norm(shuff_psth_osa - global_com_PSTH_mov_osa)
+                beh_shuffle[mov].append([dff, dff_osa])
 
         ### Now do the plots 
         #### Plot by target number ####
@@ -507,19 +519,27 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             else:
                 colrgba[-1] = 1.0
             
-            ### Single neuron 
-            util_fcns.draw_plot(x, beh_shuffle[mov], colrgba, np.array([0., 0., 0., 0.]), ax)
-            ax.plot(x, beh_diff[mov], 'k.')
+            ### Trajecotry 
+            bs_mov = np.vstack((beh_shuffle[mov]))
+            util_fcns.draw_plot(x, bs_mov[:, 0], colrgba, np.array([0., 0., 0., 0.]), ax)
+            ax.plot(x, beh_diff[mov][0], 'k.')
             
+            util_fcns.draw_plot(x, bs_mov[:, 1], colrgba, np.array([0., 0., 0., 0.]), ax2)
+            ax2.plot(x, beh_diff[mov][1], 'k.')
+
             ### Population centered by shuffle mean 
-            ax.set_xlim(xlim)        
-            ax.set_xlabel('Movement')
+            for axi in [ax, ax2]:
+                axi.set_xlim(xlim)        
+                axi.set_xlabel('Movement')
             
         ax.set_ylabel('Command Trajectory Differences')   
-        ax.set_title('Mag %d, Ang %d' %(mag, ang))    
+        ax2.set_ylabel('Next Command Differences')   
+        
         f.tight_layout()
+        f2.tight_layout()
         if save:
             util_fcns.savefig(f, 'Beh_diff_mag%d_ang%d_%s_d%d_min_bin%d'%(mag, ang, animal, day_ix, min_bin_indices))
+            util_fcns.savefig(f2, 'Next_command_diff_mag%d_ang%d_%s_d%d'%(mag, ang, animal, day_ix))
     
 
 ##### Main plotting functions to use in Figs 2 and 3 ########
@@ -828,7 +848,177 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
     axveff.set_title('Sig. Diff. Command/Moves')
     ######  #######
 
+def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, save=True):
+    
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+    
+    ######## Percent sig #############
+    f, ax = plt.subplots(figsize=(3, 4))
+    f_osa, ax_osa = plt.subplots(figsize =(3, 4))
 
+    perc_sig = dict(grom=[], jeev=[])
+    perc_sig_one_step = dict(grom=[], jeev=[])
+
+    ######## Effect Size #############
+    fe, axe = plt.subplots(figsize = (6, 4))
+    fe_osa, axe_osa = plt.subplots(figsize = (6, 4))
+
+    ############ Loop ##############
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            ###### Extract data #######
+            _, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+            
+            ###### Get magnitude difference s######
+            command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
+                                               vel_ix=[3, 5])[0]
+            total_cm = 0 ;
+            total_sig_com = 0 ;
+
+            total_cm_osa = 0; 
+            total_sig_cm_osa = 0; 
+
+            traj_diff = []
+            traj_diff_one_step = []
+
+            for mag in range(4):
+
+                for ang in range(8): 
+        
+                    ### Return indices for the command ### 
+                    ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal=animal, 
+                                            day_ix=day_ix, mag=mag, ang=ang, min_bin_num=min_bin_indices,
+                                            min_rev_bin_num=min_bin_indices)
+
+                    ### For all movements --> figure otu which ones to keep in the global distribution ###
+                    global_comm_indices = {}
+                    ix_com_global = []
+
+                    for mov in np.unique(move[ix_com]):
+
+                        ### Movement specific command indices 
+                        ix_mc = np.nonzero(move[ix_com] == mov)[0]
+                        
+                        ### Which global indices used for command/movement 
+                        ix_mc_all = ix_com[ix_mc] 
+
+                        ### If enought of these then proceed; 
+                        if len(ix_mc) >= 15:    
+
+                            global_comm_indices[mov] = ix_mc_all
+                            ix_com_global.append(ix_mc_all)
+
+                    if len(ix_com_global) > 0:
+                        ix_com_global = np.hstack((ix_com_global))
+
+                        ### Make sure command 
+                        assert(np.all(np.array([i in ix_com for i in ix_com_global])))
+
+                        ### Make sure in the movements we want 
+                        assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global])))
+
+                        ### Only analyze for commands that have > 1 movement 
+                        if len(global_comm_indices.keys()) > 1:
+
+                            #### now that have all the relevant movements - proceed 
+                            for mov in global_comm_indices.keys(): 
+
+                                ### PSTH for command-movement ### 
+                                ix_mc_all = global_comm_indices[mov]
+                                mean_mc_PSTH = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all, num_bins=5)
+                                mean_mc_PSTH_osa = get_osa_PSTH(bin_num, rev_bin_num, push, ix_mc_all)
+
+                                ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
+                                ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
+                                                                             push[np.ix_(ix_com_global, [3, 5])])
+                                #print('Mov %.1f, # Iters %d to match global'%(mov, niter))
+                                
+                                ### which indices we can use in global distribution for this shuffle ----> #### 
+                                ix_com_global_ok = ix_com_global[ix_ok] 
+                                global_com_PSTH_mov = get_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok, num_bins=5)
+                                glboal_osa_com_PSTH_mov = get_osa_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok)
+
+                                dPSTH = np.linalg.norm(mean_mc_PSTH - global_com_PSTH_mov)
+                                dPSTH_osa = np.linalg.norm(mean_mc_PSTH_osa - glboal_osa_com_PSTH_mov)
+
+                                assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
+                                assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
+
+                                ### make sure both movmenets still represneted. 
+                                assert(len(np.unique(move[ix_com_global_ok])) > 1)
+                                
+                                Nglobal = len(ix_com_global_ok)
+                                Ncommand_mov = len(ix_mc_all)
+                                assert(Nglobal > Ncommand_mov)
+                                
+                                ### Get matching global distribution 
+                                beh_shuffle = []; beh_shuffle_osa = []; 
+
+                                for i_shuff in range(nshuffs):
+                                    ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
+                                    shuff_psth = get_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok[ix_sub], num_bins=5)
+                                    shuff_psth_osa = get_osa_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok[ix_sub])
+
+                                    beh_shuffle.append(np.linalg.norm(shuff_psth - global_com_PSTH_mov))
+                                    beh_shuffle_osa.append(np.linalg.norm(shuff_psth_osa - glboal_osa_com_PSTH_mov))
+
+                                #### Test for sig for full trajectory ####
+                                ix_tmp = np.nonzero(beh_shuffle >= dPSTH)[0]
+                                pv = float(len(ix_tmp)) / float(nshuffs)
+                                if pv < 0.05: 
+                                    total_sig_com += 1
+                                    traj_diff.append(dPSTH)
+                                total_cm += 1
+
+                                #### Test for sig for one-step-ahead (osa) ####
+                                ix_tmp_osa = np.nonzero(beh_shuffle_osa >= dPSTH_osa)[0]
+                                pv_osa = float(len(ix_tmp_osa)) / float(nshuffs)
+                                if pv_osa < 0.05: 
+                                    total_sig_cm_osa += 1
+                                    traj_diff_one_step.append(dPSTH_osa)
+                                total_cm_osa += 1
+
+            ### Compute percent sig: 
+            perc_sig[animal].append(float(total_sig_com)/float(total_cm))
+            ax.plot(i_a, float(total_sig_com)/float(total_cm), 'k.')
+
+            #### One step ahead 
+            perc_sig_one_step[animal].append(float(total_sig_cm_osa)/float(total_cm_osa))
+            ax_osa.plot(i_a, float(total_sig_cm_osa)/float(total_cm_osa), 'k.')
+        
+            #### Plot the distribution of signficiant differences 
+            util_fcns.draw_plot(i_a*10 + day_ix, traj_diff, 'k', 'w', axe)
+            util_fcns.draw_plot(i_a*10 + day_ix, traj_diff_one_step, 'k', 'w', axe_osa)
+
+        ### Plot the bar; 
+        ax.bar(i_a, np.mean(perc_sig[animal]), width=.8, alpha=0.2, color='k')
+        ax_osa.bar(i_a, np.mean(perc_sig_one_step[animal]), width=.8, alpha=0.2, color='k')
+
+    for axi in [ax, ax_osa]:
+        axi.set_xticks([0, 1])
+        axi.set_xticklabels(['G', 'J'])
+    
+    ax.set_ylabel('Perc Command-Movements \nwith Sig. Diff. Traj')
+    ax_osa.set_ylabel('Perc Command-Movements \nwith Sig. Next Command')
+
+    for axi in [axe, axe_osa]:
+        axi.set_xlim([-1, 14])
+    axe.set_ylabel('Traj Diff for Sig. Command-Movements')
+    axe_osa.set_ylabel('Next Command Diff for Sig. Command-Movements')
+
+    f.tight_layout()
+    f_osa.tight_layout()
+    fe.tight_layout()
+    fe_osa.tight_layout()
+
+    if save:
+        util_fcns.savefig(f, 'Beh_diff_perc_sig')
+        util_fcns.savefig(f_osa, 'Beh_diff_perc_sig_one_step_ahead')
+
+        util_fcns.savefig(fe, 'Traj_diff_sig_cm')
+        util_fcns.savefig(fe_osa, 'Next_command_diff_sig_cm')
 
 ######### Behavior vs. neural correlations #########
 def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, ncommands_psth = 5): 
@@ -1016,4 +1206,19 @@ def get_PSTH(bin_num, rev_bin_num, push, indices, num_bins=5):
             all_push.append(push_vel[ind-num_bins:ind+num_bins+1, :])
     all_push = np.dstack((all_push))
     return np.mean(all_push, axis=2)
+
+def get_osa_PSTH(bin_num, rev_bin_num, push, indices):
+    '''
+    Get one step ahead (osa) PSTH 
+    '''
+    all_push = []
+    push_vel = push[:, [3, 5]]
+    for ind in indices:
+
+        ### Just need to have index + 1 be part of the smae trial
+        if rev_bin_num[ind] >= 1:
+            all_push.append(push_vel[ind+1, :])
+    all_push = np.dstack((all_push))
+    return np.mean(all_push, axis=2)
+
 
