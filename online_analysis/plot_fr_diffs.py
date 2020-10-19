@@ -130,6 +130,106 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
                     ax[i].hist(push_command[indices, i], alpha=.3)
                     ax[i].vlines(np.mean(push_command[indices, i]), 0, 50, 'g')
 
+def distribution_match_mov_pairwise(push_com1, push_com2, psig=.05, 
+                                  perc_drop = 0.05):
+    """
+    Method to match the two command distrubtions
+    
+    Args:
+        push_com1 (np.array): dataset to match 
+        push_com2 (np.array): dataset to match 
+        psig (float, optional): do a t-test to say if command distributions are 
+            significantly different. NOT sig different if p > psig; 
+        perc_drop (float, optional): If there are still sig differences, drop this 
+            percent of the bigger dataset ;
+        plot (bool, optional): plot the distributions along the way; 
+    
+    Returns:
+        TYPE: Description
+    """
+    complete = False
+    niter = 0
+    nVar = push_com1.shape[1]
+    assert(push_com2.shape[1] == nVar)
+    
+    #### Keep track of PV 
+    PVs = []
+    pv_recent = np.zeros((nVar, ))
+    
+    ### Indices to subsample (will remove these slowly using np.delete)
+    indices1 = np.arange(push_com1.shape[0])
+    indices2 = np.arange(push_com2.shape[0])
+   
+
+    ### Will make cost function scale by variance of the distribution 
+    ### we're trying to match. E.g. if varX = 10*varY in the distribution to match
+    ### then want to make sure we penalize deviations in Y axis more heavily. 
+    dct = dict(push_com1=push_com1, push_com2=push_com2, indices1=indices1,
+        indices2=indices2, mean1=np.mean(push_com1, axis=0), mean2=np.mean(push_com2, axis=0),
+        std1=np.std(push_com1, axis=0), std2=np.std(push_com2, axis=0))
+
+    while not complete:
+
+        for var in range(nVar):
+            t, pv = scipy.stats.ttest_ind(dct['push_com1'][dct['indices1'], var], dct['push_com2'][dct['indices2'], var])
+            pv_recent[var] = pv 
+        
+        if np.all(pv_recent > psig):
+            complete = True
+            return dct['indices1'], dct['indices2'], niter
+        
+        else:
+            niter += 1
+            #print('Starting iter %d' %(niter))
+            #print(pv_recent)
+            
+            ##### Match to the smaller distribution
+            nsamp1 = len(dct['indices1'])
+            nsamp2 = len(dct['indices2'])
+
+            if nsamp1 == 0 or nsamp2 == 0: 
+                return None, None, niter
+
+            if nsamp1 >= nsamp2:
+                ### match to distribution 2
+                mean_key = 'mean2'
+                std_key = 'std2'
+
+                ### Eliminate indices from distribution 1
+                elim_key = 'push_com1'
+                elim_ind = 'indices1'
+            else:
+                mean_key = 'mean1'
+                std_key = 'std1'
+
+                elim_key = 'push_com2'
+                elim_ind = 'indices2'
+
+            ### Compute cost of each sample of push_command 
+            mean_diff = dct[elim_key][dct[elim_ind], :] - dct[mean_key][np.newaxis, :]
+            
+            ### So dimensions with high variance aren't weighted as strongly 
+            cost = mean_diff / dct[std_key][np.newaxis, :]
+        
+            ### Sum across dimensions 
+            cost_sum = np.sum(cost**2, axis=1)
+            
+            ### How many pts to drop
+            Npts = len(cost_sum)
+            NptsDrop = int(np.floor(perc_drop * Npts))
+            
+            ### Sort from low to high 
+            ix_sort = np.argsort(cost_sum)
+            
+            ### Remove the highest cost 
+            ix_remove = ix_sort[-NptsDrop:]
+            
+            ### Update indices to remove cost
+            dct[elim_ind] = np.delete(dct[elim_ind], ix_remove)
+
+            ### Make sure the cost when down 
+            assert(np.sum(np.sum(cost[ix_sort[:-NptsDrop]]**2, axis=1)) < np.sum(cost_sum))
+
 def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000,
                             min_bin_indices = 0, save=False):
     """
@@ -605,7 +705,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
     ######  #######
 
 ######### Behavior vs. neural correlations #########
-def neuraldiff_vs_behaviordiff_corr(mode='global', min_bin_indices=0, nshuffs = 10, ncommands_psth = 5): 
+def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, ncommands_psth = 5): 
     ### Open mag boundaries 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
@@ -659,24 +759,31 @@ def neuraldiff_vs_behaviordiff_corr(mode='global', min_bin_indices=0, nshuffs = 
                             ix_com_global.append(ix_mc_all)
 
                     if len(ix_com_global) > 0:
+
                         ix_com_global = np.hstack((ix_com_global))
                         relevant_movs = np.array(global_comm_indices.keys())
-
 
                         shuffle_mean_FR = {}
 
                         ##### Get the movements that count; 
                         for imov, mov in enumerate(relevant_movs): 
-
+                            
                             ### MOV specific 
                             ### movements / command 
                             ix_mc_all = global_comm_indices[mov]
                             Nmov = len(ix_mc_all)
 
-                            #### GLOBAL #######
-                            ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
-                            ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
-                                                         push[np.ix_(ix_com_global, [3, 5])])
+                            for imov2, mov2 in enumerate(relevant_movs[imov+1:]):
+
+                                assert(mov != mov2)
+                                ix_mc_all2 = global_comm_indices[mov2]
+                                Nmov2 = len(ix_mc_all2)
+
+                                #### match to the two distributions #######
+                                ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
+                                ix_ok, ix_ok2, niter = distribution_match_global_mov_pairwise(push[np.ix_(ix_mc_all, [3, 5])], 
+                                                             push[np.ix_(ix_mc_all2, [3, 5])])
+                            
                             ### which indices we can use in global distribution for this shuffle ----> #### 
                             ix_com_global_ok = ix_com_global[ix_ok] 
                             assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
@@ -684,6 +791,7 @@ def neuraldiff_vs_behaviordiff_corr(mode='global', min_bin_indices=0, nshuffs = 
                             assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global_ok])))
                             Nglobal = len(ix_com_global_ok)
 
+                            ### Shuffle takes from teh global distribution Nmov number of point adn saves 
                             shuffle_mean_FR[mov] = []
                             for ishuff in range(nshuffs):
                                 ix_shuff = np.random.permutation(Nglobal)[:Nmov]
@@ -691,6 +799,7 @@ def neuraldiff_vs_behaviordiff_corr(mode='global', min_bin_indices=0, nshuffs = 
                                 ### Get the shuflfe mean FR and shuffle PSTH 
                                 shuffle_mean_FR[mov].append(np.mean(spks[ix_com_global_ok[ix_shuff], :], axis=0))
                                 
+                        #### For each movement get the mean and PSTH 
                         for imov, mov in enumerate(relevant_movs):
                             ix_mc_all = global_comm_indices[mov]
                             mov_mean_FR = np.mean(spks[ix_mc_all, :], axis=0)
@@ -717,6 +826,8 @@ def neuraldiff_vs_behaviordiff_corr(mode='global', min_bin_indices=0, nshuffs = 
 
                                     for imov2, mov2 in enumerate(relevant_movs[imov+1:]):
                                         assert(mov2!=mov)
+
+                                        ### Take these indices 
                                         ix_mc_all2 = global_comm_indices[mov2]
                                         mov2_mean_FR.append(np.mean(spks[ix_mc_all2, :], axis=0))
                                         mov2_PSTH.append(get_PSTH(bin_num, rev_bin_num, push, ix_mc_all2))
