@@ -666,8 +666,8 @@ def plot_percent_correct_t2t(plot=True, min_obs_targ = 2):
     ax.set_xticklabels(['CO', 'OBS'], rotation=45)
 
     ########### Target TIME ##############
-    util_fcns.draw_plot(0, np.hstack((metrics['co_tt'])), 'g', [1., 1., 1., 0.], ax2, width = .5)
-    util_fcns.draw_plot(1, np.hstack((metrics['obs_tt'])),'b', [1., 1., 1., 0.], ax2, width = .5)
+    util_fcns.draw_plot(0, np.hstack((metrics['co_tt'])), 'k', [1., 1., 1., 0.], ax2, width = .5)
+    util_fcns.draw_plot(1, np.hstack((metrics['obs_tt'])),'k', [1., 1., 1., 0.], ax2, width = .5)
     for _, (c, o) in enumerate(zip(metrics['co_tt_mn'], metrics['obs_tt_mn'])):
         ax2.plot([0, 1], [c, o], '-', color='gray', linewidth=0.5)
     ax2.set_xlim([-0.8, 1.8])
@@ -675,6 +675,8 @@ def plot_percent_correct_t2t(plot=True, min_obs_targ = 2):
     ax2.set_ylabel('Time to Target (sec)')
     ax2.set_xticks([0, 1])
     ax2.set_xticklabels(['CO', 'OBS'], rotation=45)
+    f2.tight_layout()
+    util_fcns.savefig(f2, 't2t_jeev')
 
     ########### Target TIME ##############
     util_fcns.draw_plot(0, np.hstack((metrics['perc_fulfill_obs'])), 'g', [1., 1., 1., 0.], ax3, width = .5)
