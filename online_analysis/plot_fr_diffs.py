@@ -188,7 +188,7 @@ def distribution_match_mov_pairwise(push_com1, push_com2, psig=.05,
             nsamp2 = len(dct['indices2'])
 
             if nsamp1 == 0 or nsamp2 == 0: 
-                return None, None, niter
+                return [], [], niter
 
             if nsamp1 >= nsamp2:
                 ### match to distribution 2
@@ -712,9 +712,9 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
     fr, axr = plt.subplots(figsize = (6, 4))
     fs, axs = plt.subplots(figsize = (6, 4))
 
-    for ia, animal in enumerate(['grom', 'jeev']):
+    for ia, animal in enumerate(['grom']):#, 'jeev']):
         
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
             
             ### Pull data ### 
             spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
@@ -729,6 +729,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
             for i in range(nshuffs):
                 D_shuff[i] = []
 
+            pairs_analyzed = {}
 
             ### For each command: ###
             for mag in range(4):
@@ -744,6 +745,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                     ##### Which movements go to the global? 
                     ix_com_global = []
                     global_comm_indices = {}
+                    pairs_analyzed[mag, ang] = []
 
                     #### Go through the movements ####
                     for mov in np.unique(move[ix_com]):
@@ -773,6 +775,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                             ix_mc_all = global_comm_indices[mov]
                             Nmov = len(ix_mc_all)
 
+                            ### Get movement #2 
                             for imov2, mov2 in enumerate(relevant_movs[imov+1:]):
 
                                 assert(mov != mov2)
@@ -781,92 +784,80 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
 
                                 #### match to the two distributions #######
                                 ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
-                                ix_ok, ix_ok2, niter = distribution_match_global_mov_pairwise(push[np.ix_(ix_mc_all, [3, 5])], 
+                                ix_ok1, ix_ok2, niter = distribution_match_mov_pairwise(push[np.ix_(ix_mc_all, [3, 5])], 
                                                              push[np.ix_(ix_mc_all2, [3, 5])])
-                            
-                            ### which indices we can use in global distribution for this shuffle ----> #### 
-                            ix_com_global_ok = ix_com_global[ix_ok] 
-                            assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
-                            assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
-                            assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global_ok])))
-                            Nglobal = len(ix_com_global_ok)
 
-                            ### Shuffle takes from teh global distribution Nmov number of point adn saves 
-                            shuffle_mean_FR[mov] = []
-                            for ishuff in range(nshuffs):
-                                ix_shuff = np.random.permutation(Nglobal)[:Nmov]
+                                if np.logical_and(len(ix_ok1) >= 15, len(ix_ok2) >= 15):
 
-                                ### Get the shuflfe mean FR and shuffle PSTH 
-                                shuffle_mean_FR[mov].append(np.mean(spks[ix_com_global_ok[ix_shuff], :], axis=0))
-                                
-                        #### For each movement get the mean and PSTH 
-                        for imov, mov in enumerate(relevant_movs):
-                            ix_mc_all = global_comm_indices[mov]
-                            mov_mean_FR = np.mean(spks[ix_mc_all, :], axis=0)
-                            mov_PSTH = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all, num_bins=ncommands_psth)
-                            
-                            assert(mov_PSTH.shape[0] == 2*ncommands_psth + 1)
-                            assert(mov_PSTH.shape[1] == 2)
+                                    pairs_analyzed[mag, ang].append([mov, mov2])
 
+                                    #######################################
+                                    ######### Indices check ###############
+                                    #######################################
+                                    for ix_test in [ix_mc_all[ix_ok1], ix_mc_all2[ix_ok2]]: 
+                                        assert(np.all(command_bins[ix_test, 0] == mag))
+                                        assert(np.all(command_bins[ix_test, 1] == ang))
 
-                            if mode == 'global':
-                                
-                                ### Use this as global mean for this movement #####
-                                mov2_mean_FR = [np.mean(spks[ix_com_global_ok, :], axis=0)]
-                                mov2_PSTH = [get_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok)]
+                                    assert(np.all(np.array([move[i] == mov for i in ix_mc_all[ix_ok1]])))
+                                    assert(np.all(np.array([move[i] == mov2 for i in ix_mc_all2[ix_ok2]])))
 
-                            elif mode == 'pairwise':
+                                    #### Proceed comparing these guys ##### 
+                                    mov_mean_FR1 = np.mean(spks[ix_mc_all[ix_ok1], :], axis=0)
+                                    mov_mean_FR2 = np.mean(spks[ix_mc_all2[ix_ok2], :], axis=0)
 
-                                ### Clear these ####
-                                mov2_mean_FR = []
-                                mov2_PSTH = []       
+                                    mov_PSTH1 = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all[ix_ok1], num_bins=ncommands_psth)
+                                    mov_PSTH2 = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all2[ix_ok2], num_bins=ncommands_psth)
 
-                                ### If not at the end ####
-                                if mov != relevant_movs[-1]:
+                                    assert(mov_PSTH1.shape[0] == 2*ncommands_psth + 1)
+                                    assert(mov_PSTH1.shape[1] == 2)
 
-                                    for imov2, mov2 in enumerate(relevant_movs[imov+1:]):
-                                        assert(mov2!=mov)
+                                    Nmov1 = len(ix_ok1)
+                                    Nmov2 = len(ix_ok2)
 
-                                        ### Take these indices 
-                                        ix_mc_all2 = global_comm_indices[mov2]
-                                        mov2_mean_FR.append(np.mean(spks[ix_mc_all2, :], axis=0))
-                                        mov2_PSTH.append(get_PSTH(bin_num, rev_bin_num, push, ix_mc_all2))
+                                    #### Matched dN and dB; 
+                                    dN = np.linalg.norm(mov_mean_FR1 -mov_mean_FR2)/nneur
+                                    dB = np.linalg.norm(mov_PSTH1 - mov_PSTH2)
 
+                                    ax.plot(dB, dN, 'k.')
+                                    D.append([dB, dN])
 
-                            #### Now do the comparisons #####
-                            for im2 in range(len(mov2_PSTH)):
+                                    ############################################################
+                                    ########## Get the global taht matches the subsample #######
+                                    ############################################################
+                                    ### Shuffle takes from teh global distribution Nmov number of point adn saves 
+                                    globix1, niter1 = distribution_match_global_mov(push[np.ix_(ix_mc_all[ix_ok1], [3, 5])], push[np.ix_(ix_com_global, [3, 5])])
+                                    globix2, niter2 = distribution_match_global_mov(push[np.ix_(ix_mc_all2[ix_ok2], [3, 5])], push[np.ix_(ix_com_global, [3, 5])])
+                                    
+                                    Nglobal1 = len(globix1)
+                                    Nglobal2 = len(globix2)
 
-                                dN = np.linalg.norm(mov_mean_FR - mov2_mean_FR[im2])/nneur
-                                dB = np.linalg.norm(mov_PSTH - mov2_PSTH[im2])
+                                    ###### Get shuffles for movement 1 / movement 2
+                                    shuffle_mean_FR[mov, mov2, 1] = []
+                                    shuffle_mean_FR[mov, mov2, 2] = []
 
-                                ax.plot(dB, dN, 'k.')
-                                D.append([dB, dN])
+                                    for ishuff in range(nshuffs):
+                                        #### Movement 1; 
+                                        ix_shuff = np.random.permutation(Nglobal1)[:Nmov1]
+                                        shuff1 = np.mean(spks[ix_com_global[globix1[ix_shuff]], :], axis=0)
 
-                                if mode == 'global':
-
-                                    ### Get shuffled vs. global ###
-                                    for i in range(nshuffs): 
-                                        shuff_dN = np.linalg.norm(shuffle_mean_FR[i] - mov2_mean_FR[im2])/nneur
+                                        #### Movement 2: 
+                                        ix_shuff2 = np.random.permutation(Nglobal2)[:Nmov2]
+                                        shuff2 = np.mean(spks[ix_com_global[globix2[ix_shuff2]], :], axis=0)
+                                 
+                                        ### difference in neural ####
+                                        shuff_dN = np.linalg.norm(shuff1 - shuff2)/nneur
                                         
-                                        #if i == 0:
-                                        #    ax.plot(dB, shuff_dN, '.', color='gray')
-                                        D_shuff[i].append([dB, shuff_dN])
-
-                                elif mode == 'pairwise':
-
-                                    ### Get shuffled vs. global ###
-                                    for i in range(nshuffs): 
-                                        shuff_dN = np.linalg.norm(shuffle_mean_FR[mov][i] - shuffle_mean_FR[mov2][i])/nneur
-                                        
-                                        #if i == 0:
-                                            #ax.plot(dB, shuff_dN, '.', color='gray')
-                                        D_shuff[i].append([dB, shuff_dN])
-
-
-
+                                        ### Add shuffle 
+                                        D_shuff[ishuff].append([dB, shuff_dN])
+            print('#######################')
+            print('Pairs analyzed')
+            for i, (k, v) in enumerate(pairs_analyzed.items()):
+                print('mag %d, ang %d, N = %d' %(k[0], k[1], len(v)))
+            print('#######################')
+            
             D = np.vstack((D))
             slp,_,rv,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
-            ax.set_title('Compare to %s, rv %.5f, N = %d'%(mode, rv, D.shape[0]))
+            ax.set_title('Pairwise comparison, rv %.5f, N = %d'%(rv, D.shape[0]))
             ax.set_xlabel('Norm Diff Behav. PSTH (-5:5)')
             ax.set_ylabel('Norm Diff Pop Neur [0]')
 
