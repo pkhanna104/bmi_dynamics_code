@@ -423,6 +423,19 @@ def savefig(f, name):
     f.savefig(analysis_config.config['fig_dir'] + name + '.svg')
 
 
+def rgba2rgb(rgba, bg_rgba=np.array([1., 1., 1.])):
+    assert(np.all(rgba>=0.))
+    assert(np.all(rgba<=1.))
+
+    alpha = rgba[3]
+    
+    rnew = (1-alpha)*bg_rgba[0] + alpha*rgba[0]
+    gnew = (1-alpha)*bg_rgba[1] + alpha*rgba[1]
+    bnew = (1-alpha)*bg_rgba[2] + alpha*rgba[2]
+    return np.array([rnew, gnew, bnew])
+
+
+
 ### Plotting ###
 def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):
     bp = ax.boxplot(data, patch_artist=True, positions = [xax], widths=[width],

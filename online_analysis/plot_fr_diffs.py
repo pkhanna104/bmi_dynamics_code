@@ -399,12 +399,14 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             util_fcns.savefig(fvect, 'POP_mag%d_ang%d_%s_d%d_min_bin%d'%(mag, ang, animal, day_ix, min_bin_indices))
 
 def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000, min_bin_indices = 0,
-    save = False): 
+    save = False, center_by_global = False): 
     
     '''
     Method to plot distribution of command-PSTH compared to the global distribution; 
     For each movement make sure you're subsampling the global distribution to match the movement-specific one
     Then compute difference between global mean and subsampled and global mean vs. movement specific and plot as distribuiton 
+
+    center_by_global --> whether to center each point by the global distribution 
     '''
     pref_colors = analysis_config.pref_colors
     
@@ -519,21 +521,32 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             else:
                 colrgba[-1] = 1.0
             
-            ### Trajecotry 
+            ### Get rgba ####
+            colrgb = util_fcns.rgba2rgb(colrgba)
+
+            ### trajectory  
             bs_mov = np.vstack((beh_shuffle[mov]))
-            util_fcns.draw_plot(x, bs_mov[:, 0], colrgba, np.array([0., 0., 0., 0.]), ax)
-            ax.plot(x, beh_diff[mov][0], 'k.')
+            if center_by_global:
+                mean_shuff = np.mean(bs_mov[:, 0])
+                mean_shuff_osa = np.mean(bs_mov[:, 1])
+                
+            else:
+                mean_shuff = 0. 
+                mean_shuff_osa = 0.
+
+            util_fcns.draw_plot(x, bs_mov[:, 0] - mean_shuff, 'gray', np.array([0., 0., 0., 0.]), ax)
+            ax.plot(x, beh_diff[mov][0] - mean_shuff, '.', color=colrgb, markersize=20)
             
-            util_fcns.draw_plot(x, bs_mov[:, 1], colrgba, np.array([0., 0., 0., 0.]), ax2)
-            ax2.plot(x, beh_diff[mov][1], 'k.')
+            util_fcns.draw_plot(x, bs_mov[:, 1] - mean_shuff_osa, 'gray', np.array([0., 0., 0., 0.]), ax2)
+            ax2.plot(x, beh_diff[mov][1] - mean_shuff_osa, '.', color=colrgb, markersize=20)
 
             ### Population centered by shuffle mean 
             for axi in [ax, ax2]:
                 axi.set_xlim(xlim)        
                 axi.set_xlabel('Movement')
             
-        ax.set_ylabel('Command Trajectory Differences')   
-        ax2.set_ylabel('Next Command Differences')   
+        ax.set_ylabel('Move-Specific Command Traj Diff\nfrom Move-Pooled Command Traj')   
+        ax2.set_ylabel('Move-Specific Next Command\nfrom Move-Pooled Next Command')   
         
         f.tight_layout()
         f2.tight_layout()
@@ -853,15 +866,15 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     
     ######## Percent sig #############
-    f, ax = plt.subplots(figsize=(3, 4))
-    f_osa, ax_osa = plt.subplots(figsize =(3, 4))
+    f, ax = plt.subplots(figsize=(2, 3))
+    f_osa, ax_osa = plt.subplots(figsize =(2, 3))
 
     perc_sig = dict(grom=[], jeev=[])
     perc_sig_one_step = dict(grom=[], jeev=[])
 
     ######## Effect Size #############
-    fe, axe = plt.subplots(figsize = (6, 4))
-    fe_osa, axe_osa = plt.subplots(figsize = (6, 4))
+    fe, axe = plt.subplots(figsize = (3, 3))
+    fe_osa, axe_osa = plt.subplots(figsize = (3, 3))
 
     ############ Loop ##############
     for i_a, animal in enumerate(['grom', 'jeev']):
@@ -1000,13 +1013,13 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
         axi.set_xticks([0, 1])
         axi.set_xticklabels(['G', 'J'])
     
-    ax.set_ylabel('Perc Command-Movements \nwith Sig. Diff. Traj')
-    ax_osa.set_ylabel('Perc Command-Movements \nwith Sig. Next Command')
+    ax.set_ylabel('% Move-Specific Commands \nwith Sig. Diff. Traj')
+    ax_osa.set_ylabel('% Move-Specific Commands \nwith Sig. Diff. Next Command')
 
     for axi in [axe, axe_osa]:
         axi.set_xlim([-1, 14])
-    axe.set_ylabel('Traj Diff for Sig. Command-Movements')
-    axe_osa.set_ylabel('Next Command Diff for Sig. Command-Movements')
+    axe.set_ylabel('Traj Diff for Sig.\nDiff. Move-Specific Commands')
+    axe_osa.set_ylabel('Next Command Diff for Sig. \nDiff. Move-Specific Commands')
 
     f.tight_layout()
     f_osa.tight_layout()
