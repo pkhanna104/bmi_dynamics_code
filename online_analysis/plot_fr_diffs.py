@@ -262,8 +262,9 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
                                        vel_ix=[3, 5])[0]
 
     ### 2 plots --> single neuron and vector 
-    f, ax = plt.subplots(figsize=(4,4))
-    fvect, axvect = plt.subplots(figsize=(4,4))
+    fdist, axdist = plt.subplots(figsize=(3, 3))
+    f, ax = plt.subplots(figsize=(3, 3))
+    fvect, axvect = plt.subplots(figsize=(3.5, 3))
 
     ### Return indices for the command ### 
     ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal=animal, 
@@ -274,8 +275,12 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
     mFR = {}; 
     mFR_vect = {};
     mov_number = []; 
+
+    ### Save 
     mFR_shuffle = {}
     mFR_shuffle_vect = {}
+    mFR_dist = {}
+
 
     ### For all movements --> figure otu which ones to keep in the global distribution ###
     global_comm_indices = {}
@@ -337,6 +342,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             ### Get matching global distribution 
             mFR_shuffle[mov] = []
             mFR_shuffle_vect[mov] = []
+            mFR_dist[mov] = []
             
             for i_shuff in range(nshuffs):
                 ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
@@ -345,6 +351,10 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
                 mshuff_vect = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
                 mFR_shuffle_vect[mov].append(np.linalg.norm(mshuff_vect - global_mean_vect)/nneur)
             
+            ### Save teh distribution ####
+            mFR_dist[mov] = FR 
+
+            ### Save teh shuffles 
             mFR[mov] = np.mean(FR)
             mFR_vect[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)/nneur
             mov_number.append(mov)
@@ -361,29 +371,45 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             ### Draw shuffle ###
             colnm = pref_colors[int(mov)%10]
             colrgba = np.array(mpl_colors.to_rgba(colnm))
-            
+
             ### Set alpha according to task (tasks 0-7 are CO, tasks 10.0 -- 19.1 are OBS) 
             if mov >= 10:
                 colrgba[-1] = 0.5
             else:
                 colrgba[-1] = 1.0
             
-            ### Single neuron 
-            util_fcns.draw_plot(x, mFR_shuffle[mov], colrgba, np.array([0., 0., 0., 0.]), ax)
-            ax.plot(x, mFR[mov], 'k.')
+            #### col rgb ######
+            colrgb = util_fcns.rgba2rgb(colrgba)
+
+            #### SIngle neuron distribution ###
+            util_fcns.draw_plot(x, mFR_dist[mov], colrgb, np.array([0., 0., 0., 0.]), axdist,
+                skip_median=True)
+            axdist.hlines(np.mean(mFR_dist[mov]), x-.25, x + .25, color=colrgb,
+                linewidth=3.)
+            axdist.hlines(np.mean(spks[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
+                linewidth=1., linestyle='dashed')
+
+
+            ### Single neuron --> sampling distribution 
+            util_fcns.draw_plot(x, mFR_shuffle[mov], 'gray', np.array([0., 0., 0., 0.]), ax)
+            ax.plot(x, mFR[mov], '.', color=colrgb, markersize=20)
             ax.hlines(np.mean(spks[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
                 linewidth=1., linestyle='dashed')
             
             ### Population centered by shuffle mean 
             mn_shuf = np.mean(mFR_shuffle_vect[mov])
-            util_fcns.draw_plot(x, mFR_shuffle_vect[mov] - mn_shuf, colrgba, np.array([0., 0., 0., 0.]), axvect)
-            axvect.plot(x, mFR_vect[mov] - mn_shuf, 'k.')
+            util_fcns.draw_plot(x, mFR_shuffle_vect[mov] - mn_shuf, 'gray', np.array([0., 0., 0., 0.]), axvect)
+            axvect.plot(x, mFR_vect[mov] - mn_shuf, '.', color=colrgb, markersize=20)
         
-        for axi in [ax, axvect]:
+
+
+        for axi in [ax, axvect, axdist]:
             axi.set_xlim(xlim)        
             axi.set_xlabel('Movement')
+            axi.set_xticks([])
             
         ax.set_ylabel('Activity (Hz)')   
+        axdist.set_ylabel('Activity (Hz)')  
         ax.set_title('Neuron %d' %(neuron_ix))
 
         if mag == 0 and ang == 7 and animal == 'grom' and day_ix == 0 and neuron_ix == 36:
@@ -394,9 +420,15 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             util_fcns.savefig(f, 'n%d_mag%d_ang%d_%s_d%d_min_bin%d'%(neuron_ix, mag, ang, animal, day_ix, min_bin_indices))
         
         axvect.set_ylabel('Pop. Activity Dist. \n centered by shuffle mn (Hz) ')    
+        
         fvect.tight_layout()
         if save:
             util_fcns.savefig(fvect, 'POP_mag%d_ang%d_%s_d%d_min_bin%d'%(mag, ang, animal, day_ix, min_bin_indices))
+
+        axdist.set_ylim([-2, 52])
+        fdist.tight_layout()
+        if save:
+            util_fcns.savefig(fdist, 'n%d_dist_mag%d_ang%d_%s_d%d_min_bin%d'%(neuron_ix, mag, ang, animal, day_ix, min_bin_indices))
 
 def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000, min_bin_indices = 0,
     save = False, center_by_global = False): 
@@ -546,7 +578,7 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
                 axi.set_xlabel('Movement')
             
         ax.set_ylabel('Move-Specific Command Traj Diff\nfrom Move-Pooled Command Traj')   
-        ax2.set_ylabel('Move-Specific Next Command\nfrom Move-Pooled Next Command')   
+        ax2.set_ylabel('Move-Specific Next Command Diff\nfrom Move-Pooled Next Command')   
         
         f.tight_layout()
         f2.tight_layout()
@@ -695,27 +727,41 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
                                 
     return perc_sig, perc_sig_vect, niter2match
 
-def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5):
+def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None, 
+    plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5):
 
     #### Plot this; 
-    #### Single neuron plots ######
-    f, ax = plt.subplots(figsize=(4, 4)) ### Percent sig; 
-    f2, ax2 = plt.subplots(figsize=(4, 4)) ### Percent neurons with > 0 sig; 
-    feff, axeff = plt.subplots(figsize=(6, 4)) ### Effect size for sig. neurons 
-    feff2, axeff2 = plt.subplots(figsize=(6, 4)) ### Effect size (frac diff)
+    ############ Single neuron plots ##############
+    f, ax = plt.subplots(figsize=(2, 3)) ### Percent sig; 
+    f2, ax2 = plt.subplots(figsize=(2, 3)) ### Percent neurons with > 0 sig; 
+    
+    ### Percent sig of sig diff mov-commands SU and Vect; 
+    fsig_su, axsig_su = plt.subplots(figsize=(2, 3))
 
-    #### Vector plots ######
-    fv, axv = plt.subplots(figsize=(4, 4)) ### Perc sig. command/movs
-    fv2, axv2 = plt.subplots(figsize=(4, 4)) ### Perc commands with > 0 sig mov
+    feff, axeff = plt.subplots(figsize=(3, 3)) ### Effect size for sig. neurons 
+    feff2, axeff2 = plt.subplots(figsize=(3, 3)) ### Effect size (frac diff)
+
+    ### Significant onesl 
+    feff_bsig, axeff_bsig = plt.subplots(figsize=(3, 3))
+    feff_bsig_frac, axeff_bsig_frac = plt.subplots(figsize=(3, 3))
+
+    ############ Vector plots ##############
+    fv, axv = plt.subplots(figsize=(2, 3)) ### Perc sig. command/movs
+    fv2, axv2 = plt.subplots(figsize=(2, 3)) ### Perc commands with > 0 sig mov
 
     # Just show abstract vector norm diff ? 
-    fveff, axveff = plt.subplots(figsize=(6, 4)) ### Effect size sig. command/mov
+    fveff, axveff = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov
+    fveff_bsig, axveff_bsig = plt.subplots(figsize=(3, 3)) ###
+
+    ### Percent sig of sig diff mov-commands  Vect; 
+    fsig_pop, axsig_pop = plt.subplots(figsize=(2, 3))
 
     #### For each animal 
     for ia, animal in enumerate(['grom', 'jeev']):
 
         ### Bar plots ####
-        bar_dict = dict(percNCMsig = [], percNgte1CMsig = [], percCMsig=[], percCgte1Msig = [])
+        bar_dict = dict(percNCMsig = [], percNgte1CMsig = [], percCMsig=[], percCgte1Msig = [], 
+            percNCMsig_behsig = [], percCMsig_behsig = [])
 
         ### For each date ####        
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
@@ -726,8 +772,14 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
             NCM_sig = 0
             NCM_tot = 0 
 
+            NCM_sig_beh_sig = 0
+            NCM_tot_beh_sig = 0
+
             NCM_sig_hz_diff = []
             NCM_sig_frac_diff = []
+
+            NCM_behsig_hz_diff = []
+            NCM_behsig_frac_diff = []
             
             ###### Single neuron ########
             for i, (k, varr) in enumerate(perc_sig[animal, day_ix].items()):
@@ -747,7 +799,20 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
                             NCM_sig_frac_diff.append(float(varr['frac_diff_fr'][j]))
                         assert(vi == varr['pv'][j])
                         
+                        ### See if behavior is sig: 
+                        if sig_move_diffs is not None: 
+                            if list(k) in sig_move_diffs[animal, day_ix]: 
+                                NCM_sig_beh_sig += 1
+                                NCM_behsig_hz_diff.append(float(varr['abs_diff_fr'][j]))
+                                
+                                #### Make sure global FR > 0.5 Hz; 
+                                if float(varr['glob_fr'][j]) >= min_fr_frac_neur_diff:
+                                    NCM_behsig_frac_diff.append(float(varr['frac_diff_fr'][j]))
+
                     NCM_tot += 1
+                    if sig_move_diffs is not None: 
+                        if list(k) in sig_move_diffs[animal, day_ix]:
+                            NCM_tot_beh_sig += 1
             
             ####### Single Neuorns ######
             ax.plot(ia, float(NCM_sig)/float(NCM_tot), 'k.')
@@ -757,19 +822,31 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
             bar_dict['percNgte1CMsig'].append(float(sig_n) / float(nneur))
             ax2.plot(ia, float(sig_n) / float(nneur), 'k.')
 
+            frac_sig_beh_sig = float(NCM_sig_beh_sig)/float(NCM_tot_beh_sig)
+            axsig_su.plot(ia, frac_sig_beh_sig, 'k.')
+            bar_dict['percNCMsig_behsig'].append(frac_sig_beh_sig)
+
             ##### Plot the effect size #######
             util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_hz_diff, 'k', 'w', axeff)
             util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_frac_diff, 'k', 'w', axeff2)
+
+            util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_hz_diff, 'k', 'w', axeff_bsig)
+            util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_frac_diff, 'k', 'w', axeff_bsig_frac)
+
             
             ##### Vector ########
             vect_sig = 0 
             vect_tot = 0 
+
+            vect_sig_beh_sig = 0
+            vect_tot_beh_sig = 0
                         
             ####################
             commands_w_sig = np.zeros((4, 8)) ### How many are sig? 
             command_cnt = np.zeros((4, 8)) ### How many movements count? 
             sig_hz_diff_vect = []
-            
+            sig_hz_diff_vect_bsig = []
+
             if plot_sig_mov_comm_grid:
                 f, axsig = plt.subplots(ncols = 4, figsize = (12, 4))
                 for ia, axi in enumerate(axsig):
@@ -789,6 +866,11 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
                     
                     ### For commands / moves that are different what is the np.linalg.norm? 
                     sig_hz_diff_vect.append(float(varr['norm_diff_fr']))
+
+                    if sig_move_diffs is not None: 
+                        if list(k) in sig_move_diffs[animal, day_ix]:
+                            vect_sig_beh_sig += 1
+                            sig_hz_diff_vect_bsig.append(float(varr['norm_diff_fr']))
                 
                 else:
                     if plot_sig_mov_comm_grid:
@@ -796,6 +878,10 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
                 
                 command_cnt[k[0], k[1]] += 1
                 vect_tot += 1
+
+                if sig_move_diffs is not None: 
+                    if list(k) in sig_move_diffs[animal, day_ix]:
+                        vect_tot_beh_sig += 1
             
             if plot_sig_mov_comm_grid:
                 fsig.tight_layout()
@@ -807,7 +893,6 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
             axv.plot(ia, float(vect_sig)/float(vect_tot), 'k.')
             bar_dict['percCMsig'].append(float(vect_sig)/float(vect_tot))
             
-            
             ### Need at least 1 sig 
             ix1 = np.nonzero(commands_w_sig.reshape(-1)[ix_consider] >= 1)[0]
             axv2.plot(ia, float(len(ix1))/float(len(ix_consider)), 'k.')
@@ -815,41 +900,66 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
             
             ### Distribution of population ###
             util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect, 'k', 'w', axveff)
+            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect_bsig, 'k', 'w', axveff_bsig)
             
+            ### Plot the perc sig CM with sig diff from glboal 
+            tmp_frc = float(vect_sig_beh_sig) / float(vect_tot_beh_sig)
+            axsig_pop.plot(ia, tmp_frc, 'k.')
+            bar_dict['percCMsig_behsig'].append(tmp_frc)
+            print('A %s, D %d, perc sig. tot %d/%d  =%.2f' %(animal, day_ix, vect_sig, vect_tot, float(vect_sig)/float(vect_tot)))
+            print('A %s, D %d, perc sig. of beh sig %d/%d  =%.2f' %(animal, day_ix, vect_sig_beh_sig, vect_tot_beh_sig, tmp_frc))
+
+
         ####### Single neuron summary for the day #####
         ax.bar(ia, np.mean(bar_dict['percNCMsig']), width=.8,alpha=0.2, color='k')
         ax2.bar(ia, np.mean(bar_dict['percNgte1CMsig']), width=.8, alpha=0.2, color='k')
-        
+        axsig_su.bar(ia, np.mean(bar_dict['percNCMsig_behsig']), width=.8,alpha=0.2, color='k')
+
         ####### Vector  neuron summary for the day #####
         axv.bar(ia, np.mean(bar_dict['percCMsig']), width=.8,alpha=0.2, color='k')
         axv2.bar(ia, np.mean(bar_dict['percCgte1Msig']), width=.8, alpha=0.2, color='k')
-        
-    for axi in [ax, ax2, axv, axv2]:
+        axsig_pop.bar(ia, np.mean(bar_dict['percCMsig_behsig']), width=.8, alpha=0.2, color='k')
+
+    for axi in [ax, ax2, axv, axv2, axsig_su, axsig_pop]:
         axi.set_xticks([0, 1])
         axi.set_xticklabels(['G', 'J'])
         axi.set_xlim([-1, 2])
 
-    ax.set_ylabel('Frac of neurons/command/mov sig. diff \nfrom global (nshuff=1000)')
-    ax2.set_ylabel('Frac of neurons with > 0 sig. diff \nfrom global (nshuff=1000)')
+    ax.set_ylabel('Frac NCM sig. diff \nfrom global (nshuff=1000)')
+    ax2.set_ylabel('Frac N with > 0 sig. CM \nfrom global (nshuff=1000)')
+    axsig_su.set_ylabel('Frac of NCM sig. diff \n if CM sig. diff from global')
+    axsig_pop.set_ylabel('Frac of CM sig. diff \n if Cm sig. diff from global')
 
-    axv.set_ylabel('Frac of command/mov sig. diff \nfrom global (nshuff=1000)')
-    axv2.set_ylabel('Frac of commands with > 0 sig. diff mov\nfrom global (nshuff=1000)')
+    axv.set_ylabel('Frac CM sig. diff \nfrom global (nshuff=1000)')
+    axv2.set_ylabel('Frac C > 0 sig. M \nfrom global (nshuff=1000)')
 
     f.tight_layout()
     f2.tight_layout()
     fv.tight_layout()
     fv2.tight_layout()
+    fsig_su.tight_layout()
+    fsig_pop.tight_layout()
 
     util_fcns.savefig(f, 'frac_neur_comm_mov_sig_diff_from_global')
     util_fcns.savefig(f2, 'frac_with_gte_0_sig_diff_from_global')
+    
+    util_fcns.savefig(fsig_su, 'frac_NCM_sig_diff_from_global_of_beh_diff')
+    util_fcns.savefig(fsig_pop, 'frac_CM_sig_diff_from_global_of_beh_diff')
+    
     util_fcns.savefig(fv, 'frac_comm_mov_sig_diff_from_global')
     util_fcns.savefig(fv2, 'frac_comm_with_gte_0_sig_diff_mov_from_global')
 
     ###### Effect size plots #######
-    for ax_ in [axeff, axeff2, axveff]:
+    for ax_ in [axeff, axeff2, axveff, axveff_bsig, axeff_bsig, axeff_bsig_frac]:
         ax_.set_xlim([-1, 14])
-    axeff.set_ylim([0, 9.])
+    axeff.set_ylim([0, 10.])
+    axeff_bsig.set_ylim([0., 10.])
+
     axeff2.set_ylim([0, 3.0])
+    axeff_bsig_frac.set_ylim([0., 3.])
+
+    axveff.set_ylim([0, .8])
+    axveff_bsig.set_ylim([0, .8])
 
     axeff.set_ylabel('Activity Diff from Shuffle Mean (Hz)')
     axeff.set_title('Sig. Diff Neurons/Command/Move')
@@ -859,10 +969,24 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, plot_sig_mov_comm_grid = False, m
 
     axveff.set_ylabel('Pop. Activity Diff from Shuffle Mean')
     axveff.set_title('Sig. Diff. Command/Moves')
+    axveff_bsig.set_ylabel('Pop. Activity Diff for Beh Sig. ')
+
+    axeff_bsig.set_ylabel('beh sig: Act. Diff from Shuffle Mean (Hz)')
+    axeff_bsig_frac.set_ylabel('beh sig: Frac. Diff from Shuffle Mean')
+    feff_bsig.tight_layout()
+    feff_bsig_frac.tight_layout()
+
     ######  #######
+    lab = ['hz_diff', 'frac_diff', 'hz_diff_bsig', 'frac_diff_bsig', 'vect_diff', 'vect_diff_bsig']
+    F=[feff, feff2, feff_bsig, feff_bsig_frac, fveff, fveff_bsig]
+    for i_, (f_, l_) in enumerate(zip(F, lab)):
+        util_fcns.savefig(f_, l_)
+
 
 def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, save=True):
     
+    move_command_sig = {}
+
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     
     ######## Percent sig #############
@@ -880,6 +1004,9 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
     for i_a, animal in enumerate(['grom', 'jeev']):
 
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            move_command_sig[animal, day_ix] = []
+            move_command_sig[animal, day_ix, 'osa'] = []
 
             ###### Extract data #######
             _, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
@@ -983,6 +1110,7 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
                                 if pv < 0.05: 
                                     total_sig_com += 1
                                     traj_diff.append(dPSTH)
+                                    move_command_sig[animal, day_ix].append([mag, ang, mov])
                                 total_cm += 1
 
                                 #### Test for sig for one-step-ahead (osa) ####
@@ -991,6 +1119,7 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
                                 if pv_osa < 0.05: 
                                     total_sig_cm_osa += 1
                                     traj_diff_one_step.append(dPSTH_osa)
+                                    move_command_sig[animal, day_ix, 'osa'].append([mag, ang, mov])
                                 total_cm_osa += 1
 
             ### Compute percent sig: 
@@ -1012,13 +1141,14 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
     for axi in [ax, ax_osa]:
         axi.set_xticks([0, 1])
         axi.set_xticklabels(['G', 'J'])
+        axi.set_ylim([0., 1.])
     
-    ax.set_ylabel('% Move-Specific Commands \nwith Sig. Diff. Traj')
-    ax_osa.set_ylabel('% Move-Specific Commands \nwith Sig. Diff. Next Command')
+    ax.set_ylabel('Frac. Move-Specific Commands \nwith Sig. Diff. Traj')
+    ax_osa.set_ylabel('Frac. Move-Specific Commands \nwith Sig. Diff. Next Command')
 
     for axi in [axe, axe_osa]:
         axi.set_xlim([-1, 14])
-    axe.set_ylabel('Traj Diff for Sig.\nDiff. Move-Specific Commands')
+    axe.set_ylabel('Command Traj Diff for Sig.\nDiff. Move-Specific Commands')
     axe_osa.set_ylabel('Next Command Diff for Sig. \nDiff. Move-Specific Commands')
 
     f.tight_layout()
@@ -1032,6 +1162,71 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
 
         util_fcns.savefig(fe, 'Traj_diff_sig_cm')
         util_fcns.savefig(fe_osa, 'Next_command_diff_sig_cm')
+
+    ### Save signifciant move/commands 
+    pickle.dump(move_command_sig, open(analysis_config.config['grom_pref'] + 'sig_move_comm.pkl', 'wb'))
+
+def plot_distribution_of_nmov_per_command(): 
+    """
+    Plot distribution of number of movements per command as boxplot
+    """
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+    
+    ######## Percent sig #############
+    f, ax = plt.subplots(figsize=(3,3 ))
+
+    ############ Loop ##############
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            ###### Extract data #######
+            _, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+            
+            ###### Get magnitude difference s######
+            command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
+                                               vel_ix=[3, 5])[0]
+            mov_per_com = []
+
+            for mag in range(4):
+
+                for ang in range(8): 
+        
+                    ### Return indices for the command ### 
+                    ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal=animal, 
+                                            day_ix=day_ix, mag=mag, ang=ang, min_bin_num=0,
+                                            min_rev_bin_num=0)
+
+                    ### For all movements --> figure otu which ones to keep in the global distribution ###
+                    movements = 0
+
+                    for mov in np.unique(move[ix_com]):
+
+                        ### Movement specific command indices 
+                        ix_mc = np.nonzero(move[ix_com] == mov)[0]
+                        
+                        ### Which global indices used for command/movement 
+                        ix_mc_all = ix_com[ix_mc] 
+
+                        ### If enough of these then proceed; 
+                        if len(ix_mc) >= 15:
+                            movements += 1
+
+                    ### Add to list: 
+                    if movements >= 2:
+                        mov_per_com.append(movements)
+
+            ### Plot distribution ###
+            util_fcns.draw_plot(i_a*10 + day_ix, mov_per_com, 'k', 'w', ax)
+
+    ax.set_ylabel('# move per command')
+    ax.set_xlim([-1, 14])
+    ax.set_xticks([])
+    ax.set_xticklabels([])
+    f.tight_layout()
+
+    util_fcns.savefig(f, 'fig2_numMov_perComm')
+
 
 ######### Behavior vs. neural correlations #########
 def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, ncommands_psth = 5): 
