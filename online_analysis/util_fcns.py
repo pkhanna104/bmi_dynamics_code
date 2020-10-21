@@ -437,12 +437,15 @@ def rgba2rgb(rgba, bg_rgba=np.array([1., 1., 1.])):
 
 
 ### Plotting ###
-def draw_plot(xax, data, edge_color, fill_color, ax, width = .5):
+def draw_plot(xax, data, edge_color, fill_color, ax, width = .5, skip_median=False):
     bp = ax.boxplot(data, patch_artist=True, positions = [xax], widths=[width],
         whis = [5, 95])
 
     for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
         plt.setp(bp[element], color=edge_color)
+
+    if skip_median:
+        plt.setp(bp['medians'], color=np.array([1., 1., 1., 0.]))
 
     for patch in bp['boxes']:
         patch.set(facecolor=fill_color) 
