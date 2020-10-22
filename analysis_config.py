@@ -2,6 +2,7 @@
 ############ Repo CONFIG ################
 #########################################
 import numpy as np 
+from matplotlib import colors
 
 ###### Has configuration of codebase, pointers to datafiles and temporary datafiles #####
 config = dict(); 
@@ -88,6 +89,8 @@ jeev_cw_ccw_dict[9] = 1;
 ##################################
 pref_colors = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab', 
 		'teal', 'steelblue', 'midnightblue', 'darkmagenta', 'black', 'gray']
+
+pref_colors_rgb = [colors.to_rgba(col) for col in pref_colors]
 
 def print_G_params(te=data_params['grom_input_type']):
 	for i_d, day in enumerate(te):
