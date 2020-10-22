@@ -1236,6 +1236,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
     fr, axr = plt.subplots(figsize = (3, 3))
+    frd, axrd = plt.subplots(figsize = (3, 3))
     fs, axs = plt.subplots(figsize = (3, 3))
 
     for ia, animal in enumerate(['grom', 'jeev']):
@@ -1400,7 +1401,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
             print('#######################')
             
             D = np.vstack((D))
-            slp,_,rv,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
+            slp,_,rv_REAL,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
             ax.set_title('Pairwise comparison, rv %.5f, N = %d'%(rv, D.shape[0]))
             ax.set_xlabel('Norm Diff Behav. PSTH (-5:5)')
             ax.set_ylabel('Norm Diff Pop Neur [0]')
@@ -1414,11 +1415,13 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                 slp,_,rv,_,_ = scipy.stats.linregress(d_tmp[:, 0], d_tmp[:, 1])
                 rshuff.append(rv)
                 slpshuff.append(slp)
-            util_fcns.draw_plot(ia*10 + day_ix, rshuff - np.mean(rshuff), 'k', 'w', axr)
+            util_fcns.draw_plot(ia*10 + day_ix, np.array(rshuff) - np.mean(np.array(rshuff)), 'k', np.array([1.,1.,1.,0.]), axrd)
+            util_fcns.draw_plot(ia*10 + day_ix, np.array(rshuff), 'k', np.array([1.,1.,1.,0.]), axr)
             util_fcns.draw_plot(ia*10 + day_ix, slpshuff, 'k', 'w', axs)
 
             #### Plto shuffled vs. real R; 
-            axr.plot(ia*10 + day_ix, rv - np.mean(rshuff), 'k.')
+            axrd.plot(ia*10 + day_ix, rv_REAL - np.mean(rshuff), 'k.')
+            axr.plot(ia*10 + day_ix, rv_REAL, 'k.')
             axs.plot(ia*10 + day_ix, slp, 'k.')
 
             axr.set_xlim([-1, 14])
