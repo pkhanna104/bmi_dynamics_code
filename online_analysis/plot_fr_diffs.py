@@ -8,7 +8,10 @@ import matplotlib.pyplot as plt
 
 import pickle
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1., style='white')
+
+import statsmodels.api as sm
+
 
 ########## Utilities #########
 def return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal='grom', day_ix=0, 
@@ -588,7 +591,6 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             util_fcns.savefig(f, 'Beh_diff_mag%d_ang%d_%s_d%d_min_bin%d'%(mag, ang, animal, day_ix, min_bin_indices))
             util_fcns.savefig(f2, 'Next_command_diff_mag%d_ang%d_%s_d%d'%(mag, ang, animal, day_ix))
     
-
 ##### Main plotting functions to use in Figs 2 and 3 ########
 def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
     """
@@ -605,7 +607,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
     perc_sig_vect = {}; 
 
     dtype_su = [('pv', float), ('abs_diff_fr', float), ('frac_diff_fr', float), ('glob_fr', float)]
-    dtype_pop = [('pv', float), ('norm_diff_fr', float)]
+    dtype_pop = [('pv', float), ('norm_diff_fr', float), ('frac_norm_diff_fr', float)]
 
     niter2match = {}
     
@@ -724,13 +726,18 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
                             n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle, axis=1) >= np.linalg.norm(dmean_FR))[0])
                             pv = float(n_lte) / float(nshuffs)
                             dist = np.linalg.norm(mov_mean_FR - global_mean_FR)
-                            perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist/nneur), dtype=dtype_pop)
+                            
+                            ### Make sure this is the same thign ###
+                            assert(dist == np.linalg.norm(dmean_FR))
+
+                            ### Fraction difference; 
+                            perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist/nneur, dist/np.linalg.norm(global_mean_FR)), dtype=dtype_pop)
 
                                 
     return perc_sig, perc_sig_vect, niter2match
 
 def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None, 
-    plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5):
+    plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5, neur_ix = 36):
 
     #### Plot this; 
     ############ Single neuron plots ##############
@@ -753,6 +760,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
 
     # Just show abstract vector norm diff ? 
     fveff, axveff = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov
+    fveff2, axveff2 = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov
     fveff_bsig, axveff_bsig = plt.subplots(figsize=(3, 3)) ###
 
     ### Percent sig of sig diff mov-commands  Vect; 
@@ -791,14 +799,33 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                 v = np.squeeze(varr['pv'])
                 
                 for j, vi in enumerate(v): 
+
                     if vi < 0.05:
                         NCM_sig += 1
                         num_sig[j] += 1
                         
                         NCM_sig_hz_diff.append(float(varr['abs_diff_fr'][j]))
 
+                        ### PLot the dot if relevant ###
+                        if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
+                            color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
+                            if k[2] >= 10.:
+                                color[-1] = 0.5
+                            else:
+                                color[-1] = 1.0
+
+                            color_rgb = util_fcns.rgba2rgb(color)
+                            print('mov %.2f, color w alpha %s, color wo alpha %s '%(k[2], color_rgb, color))
+                            axeff.plot(day_ix + 10*ia, float(varr['abs_diff_fr'][j]), '.', color=color_rgb, markersize=15)
+
                         if float(varr['glob_fr'][j]) >= min_fr_frac_neur_diff:
                             NCM_sig_frac_diff.append(float(varr['frac_diff_fr'][j]))
+
+                            if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
+                                axeff2.plot(day_ix + 10*ia + 0.1*np.random.randn(), float(varr['frac_diff_fr'][j]), '.', 
+                                    color=color_rgb, markersize=15)
+                            
+
                         assert(vi == varr['pv'][j])
                         
                         ### See if behavior is sig: 
@@ -829,11 +856,11 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
             bar_dict['percNCMsig_behsig'].append(frac_sig_beh_sig)
 
             ##### Plot the effect size #######
-            util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_hz_diff, 'k', 'w', axeff)
-            util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_frac_diff, 'k', 'w', axeff2)
+            util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_hz_diff, 'k', np.array([1., 1., 1., 0.]), axeff)
+            util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_frac_diff, 'k', np.array([1., 1., 1., 0.]), axeff2)
 
-            util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_hz_diff, 'k', 'w', axeff_bsig)
-            util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_frac_diff, 'k', 'w', axeff_bsig_frac)
+            util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_hz_diff, 'k', np.array([1., 1., 1., 0.]), axeff_bsig)
+            util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_frac_diff, 'k', np.array([1., 1., 1., 0.]), axeff_bsig_frac)
 
             
             ##### Vector ########
@@ -847,6 +874,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
             commands_w_sig = np.zeros((4, 8)) ### How many are sig? 
             command_cnt = np.zeros((4, 8)) ### How many movements count? 
             sig_hz_diff_vect = []
+            sig_hz_diff_vect_frac = []
             sig_hz_diff_vect_bsig = []
 
             if plot_sig_mov_comm_grid:
@@ -868,12 +896,24 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                     
                     ### For commands / moves that are different what is the np.linalg.norm? 
                     sig_hz_diff_vect.append(float(varr['norm_diff_fr']))
+                    sig_hz_diff_vect_frac.append(float(varr['frac_norm_diff_fr']))
 
                     if sig_move_diffs is not None: 
                         if list(k) in sig_move_diffs[animal, day_ix]:
                             vect_sig_beh_sig += 1
                             sig_hz_diff_vect_bsig.append(float(varr['norm_diff_fr']))
-                
+
+                    ##### Plot the dots on the population ######
+                    if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7: 
+                        color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
+                        if k[2] >= 10:
+                            color[-1] = 0.5
+                        else:
+                            color[-1] = 1.0
+
+                        color_rgb = util_fcns.rgba2rgb(color)
+                        axveff.plot(ia*10 + day_ix + 0.2*np.random.randn(), float(varr['norm_diff_fr']), '.', color=color_rgb, markersize=15)
+                        axveff2.plot(ia*10 + day_ix + 0.2*np.random.randn(), float(varr['frac_norm_diff_fr']), '.', color=color_rgb, markersize=15)
                 else:
                     if plot_sig_mov_comm_grid:
                         axsig[k[0]].plot(k[2], k[1], '.', color='k')
@@ -901,8 +941,9 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
             bar_dict['percCgte1Msig'].append(float(len(ix1))/float(len(ix_consider)))
             
             ### Distribution of population ###
-            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect, 'k', 'w', axveff)
-            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect_bsig, 'k', 'w', axveff_bsig)
+            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect, 'k', np.array([1., 1., 1., 0.]), axveff)
+            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect_frac, 'k', np.array([1., 1., 1., 0.]), axveff2)
+            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect_bsig, 'k', np.array([1., 1., 1., 0.]), axveff_bsig)
             
             ### Plot the perc sig CM with sig diff from glboal 
             tmp_frc = float(vect_sig_beh_sig) / float(vect_tot_beh_sig)
@@ -952,7 +993,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     util_fcns.savefig(fv2, 'frac_comm_with_gte_0_sig_diff_mov_from_global')
 
     ###### Effect size plots #######
-    for ax_ in [axeff, axeff2, axveff, axveff_bsig, axeff_bsig, axeff_bsig_frac]:
+    for ax_ in [axeff, axeff2, axveff, axveff2, axveff_bsig, axeff_bsig, axeff_bsig_frac]:
         ax_.set_xlim([-1, 14])
     axeff.set_ylim([0, 10.])
     axeff_bsig.set_ylim([0., 10.])
@@ -961,29 +1002,30 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     axeff_bsig_frac.set_ylim([0., 3.])
 
     axveff.set_ylim([0, .8])
+    axveff2.set_ylim([0, .71])
     axveff_bsig.set_ylim([0, .8])
 
-    axeff.set_ylabel('Activity Diff from Shuffle Mean (Hz)')
+    axeff.set_ylabel('Activity Diff from Command  Act. Mean (Hz)')
     axeff.set_title('Sig. Diff Neurons/Command/Move')
 
-    axeff2.set_ylabel('Frac. Diff Activity from Shuffle Mean')
+    axeff2.set_ylabel('Frac. Diff Activity from Command Act. Mean')
     axeff2.set_title('Sig. Diff Neurons/Command/Move')
 
-    axveff.set_ylabel('Pop. Activity Diff from Shuffle Mean')
-    axveff.set_title('Sig. Diff. Command/Moves')
+    axveff.set_ylabel('Pop. Activity Diff from Command Act. Mean')
+    axveff2.set_ylabel('Frac. Diff Pop. Act. from Command Act. Mean')
+    #axveff.set_title('Sig. Diff. Command/Moves')
     axveff_bsig.set_ylabel('Pop. Activity Diff for Beh Sig. ')
 
-    axeff_bsig.set_ylabel('beh sig: Act. Diff from Shuffle Mean (Hz)')
-    axeff_bsig_frac.set_ylabel('beh sig: Frac. Diff from Shuffle Mean')
-    feff_bsig.tight_layout()
-    feff_bsig_frac.tight_layout()
+    axeff_bsig.set_ylabel('beh sig: Act. Diff from Command Act. Mean (Hz)')
+    axeff_bsig_frac.set_ylabel('beh sig: Frac. Diff from Command Act. Mean')
+    #feff_bsig.tight_layout()
+    #feff_bsig_frac.tight_layout()
 
     ######  #######
-    lab = ['hz_diff', 'frac_diff', 'hz_diff_bsig', 'frac_diff_bsig', 'vect_diff', 'vect_diff_bsig']
-    F=[feff, feff2, feff_bsig, feff_bsig_frac, fveff, fveff_bsig]
+    lab = ['hz_diff', 'frac_diff', 'hz_diff_bsig', 'frac_diff_bsig', 'vect_diff', 'frac_vect_diff', 'vect_diff_bsig']
+    F=[feff, feff2, feff_bsig, feff_bsig_frac, fveff, fveff2, fveff_bsig]
     for i_, (f_, l_) in enumerate(zip(F, lab)):
         util_fcns.savefig(f_, l_)
-
 
 def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, save=True):
     
@@ -1231,13 +1273,15 @@ def plot_distribution_of_nmov_per_command():
 
 
 ######### Behavior vs. neural correlations #########
-def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, ncommands_psth = 5): 
+def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, ncommands_psth = 5,
+    min_commands = 10): 
     ### Open mag boundaries 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
-    fr, axr = plt.subplots(figsize = (3, 3))
-    frd, axrd = plt.subplots(figsize = (3, 3))
-    fs, axs = plt.subplots(figsize = (3, 3))
+    fr, axr = plt.subplots(figsize = (4, 4))
+    frd, axrd = plt.subplots(figsize = (4, 4))
+    fs, axs = plt.subplots(figsize = (4, 4))
+    fsd, axsd = plt.subplots(figsize = (4, 4))
 
     for ia, animal in enumerate(['grom', 'jeev']):
         
@@ -1250,7 +1294,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
             command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
 
-            f, ax = plt.subplots(figsize = (3, 3))
+            f, ax = plt.subplots(figsize = (4, 4))
             D = []
             D_shuff = {}
             for i in range(nshuffs):
@@ -1282,7 +1326,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                         ix_mc_all = ix_com[ix_mc]
                         
                         ### If enough of these then proceed; 
-                        if len(ix_mc) >= 15:    
+                        if len(ix_mc) >= min_commands:    
 
                             global_comm_indices[mov] = ix_mc_all
                             ix_com_global.append(ix_mc_all)
@@ -1313,7 +1357,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                                 ix_ok1, ix_ok2, niter = distribution_match_mov_pairwise(push[np.ix_(ix_mc_all, [3, 5])], 
                                                              push[np.ix_(ix_mc_all2, [3, 5])])
 
-                                if np.logical_and(len(ix_ok1) >= 15, len(ix_ok2) >= 15):
+                                if np.logical_and(len(ix_ok1) >= min_commands, len(ix_ok2) >= min_commands):
 
                                     pairs_analyzed[mag, ang].append([mov, mov2])
 
@@ -1344,7 +1388,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                                     dN = np.linalg.norm(mov_mean_FR1 -mov_mean_FR2)/nneur
                                     dB = np.linalg.norm(mov_PSTH1 - mov_PSTH2)
 
-                                    if mag == 0 and ang == 7:
+                                    if mag == 0 and ang == 7 and animal == 'grom':
                                         #### Pair 1 ### (1., 10.1), (10.1, 15.), 
                                         if mov == 1. and mov2 == 10.1:
                                             plt_top.append([dB, dN, 'blue', 15])
@@ -1360,31 +1404,62 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                                     ############################################################
                                     ########## Get the global taht matches the subsample #######
                                     ############################################################
+                                    ###### Get shuffles for movement 1 / movement 2
+                                    skip = False
+
                                     ### Shuffle takes from teh global distribution Nmov number of point adn saves 
+                                    _, pv3 = scipy.stats.ttest_ind(push[np.ix_(ix_mc_all[ix_ok1], [3])], push[np.ix_(ix_mc_all2[ix_ok2], [3])])
+                                    _, pv5 = scipy.stats.ttest_ind(push[np.ix_(ix_mc_all[ix_ok1], [5])], push[np.ix_(ix_mc_all2[ix_ok2], [5])])
+                                    assert(pv3 > 0.05)
+                                    assert(pv5 > 0.05)
+                                    
                                     globix1, niter1 = distribution_match_global_mov(push[np.ix_(ix_mc_all[ix_ok1], [3, 5])], push[np.ix_(ix_com_global, [3, 5])])
                                     globix2, niter2 = distribution_match_global_mov(push[np.ix_(ix_mc_all2[ix_ok2], [3, 5])], push[np.ix_(ix_com_global, [3, 5])])
                                     
-                                    Nglobal1 = len(globix1)
-                                    Nglobal2 = len(globix2)
+                                    ### Make sure that the GLOBAL distributions for mov1 and mov2 match
+                                    pv = []
+                                    for var in [3, 5]:
+                                        _, pvv = scipy.stats.ttest_ind(push[np.ix_(ix_com_global[globix1], [var])], push[np.ix_(ix_com_global[globix2], [var])], )                                        
+                                        pv.append(pvv)
+                                    pv = np.array(pv)
 
-                                    ###### Get shuffles for movement 1 / movement 2
-                                    shuffle_mean_FR[mov, mov2, 1] = []
-                                    shuffle_mean_FR[mov, mov2, 2] = []
-
-                                    for ishuff in range(nshuffs):
-                                        #### Movement 1; 
-                                        ix_shuff = np.random.permutation(Nglobal1)[:Nmov1]
-                                        shuff1 = np.mean(spks[ix_com_global[globix1[ix_shuff]], :], axis=0)
-
-                                        #### Movement 2: 
-                                        ix_shuff2 = np.random.permutation(Nglobal2)[:Nmov2]
-                                        shuff2 = np.mean(spks[ix_com_global[globix2[ix_shuff2]], :], axis=0)
-                                 
-                                        ### difference in neural ####
-                                        shuff_dN = np.linalg.norm(shuff1 - shuff2)/nneur
+                                    if np.any(pv < 0.05):
+                                        ix_ok1_1, ix_ok2_2, niter = distribution_match_mov_pairwise(push[np.ix_(ix_com_global[globix1], [3, 5])], 
+                                                             push[np.ix_(ix_com_global[globix2], [3, 5])])
                                         
-                                        ### Add shuffle 
-                                        D_shuff[ishuff].append([dB, shuff_dN])
+                                        if len(ix_ok1_1) >= min_commands and len(ix_ok2_2)>= min_commands:
+                                            globix1 = globix1[ix_ok1_1]
+                                            globix2 = globix2[ix_ok2_2]
+                                        else:
+                                            skip = True
+
+                                    if skip:
+                                        pass
+                                    else:
+                                        Nglobal1 = len(globix1)
+                                        Nglobal2 = len(globix2)
+
+                                        shuffle_mean_FR[mov, mov2, 1] = []
+                                        shuffle_mean_FR[mov, mov2, 2] = []
+
+                                        for ishuff in range(nshuffs):
+
+                                            #### Movement 1; 
+                                            ix_shuff = np.random.permutation(Nglobal1)[:Nmov1]
+                                            shuff1 = np.mean(spks[ix_com_global[globix1[ix_shuff]], :], axis=0)
+
+                                            #### Movement 2: 
+                                            ix_shuff2 = np.random.permutation(Nglobal2)[:Nmov2]
+                                            shuff2 = np.mean(spks[ix_com_global[globix2[ix_shuff2]], :], axis=0)
+                                     
+                                            ### difference in neural ####
+                                            shuff_dN = np.linalg.norm(shuff1 - shuff2)/nneur
+                                            
+                                            ### Add shuffle 
+                                            D_shuff[ishuff].append([dB, shuff_dN])
+
+                                            if ishuff == 0:
+                                                ax.plot(dB, shuff_dN, 'r.')
                             
             ### Plt_top
             if len(plt_top) > 0:
@@ -1394,15 +1469,20 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                 _,_,rv,_,_ = scipy.stats.linregress(np.array(plt_top[:, 0], dtype=float), np.array(plt_top[:, 1], dtype=float))
                 print('Example (pink) r = %.4f'%rv)
 
-            print('#######################')
-            print('Pairs analyzed')
-            for i, (k, v) in enumerate(pairs_analyzed.items()):
-                print('mag %d, ang %d, N = %d' %(k[0], k[1], len(v)))
-            print('#######################')
+            # print('#######################')
+            # print('Pairs analyzed')
+            # for i, (k, v) in enumerate(pairs_analyzed.items()):
+            #     print('mag %d, ang %d, N = %d' %(k[0], k[1], len(v)))
+            # print('#######################')
             
             D = np.vstack((D))
-            slp,_,rv_REAL,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
-            ax.set_title('Pairwise comparison, rv %.5f, N = %d'%(rv, D.shape[0]))
+            _,_,rv_REAL,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
+
+            model = sm.OLS(D[:, 1], D[:, 0])
+            results = model.fit()
+            slp_REAL = float(results.params)
+
+            ax.set_title('PW , rv %.5f, slp %.3f, N = %d'%(rv_REAL, slp_REAL, D.shape[0]))
             ax.set_xlabel('Norm Diff Behav. PSTH (-5:5)')
             ax.set_ylabel('Norm Diff Pop Neur [0]')
 
@@ -1411,26 +1491,47 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
 
             rshuff = []; slpshuff = []
             for i in range(nshuffs):
-                d_tmp = np.vstack((D_shuff[i]))
-                slp,_,rv,_,_ = scipy.stats.linregress(d_tmp[:, 0], d_tmp[:, 1])
-                rshuff.append(rv)
-                slpshuff.append(slp)
+                if len(D_shuff[i]) > 0:
+                    d_tmp = np.vstack((D_shuff[i]))
+                    _,_,rv,_,_ = scipy.stats.linregress(d_tmp[:, 0], d_tmp[:, 1])
+
+                    model = sm.OLS(d_tmp[:, 1], d_tmp[:, 0])
+                    results = model.fit()
+                    slp = float(results.params)
+                    rshuff.append(rv)
+                    slpshuff.append(slp)
+
             util_fcns.draw_plot(ia*10 + day_ix, np.array(rshuff) - np.mean(np.array(rshuff)), 'k', np.array([1.,1.,1.,0.]), axrd)
             util_fcns.draw_plot(ia*10 + day_ix, np.array(rshuff), 'k', np.array([1.,1.,1.,0.]), axr)
-            util_fcns.draw_plot(ia*10 + day_ix, slpshuff, 'k', 'w', axs)
+            util_fcns.draw_plot(ia*10 + day_ix, slpshuff, 'k', np.array([1.,1.,1.,0.]), axs)
+            util_fcns.draw_plot(ia*10 + day_ix, np.array(slpshuff) - np.mean(np.array(slpshuff)), 'k', np.array([1.,1.,1.,0.]), axsd)
 
             #### Plto shuffled vs. real R; 
             axrd.plot(ia*10 + day_ix, rv_REAL - np.mean(rshuff), 'k.')
             axr.plot(ia*10 + day_ix, rv_REAL, 'k.')
-            axs.plot(ia*10 + day_ix, slp, 'k.')
+            axs.plot(ia*10 + day_ix, slp_REAL, 'k.')
+            axsd.plot(ia*10 + day_ix, slp_REAL - np.mean(slpshuff), 'k.')
 
+            axrd.set_xlim([-1, 14])
             axr.set_xlim([-1, 14])
             axs.set_xlim([-1, 14])
+            axsd.set_xlim([-1, 14])
             
+            axrd.set_ylabel('r-value - shuffle mean')
             axr.set_ylabel('r-value')
             axs.set_ylabel('slope')
+            axsd.set_ylabel('slope - shuf mn')
+    fs.tight_layout()
+    fsd.tight_layout()
+
     fr.tight_layout()
     util_fcns.savefig(fr, 'neur_beh_corr_rv_vs_shuffN%d'%(nshuffs))
+
+    frd.tight_layout()
+    util_fcns.savefig(frd, 'neur_beh_corr_rv_vs_shuffN%d_centbyshuff_mn'%(nshuffs))
+    
+    fsd.tight_layout()
+    util_fcns.savefig(fsd, 'neur_beh_corr_SLP_vs_shuffN%d_centbyshuff_mn'%(nshuffs))
 
 def get_PSTH(bin_num, rev_bin_num, push, indices, num_bins=5):
 
