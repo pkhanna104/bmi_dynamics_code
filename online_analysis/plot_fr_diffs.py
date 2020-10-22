@@ -7,6 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import pickle
+import seaborn
+seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
 ########## Utilities #########
 def return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal='grom', day_ix=0, 
@@ -1233,12 +1235,12 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
     ### Open mag boundaries 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
-    fr, axr = plt.subplots(figsize = (6, 4))
-    fs, axs = plt.subplots(figsize = (6, 4))
+    fr, axr = plt.subplots(figsize = (3, 3))
+    fs, axs = plt.subplots(figsize = (3, 3))
 
-    for ia, animal in enumerate(['grom']):#, 'jeev']):
+    for ia, animal in enumerate(['grom', 'jeev']):
         
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
             
             ### Pull data ### 
             spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
@@ -1247,14 +1249,14 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
             command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
 
-            f, ax = plt.subplots()
+            f, ax = plt.subplots(figsize = (3, 3))
             D = []
             D_shuff = {}
             for i in range(nshuffs):
                 D_shuff[i] = []
 
             pairs_analyzed = {}
-
+            plt_top = []
             ### For each command: ###
             for mag in range(4):
                 
@@ -1285,7 +1287,6 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                             ix_com_global.append(ix_mc_all)
 
                     if len(ix_com_global) > 0:
-
                         ix_com_global = np.hstack((ix_com_global))
                         relevant_movs = np.array(global_comm_indices.keys())
 
@@ -1342,7 +1343,17 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                                     dN = np.linalg.norm(mov_mean_FR1 -mov_mean_FR2)/nneur
                                     dB = np.linalg.norm(mov_PSTH1 - mov_PSTH2)
 
-                                    ax.plot(dB, dN, 'k.')
+                                    if mag == 0 and ang == 7:
+                                        #### Pair 1 ### (1., 10.1), (10.1, 15.), 
+                                        if mov == 1. and mov2 == 10.1:
+                                            plt_top.append([dB, dN, 'blue', 15])
+                                        elif mov == 10.1 and mov2 == 15.:
+                                            plt_top.append([dB, dN, 'limegreen', 15])
+                                        else: 
+                                            plt_top.append([dB, dN, 'deeppink', 10])
+                                    else:
+                                        rgb = util_fcns.rgba2rgb(np.array([0., 0., 0., .5]))
+                                        ax.plot(dB, dN, '.', color=rgb, markersize=5)
                                     D.append([dB, dN])
 
                                     ############################################################
@@ -1373,6 +1384,15 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                                         
                                         ### Add shuffle 
                                         D_shuff[ishuff].append([dB, shuff_dN])
+                            
+            ### Plt_top
+            if len(plt_top) > 0:
+                for _, (xi, yi, col, ms) in enumerate(plt_top):
+                    ax.plot(xi, yi, '.', color=col, markersize=ms)
+                plt_top = np.vstack((plt_top))
+                _,_,rv,_,_ = scipy.stats.linregress(np.array(plt_top[:, 0], dtype=float), np.array(plt_top[:, 1], dtype=float))
+                print('Example (pink) r = %.4f'%rv)
+
             print('#######################')
             print('Pairs analyzed')
             for i, (k, v) in enumerate(pairs_analyzed.items()):
@@ -1385,9 +1405,8 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
             ax.set_xlabel('Norm Diff Behav. PSTH (-5:5)')
             ax.set_ylabel('Norm Diff Pop Neur [0]')
 
-            #### Plto shuffled vs. real R; 
-            axr.plot(ia*10 + day_ix, rv, 'k.')
-            axs.plot(ia*10 + day_ix, slp, 'k.')
+            if animal == 'grom' and day_ix == 0:
+                util_fcns.savefig(f, 'eg_neural_vs_beh_scatter%s_%d' %(animal, day_ix))
 
             rshuff = []; slpshuff = []
             for i in range(nshuffs):
@@ -1395,14 +1414,20 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 10, nc
                 slp,_,rv,_,_ = scipy.stats.linregress(d_tmp[:, 0], d_tmp[:, 1])
                 rshuff.append(rv)
                 slpshuff.append(slp)
-            util_fcns.draw_plot(ia*10 + day_ix, rshuff, 'k', 'w', axr)
+            util_fcns.draw_plot(ia*10 + day_ix, rshuff - np.mean(rshuff), 'k', 'w', axr)
             util_fcns.draw_plot(ia*10 + day_ix, slpshuff, 'k', 'w', axs)
+
+            #### Plto shuffled vs. real R; 
+            axr.plot(ia*10 + day_ix, rv - np.mean(rshuff), 'k.')
+            axs.plot(ia*10 + day_ix, slp, 'k.')
 
             axr.set_xlim([-1, 14])
             axs.set_xlim([-1, 14])
             
             axr.set_ylabel('r-value')
             axs.set_ylabel('slope')
+    fr.tight_layout()
+    util_fcns.savefig(fr, 'neur_beh_corr_rv_vs_shuffN%d'%(nshuffs))
 
 def get_PSTH(bin_num, rev_bin_num, push, indices, num_bins=5):
 
@@ -1430,3 +1455,4 @@ def get_osa_PSTH(bin_num, rev_bin_num, push, indices):
     return np.mean(all_push, axis=2)
 
 
+ 
