@@ -2092,6 +2092,7 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
 
     model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(6)
     models_to_include = [m[1] for m in model_var_list]
+    
     variables_list = generate_models.return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
     pred_Y = np.zeros((temp_N, nneur, nshuffs))
 
