@@ -1473,7 +1473,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
             ### Plt_top
             if len(plt_top) > 0:
                 for _, (xi, yi, col, ms) in enumerate(plt_top):
-                    ax.plot(xi, yi, '.', color=col, markersize=ms)
+                    ax.plot(xi, yi, '.', color=col, markersize=20)
                     #ax.plot(xi, yi, '.', color=analysis_config.pref_colors_rgb[0],markersize=10)
                 plt_top = np.vstack((plt_top))
                 _,_,rv,_,_ = scipy.stats.linregress(np.array(plt_top[:, 0], dtype=float), np.array(plt_top[:, 1], dtype=float))
