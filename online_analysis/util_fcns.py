@@ -288,7 +288,7 @@ def get_grom_decoder(day_ix):
     dec = co_obs_dict[te_num, 'dec']
     decix = dec.rfind('/')
     decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
-    print(decoder.filt.W)
+    
     F, KG = decoder.filt.get_sskf()
     return F, KG
 
@@ -481,11 +481,15 @@ def get_pv_str(pv):
     return pv_str
 
 ### Run PCA ###
-def PCA(X, nPCs, mean_subtract = True):
+def PCA(X, nPCs, mean_subtract = True, skip_dim_assertion = False):
     '''
     X is a T x N data matrix; 
     '''
-    assert(X.shape[0] > X.shape[1])
+    if skip_dim_assertion:
+        print('Number of dim %d, number of obs %d' %(X.shape[1], X.shape[0]))
+    else:
+        assert(X.shape[0] > X.shape[1])
+    
     ### assumes X is time x dimensions
 
     if mean_subtract:
