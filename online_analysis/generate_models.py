@@ -909,7 +909,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'grom' and i_d < -1:
+            if animal == None:
                 pass
             else:
                 print('##############################')
@@ -1006,7 +1006,6 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                         ######### Ridge #########
                         else:
                             save_dat = dict()
-                            save_dat['model_set'] = {}
                         
                         ###### Go through the all the models #####
                         for i_fold, type_of_model_index in enumerate(type_of_model):
@@ -1151,7 +1150,7 @@ def get_temp_spks(Data2, shuff_ix):
     ### Get the zero bins 
     spks_not_t2 = np.nonzero(bin_num == 0)[0]
 
-    ### Remove the first one 
+    ### Remove the first trial 
     spks_not_t2 = spks_not_t2[spks_not_t2 > 0]
 
     ### Add teh last bine 
@@ -1163,7 +1162,7 @@ def get_temp_spks(Data2, shuff_ix):
     assert(np.all(bin_num[spks_not_t2[:-1] + 1] == 0))
     spks_t2 = np.array([i for i in range(len(bin_num)) if i not in spks_not_t2])
 
-    ##### Keep these guys 
+    ##### Keep these guys --> anything that is NOT the first or the last bin in the trial 
     spks_keep = np.intersect1d(spks_t1, spks_t2)
 
     spks_shuff = Data2['spks'][shuff_ix, :]
