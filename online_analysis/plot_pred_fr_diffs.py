@@ -8,6 +8,9 @@ import matplotlib.transforms as transforms
 import analysis_config
 from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs
 
+from sklearn.linear_model import Ridge
+
+######## Figure 4 ###########
 def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, animal='grom', 
     day_ix = 0, nshuffs = 1000, min_bin_indices = 0, model_set_number = 6, 
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'):
@@ -73,7 +76,8 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
                                        vel_ix=[3, 5])[0]
 
     ### 2 plots --> single neuron and vector 
-    fsu, axsu = plt.subplots(figsize=(4, 4))
+    fsu, axsu = plt.subplots(figsize=(6, 3), ncols = 2) ### single unit plot diff; 
+
     fvect_mc, axvect_distmcfr = plt.subplots(figsize=(4, 4))
     fvect_g, axvect_distgfr = plt.subplots(figsize=(4, 4))
 
@@ -182,12 +186,14 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         ########## PLOT TRUE DATA #################
         ###########################################
         ### Single neuron --> sampling distribution 
-        util_fcns.draw_plot(x, shuff_mFR[mov], 'k', np.array([1., 1., 1., 0]), axsu)
-        axsu.plot(x, mFR[mov], '.', color=colrgb, markersize=20)
-        axsu.plot(x, pred_mFR[mov], '*', color=colrgb, markersize=20)
-        # axsu.hlines(np.mean(spks_sub[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
-        #     linewidth=1., linestyle='dashed')
-        
+        util_fcns.draw_plot(x, shuff_mFR[mov], 'k', np.array([1., 1., 1., 0]), axsu[1])
+        axsu[0].plot(x, mFR[mov], '.', color=colrgb, markersize=20)
+        axsu[1].plot(x, pred_mFR[mov], '*', color=colrgb, markersize=20)
+        # axsu[0].hlines(np.mean(spks_sub[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
+        #      linewidth=1., linestyle='dashed')
+        # axsu[1].hlines(np.mean(spks_sub[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
+        #      linewidth=1., linestyle='dashed')     
+
         ### Population distance from movement-command FR
         util_fcns.draw_plot(x, shuff_vect_distmcfr[mov], 'k', np.array([1., 1., 1., 0]), axvect_distmcfr)
         axvect_distmcfr.plot(x, pred_vect_distmcfr[mov], '*', color=colrgb, markersize=20)
@@ -197,16 +203,17 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         axvect_distgfr.plot(x, pred_vect_distgfr[mov], '*', color=colrgb, markersize=20)
         axvect_distgfr.plot(x, mFR_vect_disggfr[mov], '.', color=colrgb, markersize=20)
 
-
-    axsu.set_xlim([-1, 9])
+    for axi in axsu: 
+        axi.set_xlim([-1, 9])
     axvect_distgfr.set_xlim([-1, 9])
     axvect_distmcfr.set_xlim([-1, 9])
 
-    axsu.set_ylabel('Activity (Hz)')
+    axsu[0].set_ylabel('Activity (Hz)')
+    axsu[1].set_ylabel('Predicted Activity (Hz)')
     axvect_distgfr.set_ylabel('Command-Mov Dist. from \n Command Activity (Hz)')
     axvect_distmcfr.set_ylabel('Dist. b/w Pred. and True \nCommand-Mov Activity (Hz)')
 
-    for axi in [axsu, axvect_distgfr, axvect_distmcfr]:
+    for axi in [axsu[0], axsu[1], axvect_distgfr, axvect_distmcfr]:
         axi.set_xticks([])
 
     fsu.tight_layout()
@@ -228,32 +235,32 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     _, pc_model, _ = util_fcns.PCA(mfr_mc, 2, mean_subtract = True, skip_dim_assertion=True)
 
     #### Make the pca plot 
-    fpca, axpca = plt.subplots(figsize=(4, 4))
+    fpca, axpca = plt.subplots(figsize=(6, 3), ncols = 2)
 
     #### For true data, plot the coordinates: 
     for m in mFR_vect.keys(): 
 
         ### Project data and plot ###
         trans_true = util_fcns.dat2PC(mFR_vect[m][np.newaxis, :], pc_model)
-        axpca.plot(trans_true[0, 0], trans_true[0, 1], '.', color=get_color(m), markersize=20)
+        axpca[0].plot(trans_true[0, 0], trans_true[0, 1], '.', color=get_color(m), markersize=20)
 
         ### PLot the predicted data : 
         trans_pred = util_fcns.dat2PC(pred_mFR_vect[m][np.newaxis, :], pc_model)
-        axpca.plot(trans_pred[0, 0], trans_pred[0, 1], '*', color=get_color(m), markersize=20)
-        axpca.plot([trans_true[0, 0], trans_pred[0, 0]], [trans_true[0, 1], trans_pred[0, 1]], '-', 
-            color=get_color(m), linewidth=1.)
+        axpca[1].plot(trans_pred[0, 0], trans_pred[0, 1], '*', color=get_color(m), markersize=20)
+        #axpca[0].plot([trans_true[0, 0], trans_pred[0, 0]], [trans_true[0, 1], trans_pred[0, 1]], '-', 
+        #    color=get_color(m), linewidth=1.)
 
         ### PLot the shuffled: Shuffles x 2 
         trans_shuff = util_fcns.dat2PC(shuff_mFR_vect[m].T, pc_model)
-        e = confidence_ellipse(trans_shuff[:, 0], trans_shuff[:, 1], axpca, n_std=5.0,
-            facecolor = get_color(m, alpha=.3))
+        e = confidence_ellipse(trans_shuff[:, 0], trans_shuff[:, 1], axpca[1], n_std=3.0,
+            facecolor = get_color(m, alpha=.2))
     
-    axpca.set_xlabel('PC1')
-    axpca.set_ylabel('PC2')
+    for axpcai in axpca:
+        axpcai.set_xlabel('PC1')
+        axpcai.set_ylabel('PC2')
     fpca.tight_layout()
     util_fcns.savefig(fpca,'fig4_eg_pca')
 
-        
 def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
     """
     Create a plot of the covariance confidence ellipse of *x* and *y*.
@@ -480,3 +487,100 @@ def perc_sig_neuron_comm_predictions(nshuffs = 10, min_bin_indices = 0,
 
     util_fcns.savefig(fsu, 'fig4_perc_NCM_sig')
     util_fcns.savefig(fvect, 'fig4_perc_CM_sig')
+
+####### Eigenvalue plots ########
+def get_data_EVs(): 
+    model_set_number = 6
+    model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
+    
+    fnum, axnum = plt.subplots(figsize = (3, 4))
+    ffrac, axfrac = plt.subplots(figsize = (3, 4))
+    fhz, axhz = plt.subplots(figsize = (3, 4))
+
+
+    for ia, animal in enumerate(['grom', 'jeev']):
+        num_eigs_td_gte_bin = []
+        frac_eigs_td_gte_bin = []
+        avg_freq_eigs_td_gte_bin = []
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            ### Get the saved shuffle data ####
+            data = pickle.load(open(analysis_config.config['shuff_fig_dir'] + '%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
+
+            ### Get X, Xtm1 ###
+            Data = data['Data']
+
+            ### Get the indices 
+            tm0, tm1 = generate_models.get_temp_spks_ix(Data)
+
+            ### Get alpha ### 
+            alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
+
+            ### Get Ridge; 
+            model = Ridge(alpha=alpha_spec, fit_intercept=True)
+
+            ### Fit the model: args = X, y
+            model.fit(Data['spks'][tm1, :], Data['spks'][tm0, :])
+
+            ### Dynamics matrix; 
+            A = model.coef_
+            hz, decay = get_ang_td(A)
+
+            if animal == 'grom' and day_ix == 0: 
+                f, ax = plt.subplots(figsize = (4, 4))
+                ax.plot(decay, hz, 'k.') 
+                ax.set_xlabel('Time Decay in seconds')
+                ax.set_ylabel('Frequency (Hz)')
+                ax.set_ylim([-.1,5.05])
+                ax.vlines(.1, 0, 5.05, 'k', linestyle='dashed', linewidth=.5)
+                f.tight_layout()
+                util_fcns.savefig(f, '%s_%d_eigs'%(animal, day_ix))
+
+            #### Get stats; 
+            ix_gte_bin = np.nonzero(decay >= 0.1)[0]
+            num_eigs_td_gte_bin.append(float(len(ix_gte_bin)))
+            frac_eigs_td_gte_bin.append(float(len(ix_gte_bin))/float(len(decay)))
+            avg_freq_eigs_td_gte_bin.append(np.mean(hz[ix_gte_bin]))
+
+            axnum.plot(ia+np.random.randn()*.1, float(len(ix_gte_bin)), 'k.')
+            axfrac.plot(ia, float(len(ix_gte_bin))/float(len(decay)), 'k.')
+            axhz.plot(ia, np.mean(hz[ix_gte_bin]), 'k.')
+
+        axnum.bar(ia, np.mean(num_eigs_td_gte_bin), width=0.8, color='k', alpha=.2)
+        axfrac.bar(ia, np.mean(frac_eigs_td_gte_bin), width=0.8, color='k', alpha=.2)
+        axhz.bar(ia, np.mean(avg_freq_eigs_td_gte_bin), width=0.8, color='k', alpha=.2)
+    
+    for axi in [axnum, axfrac, axhz]:
+        axi.set_xticks([0, 1])
+        axi.set_xticklabels(['G', 'J'])
+        axi.set_xlim([-1, 2])
+
+    axnum.set_ylabel('# Eigs with td > 0.1 sec')
+    axfrac.set_ylabel('Frac. Eigs with td > 0.1 sec')
+    axhz.set_ylabel('Avg. Freq.')
+    axhz.set_ylim([-.1, 1.])
+    for f in [fnum, ffrac, fhz]:
+        f.tight_layout()
+
+    util_fcns.savefig(fnum, 'num_eigs_gte_bin')
+    util_fcns.savefig(ffrac, 'frac_eigs_gte_bin')
+    util_fcns.savefig(fhz, 'avg_freq_of_eigs_gte_bin')
+
+
+def get_ang_td(A, plt_evs_gte=.99, dt=0.1): 
+    ev, evect = np.linalg.eig(A)
+
+    ### Only look at eigenvalues explaining > 
+    ix_sort = np.argsort(np.abs(ev))[::-1]
+    ev_sort = ev[ix_sort]
+    cumsum = np.cumsum(np.abs(ev_sort))/np.sum(np.abs(ev_sort))
+    ix_keep = np.nonzero(cumsum>plt_evs_gte)[0]
+    ev_sort_truc = ev_sort[:ix_keep[0]+1]
+
+    ### get frequency; 
+    angs = np.angle(ev_sort_truc) #np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
+    hz = np.abs(angs)/(2*np.pi*dt)
+    decay = -1./np.log(np.abs(ev_sort_truc))*dt # Time decay constant in ms
+    return hz, decay
