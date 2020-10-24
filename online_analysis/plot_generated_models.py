@@ -1,7 +1,7 @@
 ############## Methods to plot models generated in 'generate models' ###########
 
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.25, style='white')
 
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -1399,9 +1399,10 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
         else:
             xlab = ['shuffled', 
-                    'general\ndynamics']
-            xkeys = ['shuffled', 'dyn_gen']
-            nbars = 2
+                    'general\ndynamics', 
+                    'conditioning']
+            xkeys = ['shuffled', 'dyn_gen', 'cond']
+            nbars = 3
 
         if plot_act:
             models_colors = [[100, 100, 100], 
@@ -1410,9 +1411,9 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
                          [100, 100, 100]]
         else:
             models_colors = [[100, 100, 100], 
-                         [39, 169, 225]]
+                         [39, 169, 225],
                          #[39, 169, 225], 
-                         #[100, 100, 100]]
+                         [100, 100, 100]]
 
         if fig4_opt:
             models_colors = [[100, 100, 100], 
@@ -1587,7 +1588,8 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             pass
         else:
             R2_shuff = [R2s[i_d, 'shuffled'] for i_d in range(ndays[animal])]
-            util_fcns.draw_plot(0 + ax_offset, np.hstack((R2_shuff)), models_colors[0], 'white', ax, width = 0.9)
+            util_fcns.draw_plot(0 + ax_offset, np.hstack((R2_shuff)), models_colors[0], np.array([1., 1., 1., 0.]),
+                ax, width = 0.9)
     
         #### Print percent of days > shuffle for general dynamics #####
 
@@ -1644,6 +1646,7 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
         shuff_vs_dyn = np.zeros((ndays[animal]))
         
         if skip_task_spec:
+
             ax.set_xticks(np.arange(len(xlab)))
             ax.set_xticklabels(xlab[:], rotation = 45)
             lme_shuff_vs_gen = dict(day = [], shuf_vs_gen = [], r2 = [])
@@ -1802,8 +1805,8 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
     ax_frac_sig.set_xlim([-1, 2])
     for ia, animal in enumerate(['grom', 'jeev']): 
 
-        ax_frac_sig.bar(ia + 0.1*np.random.randn(), 
-            np.mean(frac_sig[animal]), 1, fill=False)
+        ax_frac_sig.bar(ia, 
+            np.mean(frac_sig[animal]), width=0.8, color='k', alpha=.2)
     ax_frac_sig.set_xticks([0, 1])
     ax_frac_sig.set_xticklabels(['G', 'J'])
 
@@ -2050,9 +2053,9 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
     util_fcns.draw_plot(i_d_plt2, frac_gte_shuffle, 'k', 'w', ax_gte_shuff)
 
     ######## Plot distribution of cond + shuffle distribution of R2 + true data #####
-    util_fcns.draw_plot(i_d_plt2, r2_shuff_pop, 'k', 'w', ax_r2)
+    util_fcns.draw_plot(i_d_plt2 - .25, r2_shuff_pop, 'k', 'w', ax_r2)
     ax_r2.plot(i_d_plt2, r2_true_pop, '.', markersize = 20, color=np.array([39, 169, 225])/256.)
-    #ax_r2.plot(np.array([-.25, .25]) + i_d_plt2, [r2_true_cond, r2_true_cond], '--', color='gray')
+    ax_r2.plot(i_d_plt2 + .125, r2_true_cond, '^', color='gray')
 
     ######## Aesthetics ########
     ######## Set Ylabel 
@@ -2092,7 +2095,7 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
 
     model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(6)
     models_to_include = [m[1] for m in model_var_list]
-    
+
     variables_list = generate_models.return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
     pred_Y = np.zeros((temp_N, nneur, nshuffs))
 
@@ -5211,7 +5214,9 @@ def plot_r2_bar_state_encoding(res_or_total = 'res'):
 
 ############ Eigenvalue decomposition #########
 ############ Fig 6 ############################
-def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True, LDS = False):
+def eigvalue_plot(dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0',
+    dt = 0.1, plt_evs_gte = .99, dat = None, 
+    with_intercept = True, LDS = False):
 
     if LDS:
         dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS'
@@ -5243,9 +5248,9 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
         data = dat[animal]
 
         ##### for each day and task -- 
-        for i_d in range(analysis_config.data_params[animal+'_ndays']):
-            f, ax = plt.subplots(ncols = 3, figsize = (9, 3))
-
+        for i_d in range(1):#analysis_config.data_params[animal+'_ndays']):
+            f, ax = plt.subplots(ncols = 1, figsize = (3, 3))
+            ax = [ax]
             stb = []; shuf_stb = []; 
             mn = []; 
 
@@ -5261,13 +5266,13 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
                     shuff_skip = True
 
             ### For each day, plot the eigenvalues ####
-            for i_f in range(n_folds):
+            for i_f in range(1):
 
                 ### CO / OBS / GEN ####
-                for i_m in range(3):
+                for i_m in range(1):
 
             
-                    if i_m == 2:
+                    if i_m == 0:
                         N = data[i_d, 'spks'].shape[0]
 
                         if LDS:
@@ -5315,11 +5320,12 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
                     angs = np.angle(ev_sort_truc) #np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
                     hz = np.abs(angs)/(2*np.pi*dt)
                     decay = -1./np.log(np.abs(ev_sort_truc))*dt # Time decay constant in ms
-                    ax[i_m].plot(decay, hz, '.', color = analysis_config.pref_colors[i_d])
-                    ax[i_m].set_xlabel('Decay in seconds')
+                    ax[i_m].plot(decay, hz, 'k.')
+                    ax[i_m].set_xlabel('Time Decay in seconds')
                     if i_m == 0:
-                        ax[i_m].set_ylabel('Frequency (Hz), max=5')
+                        ax[i_m].set_ylabel('Frequency (Hz)')
                     ax[i_m].set_ylim([-.1,5.05])
+                    ax[i_m].vlines(.1, 0, 5.05, 'k', linestyle='dashed', linewidth=.5)
                     #ax[i_m].set_xlim([-.1,1.5])
 
                     #### Plot shuffle ###
@@ -5363,7 +5369,37 @@ def eigvalue_plot(dt = 0.1, plt_evs_gte = .99, dat = None, with_intercept = True
                 cnt += 1      
 
         f.tight_layout()
+        util_fcns.savefig(f, '%s_%d_eigs'%(animal, i_d))
     f_stb.tight_layout()
+
+def eig_shuffle(fold=0, plt_evs_gte=.99, dt=.1): 
+    file = '/Volumes/Elements/shuffle_data/w_intc/grom_0_shuff000_hist_1pos_0psh_0spksm_1_spksp_0_models.mat'
+    mat = sio.loadmat(file)
+    A = np.mat(mat[str(tuple((fold, 'coef_')))])
+    ev, evect = np.linalg.eig(A)
+
+    ### ONly look at eigenvalues explaining > 
+    ix_sort = np.argsort(np.abs(ev))[::-1]
+    ev_sort = ev[ix_sort]
+    cumsum = np.cumsum(np.abs(ev_sort))/np.sum(np.abs(ev_sort))
+    ix_keep = np.nonzero(cumsum>plt_evs_gte)[0]
+    ev_sort_truc = ev_sort[:ix_keep[0]+1]
+
+    ### get frequency; 
+    angs = np.angle(ev_sort_truc) #np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
+    hz = np.abs(angs)/(2*np.pi*dt)
+    decay = -1./np.log(np.abs(ev_sort_truc))*dt # Time decay constant in ms
+
+    f, ax = plt.subplots(figsize=(3, 3))
+    ax.plot(decay, hz, '.', color='gray')
+    ax.set_xlabel('Time Decay in seconds')
+    ax.set_ylabel('Frequency (Hz)')
+    ax.set_ylim([-.1,5.05])
+    ax.set_xlim([-.005, .35])
+    ax.set_xticks([.1, .2, .3])
+    ax.vlines(.1, 0, 5.05, 'k', linestyle='dashed', linewidth=.5)
+    f.tight_layout()
+    util_fcns.savefig(f, '%s_%d_eigs_shuff0'%('grom', 0))
 
 def eigvalue_plot2(animal, i_d, dt = 0.1, plt_evs_gte = .9999, dat = None, with_intercept = True):
     ##### Number of folds
