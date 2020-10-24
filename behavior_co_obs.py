@@ -1913,3 +1913,133 @@ def df_predict_activity_conditioned_on_action(df, decoder, num_neurons, n_list):
         df.loc[idx_tp1,n_cond_list] = n_tp1_hat.T
 
     return df, A, M, n_da_mean, n_cond_list
+
+def solve_lqr_K_inf_horizon(A,B,Q,R, eps=1e-10, max_iter=1e5):
+    P = Q
+    K = np.inf
+    for t in range(int(max_iter)):
+        K_old = K
+        K = -((R + B.T*P*B).I * B.T*P*A)
+        P = Q + A.T*P*A +A.T*P*B*K 
+        if np.linalg.norm(K - K_old) < eps:
+            print('converged!:', t)
+            break
+    return K
+
+def dlqr(A, B, Q, R, Q_f=None, T=np.inf, max_iter=1000, eps=1e-10, dtype=np.mat):
+    '''
+    CODE CREDIT TO SURAJ GOWDA:
+    Find the solution to the discrete-time LQR problem
+
+    The system should evolve as
+    $$x_{t+1} = Ax_t + Bu_t + w_t; w_t ~ N(0, W)$$
+
+    with cost function
+    $$\sum{t=0}^{T} (x_t - x_target)^T * Q * (x_t - x_target) + u_t^T * R * u_t$$
+
+    The cost function can be either finite or infinite horizion, where finite horizion is assumed if 
+    a final const is specified
+
+    Parameters
+    ----------
+    A: np.ndarray of shape (n_states, n_states)
+        Model of the state transition matrix of the system to be controlled. 
+    B: np.ndarray of shape (n_states, n_controls)
+        Control input matrix of the system to be controlled. 
+    Q: np.ndarray of shape (n_states, n_states)
+        Quadratic cost on state
+    R: np.ndarray of shape (n_controls, n_controls)
+        Quadratic cost on control inputs
+    Q_f: np.ndarray of shape (n_states, n_states), optional, default=None
+        Final quadratic cost on state at the end of the horizon. Only applies to finite-horizion variants
+    T: int, optional, default = np.inf
+        Control horizon duration. Infinite by default. Must be less than infinity (and Q_f must be specified)
+        to get the finite horizon feedback controllers
+    eps: float, optional, default=1e-10
+        Threshold of change in feedback matrices to define when the Riccatti recursion has converged
+    dtype: callable, optional, default=np.mat
+        Callable function to reformat the feedback matrices 
+
+    Returns
+    -------
+    K: list or matrix
+        Returns a sequence of feedback gains if finite horizon or a single controller if infinite horizon.
+
+    '''
+    if Q_f == None: 
+        Q_f = Q
+
+    if T < np.inf: # Finite horizon
+        K = [None]*T
+        P = Q_f
+        for t in range(0,T-1)[::-1]:
+            K[t] = (R + B.T*P*B).I * B.T*P*A
+            P = Q + A.T*P*A -A.T*P*B*K[t]
+        return dtype(K)
+    else: # Infinite horizon
+        P = Q_f
+        K = np.inf
+        for t in range(max_iter):
+            K_old = K
+            K = (R + B.T*P*B).I * B.T*P*A
+            P = Q + A.T*P*A -A.T*P*B*K 
+            if np.linalg.norm(K - K_old) < eps:
+                break
+        return dtype(K)    
+
+def sim_lqr_nk_co_trial(A,B,K, target, state_init, state_label, input_label, num_neurons, max_iter=1e5, hold_req=2, target_r=1.7):
+    """
+    simulates lqr control of a joint neural-kinematic dynamical system for a center-out trial 
+    (moving straight from start state to target state)
+    assumes: TODO
+    in state vector, first all neurons are listed, then all cursor kinematics are listed.
+    """
+
+    state_T = target
+    state_e_init = state_init-state_T
+    state_e_list = []
+    state_e = state_e_init
+    state_e_list.append(state_e)
+
+    #Initial input
+    u_list = []
+    u = K*state_e
+    u_list.append(u)
+
+    #Simulate trial: 
+    trial_complete = False
+    sim_len = 0
+    hold_i = 0
+
+    while not trial_complete: 
+        state_e = (A+B*K)*state_e
+        state_e_list.append(state_e)
+        
+        u = K*state_e
+        u_list.append(u)    
+        
+        dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+1)])
+        if dist2target <= target_r:
+            hold_i+=1
+        else:
+            hold_i=0
+        if(hold_i>=hold_req):
+            trial_complete = True
+        sim_len+=1
+
+    #RESULTS:
+    #input:
+    u_mat = np.array(u_list).squeeze().T
+    u_da = xr.DataArray(u_mat, coords={'v':input_label,'obs':np.arange(sim_len+1)}, dims=['v', 'obs'])
+
+    #state error:
+    state_e_mat = np.array(state_e_list).squeeze().T
+    # state_e_mat = state_e_mat.squeeze().T
+    state_e_da = xr.DataArray(state_e_mat, coords={'v':state_label,'obs':np.arange(sim_len+1)}, dims=['v', 'obs'])
+
+    #state:
+    state_mat = copy.deepcopy(state_e_mat)
+    state_mat[num_neurons:,:] = state_mat[num_neurons:,:] + state_T[num_neurons:,:] #add the target kinematic state back to the error
+    state_da = xr.DataArray(state_mat, coords={'v':state_label,'obs':np.arange(sim_len+1)}, dims=['v', 'obs']) 
+
+    return u_da, state_da, sim_len
