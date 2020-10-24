@@ -472,7 +472,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             order_dict[i_d], history_bins_max, within_bin_shuffle = within_bin_shuffle,
             day_ix = i_d)
         
-        print('R2 again, %.2f' %generate_models_utils.quick_reg(sub_spikes, sub_push_all[:, :, 0]))
+        print('R2 again, %.2f' %generate_models_utils.quick_reg(sub_spikes, sub_push_all))
 
         models_to_include = []
         for m in model_var_list:
@@ -532,7 +532,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             model_data[i_d, 'pos_tm1'] = np.vstack((np.array(data_temp['posx_tm1']), np.array(data_temp['posy_tm1']))).T
             model_data[i_d, 'trl'] = np.squeeze(np.array(data_temp['trl']))
             model_data[i_d, 'day_bin_ix'] = np.squeeze(np.array(data_temp['day_bin_ix']))
-            model_data[i_d, 'day_bin_ix_shuff'] = np.squeeze(np.array(data_temp['day_bin_ix_shuff']))
+            #model_data[i_d, 'day_bin_ix_shuff'] = np.squeeze(np.array(data_temp['day_bin_ix_shuff']))
             
             ### Models -- save predictions
             for mod in models_to_include:
@@ -631,7 +631,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     for ntmp in range(nneur): assert(np.allclose(data_temp_dict['spks'][:, ntmp],data_temp_dict['spk_tm0_n%d'%ntmp]))
                     data_temp_dict['pshy'] = sub_push_all[train_ix[i_fold], 1]
                     data_temp_dict['pshx'] = sub_push_all[train_ix[i_fold], 0]
-                    data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'], data_temp_dict['pshy']))
+                    data_temp_dict['psh'] = np.hstack(( data_temp_dict['pshx'][:, np.newaxis], data_temp_dict['pshy'][:, np.newaxis]))
 
                     print('R2 train ix: %.2f' %(generate_models_utils.quick_reg(data_temp_dict['spks'], data_temp_dict['psh'])))
 
