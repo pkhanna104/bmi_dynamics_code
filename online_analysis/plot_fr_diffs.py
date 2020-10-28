@@ -6,6 +6,9 @@ import scipy.stats
 import numpy as np
 import matplotlib.pyplot as plt
 
+import statsmodels.formula.api as smf
+import pandas as pd
+
 import pickle
 import seaborn
 seaborn.set(font='Arial',context='talk',font_scale=1.25, style='white')
@@ -234,6 +237,95 @@ def distribution_match_mov_pairwise(push_com1, push_com2, psig=.05,
 
             ### Make sure the cost when down 
             assert(np.sum(np.sum(cost[ix_sort[:-NptsDrop]]**2, axis=1)) < np.sum(cost_sum))
+
+def distribution_match_mov_multi(global_comm_indices, push, rm_perc = 0.05,
+    psig = 0.05):
+    
+    assert(push.shape[1] == 2)
+
+    data = dict(xy=[], mov =[], ixog = [])
+    cnt = 0
+    for key in global_comm_indices.keys(): 
+
+        ix = global_comm_indices[key]
+        cnt += len(ix)
+        ### Mov variable ### 
+        mov = np.zeros((len(ix), )) + key 
+        
+        ### Add this data to the data 
+        data['xy'].append(push[ix, :])
+        data['mov'].append(mov)
+        data['ixog'].append(ix)
+
+    print('End Cnt: %d' %(cnt))
+    data['xy'] = np.vstack((data['xy']))
+    data['mov'] = np.hstack((data['mov']))
+    data['ixog'] = np.hstack((data['ixog']))
+
+    keep_ix = np.arange(len(data['xy']))
+    pv_all = np.array([0., 0.])
+
+    while np.any(pv_all < psig): 
+        for variable in range(2):
+            ##### AnovA ####
+            data_mov = []
+            for key in global_comm_indices.keys(): 
+                ix_ = np.nonzero(data['mov'][keep_ix] == key)[0]
+                data_mov.append(data['xy'][keep_ix[ix_], variable])
+            _, pv = scipy.stats.f_oneway(*data_mov)
+            pv_all[variable] = pv 
+
+        if np.any(pv_all < psig):
+            mean_xy = np.mean(data['xy'][keep_ix, :], axis=0)
+            cost = np.linalg.norm(data['xy'][keep_ix, :] - mean_xy[np.newaxis, :], axis=1)
+            assert(len(cost) == len(keep_ix))
+
+            N = len(cost)
+            Nrm = np.max([1, int(np.floor(rm_perc*N))])
+
+            arg_max_cost = np.argsort(cost)[::-1] ### In order of highest to lowest 
+            ix_rm = arg_max_cost[:Nrm]
+
+            ### Remove these indices from keep_ix: 
+            print('removing')
+            keep_ix = np.delete(keep_ix, ix_rm)
+    
+    print('pv_all')
+    print(str(pv_all))
+    #### When broken #####
+    global_comm_indices2 = dict()
+    cnt = 0; 
+    for key in global_comm_indices.keys(): 
+
+        #### Movement keeping #####
+        mov_keep = np.nonzero(data['mov'][keep_ix] == key)[0]
+        global_comm_indices2[key] = data['ixog'][keep_ix[mov_keep]]
+        cnt += len(mov_keep)
+    print('End Cnt: %d' %(cnt))
+    return global_comm_indices2
+
+def test_multi_match(): 
+    X = []; Mov = []; 
+    for i in range(10): 
+        x = np.random.randn(50) + 0.1*i
+        X.append(x)
+        Mov.append(np.zeros((50, )) + i)
+    X = np.hstack((X))
+    Mov = np.hstack((Mov))
+
+    f, ax = plt.subplots()
+    for i in range(10):
+        ix = np.nonzero(Mov == i)[0]
+        util_fcns.draw_plot(i, X[ix], 'k', 'w', ax)
+    ax.set_xlim([-1, 10])
+
+    pv  = 0. 
+    while pv < 0.05: 
+        data_pd = pd.DataFrame(dict(Move=Mov, Metric=X))
+        md = smf.mixedlm("Metric ~ 1", data_pd, groups=data_pd["Move"])
+        mdf = md.fit()
+        pv_all[variable] = mdf.pvalues['Group Var']
+        print('pv %.3f' %(mdf.pvalues['Group Var']))
 
 def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000,
                             min_bin_indices = 0, save=False):
