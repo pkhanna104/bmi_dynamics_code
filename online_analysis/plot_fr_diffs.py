@@ -1159,6 +1159,9 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
             traj_diff = []
             traj_diff_one_step = []
 
+            special_dots = []
+            special_dots_osa = []
+
             for mag in range(4):
 
                 for ang in range(8): 
@@ -1247,6 +1250,10 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
                                     total_sig_com += 1
                                     traj_diff.append(dPSTH)
                                     move_command_sig[animal, day_ix].append([mag, ang, mov])
+
+                                    if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7: 
+                                        special_dots.append([dPSTH, util_fcns.get_color(mov)])
+
                                 total_cm += 1
 
                                 #### Test for sig for one-step-ahead (osa) ####
@@ -1256,6 +1263,8 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
                                     total_sig_cm_osa += 1
                                     traj_diff_one_step.append(dPSTH_osa)
                                     move_command_sig[animal, day_ix, 'osa'].append([mag, ang, mov])
+                                    if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7: 
+                                        special_dots_osa.append([dPSTH_osa, util_fcns.get_color(mov)])
                                 total_cm_osa += 1
 
             ### Compute percent sig: 
@@ -1267,8 +1276,16 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
             ax_osa.plot(i_a, float(total_sig_cm_osa)/float(total_cm_osa), 'k.')
         
             #### Plot the distribution of signficiant differences 
-            util_fcns.draw_plot(i_a*10 + day_ix, traj_diff, 'k', 'w', axe)
-            util_fcns.draw_plot(i_a*10 + day_ix, traj_diff_one_step, 'k', 'w', axe_osa)
+            util_fcns.draw_plot(i_a*10 + day_ix, traj_diff, 'k', np.array([1., 1., 1., 0.]), axe)
+            util_fcns.draw_plot(i_a*10 + day_ix, traj_diff_one_step, 'k', np.array([1., 1., 1., 0.]), axe_osa)
+
+            if len(special_dots) > 0: 
+                for _, (d, col) in enumerate(special_dots):
+                    axe.plot(i_a*10 + day_ix + np.random.randn()*.1, d, '.', color=col, markersize=10)
+            
+            if len(special_dots_osa) > 0: 
+                for _, (d, col) in enumerate(special_dots_osa):
+                    axe_osa.plot(i_a*10 + day_ix + np.random.randn()*.1, d, '.', color=col, markersize=10)
 
         ### Plot the bar; 
         ax.bar(i_a, np.mean(perc_sig[animal]), width=.8, alpha=0.2, color='k')
@@ -1284,8 +1301,10 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
 
     for axi in [axe, axe_osa]:
         axi.set_xlim([-1, 14])
-    axe.set_ylabel('Command Traj Diff for Sig.\nDiff. Move-Specific Commands')
-    axe_osa.set_ylabel('Next Command Diff for Sig. \nDiff. Move-Specific Commands')
+    axe.set_ylabel('Command Traj Diff for Sig.\nDiff. Move-Specific Commands', fontsize=4)
+    axe.set_ylim([0, 8])
+    axe_osa.set_ylabel('Next Command Diff for Sig. \nDiff. Move-Specific Commands', fontsize=4)
+    axe_osa.set_ylim([0, 2.2])
 
     f.tight_layout()
     f_osa.tight_layout()
@@ -1493,14 +1512,14 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
                                     if mag == 0 and ang == 7 and animal == 'grom':
                                         #### Pair 1 ### (1., 10.1), (10.1, 15.), 
                                         if mov == 1. and mov2 == 10.1:
-                                            plt_top.append([dB, dN, 'blue', 15])
+                                            plt_top.append([dB, dN, 'deeppink', 15])
                                         elif mov == 10.1 and mov2 == 15.:
                                             plt_top.append([dB, dN, 'limegreen', 15])
                                         else: 
-                                            plt_top.append([dB, dN, 'deeppink', 10])
+                                            plt_top.append([dB, dN, 'darkblue', 10])
                                     else:
                                         rgb = util_fcns.rgba2rgb(np.array([0., 0., 0., .5]))
-                                        #ax.plot(dB, dN, '.', color=rgb, markersize=5)
+                                        ax.plot(dB, dN, '.', color=rgb, markersize=5)
                                         #ax.plot(dB, dN, '.', color=analysis_config.pref_colors_rgb[int(mov)%10], markersize=10)
                                     D.append([dB, dN])
 
@@ -1678,7 +1697,8 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
             ncomm_tot = 0; 
             ncomm_sig = 0; 
             sig_cc = []
-
+            pool_D = []
+            
             ### For each command: ###
             for mag in range(4):
                 
@@ -1757,6 +1777,7 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
                                     dN = np.linalg.norm(mov_mean_FR1 -mov_mean_FR2)/nneur
                                     dB = np.linalg.norm(mov_PSTH1 - mov_PSTH2)
                                     comm_D.append([dB, dN])
+                                    pool_D.append([dB, dN])
 
                         ### get corr; 
                         comm_D = np.vstack((comm_D))
@@ -1768,7 +1789,11 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
 
                         ### Plto pink 
                         if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
-                            axcc.plot(10*ia + day_ix, rv, '.', color='deeppink', markersize=15)
+                            axcc.plot(10*ia + day_ix, rv, '.', color='darkblue', markersize=15)
+            ### corr over pooled ###
+            pool_D = np.vstack((pool_D))
+            _, _, rv, pv, _ = scipy.stats.linregress(pool_D[:, 0], pool_D[:, 1])
+            axcc.plot(10*ia + day_ix, rv, '.', color='gray', markersize=15)
 
             ### Plot the distribution of sig CCs ###
             util_fcns.draw_plot(10*ia + day_ix, sig_cc, 'k', np.array([1., 1., 1., 0.]), axcc)
@@ -1795,16 +1820,21 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
     util_fcns.savefig(fcc, 'dist_of_sig_cc')
 
 
-def get_PSTH(bin_num, rev_bin_num, push, indices, num_bins=5):
-
+def get_PSTH(bin_num, rev_bin_num, push, indices, num_bins=5, min_bin_set = 0):
+    assert(np.min(bin_num) == min_bin_set)
+    assert(np.min(rev_bin_num) == min_bin_set)
+    
     all_push = []
     push_vel = push[:, [3, 5]]
     for ind in indices:
 
-        if bin_num[ind] >= num_bins and rev_bin_num[ind] >= num_bins:
+        if bin_num[ind] >= num_bins + min_bin_set and rev_bin_num[ind] >= num_bins + min_bin_set:
             all_push.append(push_vel[ind-num_bins:ind+num_bins+1, :])
-    all_push = np.dstack((all_push))
-    return np.mean(all_push, axis=2)
+    if len(all_push) > 0:
+        all_push = np.dstack((all_push))
+        return np.mean(all_push, axis=2)
+    else:
+        return None
 
 def get_osa_PSTH(bin_num, rev_bin_num, push, indices):
     '''
