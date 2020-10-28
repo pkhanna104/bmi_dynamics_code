@@ -7,6 +7,7 @@ import pandas as pd
 import scipy.io as sio
 import scipy.signal
 import matplotlib.pyplot as plt
+from matplotlib import colors as mpl_colors
 import pickle
 
 from resim_ppf import file_key
@@ -463,6 +464,25 @@ def rgba2rgb(rgba, bg_rgba=np.array([1., 1., 1.])):
     bnew = (1-alpha)*bg_rgba[2] + alpha*rgba[2]
     return np.array([rnew, gnew, bnew])
 
+def get_color(mov, alpha=None):
+    '''
+    Put in the movement identifier to get color 
+    '''
+    colnm = analysis_config.pref_colors[int(mov)%10]
+    colrgba = np.array(mpl_colors.to_rgba(colnm))
+
+    ### Set alpha according to task (tasks 0-7 are CO, tasks 10.0 -- 19.1 are OBS) 
+    if alpha is None:
+        if mov >= 10:
+            colrgba[-1] = 0.5
+        else:
+            colrgba[-1] = 1.0
+    else:
+        colrgba[-1] = alpha
+    
+    #### col rgb ######
+    colrgb = rgba2rgb(colrgba)
+    return colrgb
 
 
 ### Plotting ###
