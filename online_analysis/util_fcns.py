@@ -416,12 +416,41 @@ def get_R2(y_true, y_pred, pop = True, ignore_nans = False):
         else:
             return 1 - (SSR_i / SST_i)
 
-def savefig(f, name):
+def get_VAF_no_mean(y_true, y_pred, pop = True, ignore_nans = False):
+    assert(y_true.shape == y_pred.shape)
+
+    if np.logical_and(len(y_true.shape) == 1, len(y_pred.shape) == 1):
+        y_true = y_true[:, np.newaxis]
+        y_pred = y_pred[:, np.newaxis]
+    
+    if ignore_nans:
+        ### Assume Y-true, y_pred are T x N matrices: 
+        SSR_i = np.nansum(np.square(y_true - y_pred), axis=0)
+        SST_i = np.nansum(np.square(y_true), axis=0)
+
+        if pop:
+            return 1 - np.nansum(SSR_i)/np.nansum(SST_i)
+        else:
+            return 1 - (SSR_i / SST_i)
+    else: 
+
+        ### Assume Y-true, y_pred are T x N matrices: 
+        SSR_i = np.sum(np.square(y_true - y_pred), axis=0)
+        SST_i = np.sum(np.square(y_true), axis=0)
+
+        if pop:
+            return 1 - np.sum(SSR_i)/np.sum(SST_i)
+        else:
+            return 1 - (SSR_i / SST_i)
+
+def savefig(f, name, png=False):
     '''
     save figure 
     '''
-    f.savefig(analysis_config.config['fig_dir'] + name + '.svg')
-
+    if png:
+        f.savefig(analysis_config.config['fig_dir'] + name + '.png')
+    else:
+        f.savefig(analysis_config.config['fig_dir'] + name + '.svg')
 
 def rgba2rgb(rgba, bg_rgba=np.array([1., 1., 1.])):
     assert(np.all(rgba>=0.))
