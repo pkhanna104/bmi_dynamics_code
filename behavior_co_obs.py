@@ -1966,26 +1966,30 @@ def dlqr(A, B, Q, R, Q_f=None, T=np.inf, max_iter=1000, eps=1e-10, dtype=np.mat)
         Returns a sequence of feedback gains if finite horizon or a single controller if infinite horizon.
 
     '''
-    if Q_f == None: 
+    if Q_f is None: 
         Q_f = Q
 
     if T < np.inf: # Finite horizon
         K = [None]*T
         P = Q_f
-        for t in range(0,T-1)[::-1]:
-            K[t] = (R + B.T*P*B).I * B.T*P*A
-            P = Q + A.T*P*A -A.T*P*B*K[t]
+        for t in range(0,T-1)[::-1]:       
+            K[t] = -((R + B.T*P*B).I * B.T*P*A)
+            P = Q + A.T*P*A +A.T*P*B*K[t]
+            # K[t] = (R + B.T*P*B).I * B.T*P*A
+            # P = Q + A.T*P*A -A.T*P*B*K[t]                 
         return dtype(K)
     else: # Infinite horizon
         P = Q_f
         K = np.inf
         for t in range(max_iter):
             K_old = K
-            K = (R + B.T*P*B).I * B.T*P*A
-            P = Q + A.T*P*A -A.T*P*B*K 
+            K = -((R + B.T*P*B).I * B.T*P*A)
+            P = Q + A.T*P*A +A.T*P*B*K             
+            # K = (R + B.T*P*B).I * B.T*P*A
+            # P = Q + A.T*P*A -A.T*P*B*K 
             if np.linalg.norm(K - K_old) < eps:
                 break
-        return dtype(K)    
+        return dtype(K)
 
 def sim_lqr_nk_co_trial(A,B,K, target, state_init, state_label, input_label, num_neurons, max_iter=1e5, hold_req=2, target_r=1.7):
     """
@@ -2018,7 +2022,7 @@ def sim_lqr_nk_co_trial(A,B,K, target, state_init, state_label, input_label, num
         u = K*state_e
         u_list.append(u)    
         
-        dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+1)])
+        dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
         if dist2target <= target_r:
             hold_i+=1
         else:
@@ -2043,3 +2047,66 @@ def sim_lqr_nk_co_trial(A,B,K, target, state_init, state_label, input_label, num
     state_da = xr.DataArray(state_mat, coords={'v':state_label,'obs':np.arange(sim_len+1)}, dims=['v', 'obs']) 
 
     return u_da, state_da, sim_len
+
+def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, input_label, num_neurons, max_iter=1e5, hold_req=2, target_r=1.7):
+    """
+    simulates lqr control of a joint neural-kinematic dynamical system for a center-out trial 
+    (moving straight from start state to target state)
+    assumes: TODO
+    in state vector, first all neurons are listed, then all cursor kinematics are listed.
+    """
+
+    state_T = target
+    state_e_init = state_init-state_T
+    state_e_list = []
+    state_e = state_e_init
+    state_e_list.append(state_e)
+
+    #Input
+    u_list = []
+
+    #Simulate trial: 
+    trial_complete = False
+    sim_len = 1
+    hold_i = 0
+
+    for t in range(0,T-1):
+        state_e = (A+B*K[0,t])*state_e
+
+        # state_e = (A-B*K[0,t])*state_e
+        # state_e = (A+B*K[t])*state_e
+        state_e_list.append(state_e)
+
+        u = K[0,t]*state_e
+        # u = -K[0,t]*state_e
+        # u = K[t]*state_e
+        u_list.append(u)
+
+        
+        if not trial_complete:
+            sim_len+=1
+            dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
+            if dist2target <= target_r:
+                hold_i+=1
+            else:
+                hold_i=0
+            if(hold_i>=hold_req):
+                trial_complete = True
+            
+
+    #RESULTS:
+    #input:
+    u_mat = np.array(u_list).squeeze().T
+    u_da = xr.DataArray(u_mat, coords={'v':input_label,'obs':np.arange(T-1)}, dims=['v', 'obs'])
+
+    #state error:
+    state_e_mat = np.array(state_e_list).squeeze().T
+    # state_e_mat = state_e_mat.squeeze().T
+    state_e_da = xr.DataArray(state_e_mat, coords={'v':state_label,'obs':np.arange(T)}, dims=['v', 'obs'])
+
+    #state:
+    state_mat = copy.deepcopy(state_e_mat)
+    state_mat[num_neurons:,:] = state_mat[num_neurons:,:] + state_T[num_neurons:,:] #add the target kinematic state back to the error
+    state_da = xr.DataArray(state_mat, coords={'v':state_label,'obs':np.arange(T)}, dims=['v', 'obs']) 
+
+    return u_da, state_da, state_e_da, sim_len
