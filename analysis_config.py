@@ -92,6 +92,8 @@ pref_colors = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab',
 
 pref_colors_rgb = [colors.to_rgba(col) for col in pref_colors]
 
+blue_rgb = np.array([39, 169, 225])/255.
+
 def print_G_params(te=data_params['grom_input_type']):
 	for i_d, day in enumerate(te):
 		for i_t, tsk in enumerate(day):
