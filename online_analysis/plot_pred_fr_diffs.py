@@ -7,6 +7,7 @@ import matplotlib.transforms as transforms
 
 import analysis_config
 from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs
+from util_fcns import get_color
 
 from sklearn.linear_model import Ridge
 import scipy.stats
@@ -339,23 +340,6 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
 
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
-
-def get_color(mov, alpha=None):
-    colnm = analysis_config.pref_colors[int(mov)%10]
-    colrgba = np.array(mpl_colors.to_rgba(colnm))
-
-    ### Set alpha according to task (tasks 0-7 are CO, tasks 10.0 -- 19.1 are OBS) 
-    if alpha is None:
-        if mov >= 10:
-            colrgba[-1] = 0.5
-        else:
-            colrgba[-1] = 1.0
-    else:
-        colrgba[-1] = alpha
-    
-    #### col rgb ######
-    colrgb = util_fcns.rgba2rgb(colrgba)
-    return colrgb
 
 def perc_sig_neuron_comm_predictions(nshuffs = 10, min_bin_indices = 0, 
     model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'):
@@ -913,7 +897,6 @@ def get_ang_td(A, plt_evs_gte=.99, dt=0.1):
     decay = -1./np.log(np.abs(ev_sort_truc))*dt # Time decay constant in ms
     return hz, decay
 
-
 ###### Fig 4 VAF Plots ##########
 def vaf_eg_plot(axsu, axpop, mFR, pred_mFR, shuff_mFR, global_mFR, vaf_dict,
     neur_ix = 36, special_color = None):
@@ -1140,24 +1123,24 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
     fpop_eg, axpop_eg = plt.subplots(figsize =(5, 5))
 
     for iv, (vl_n, vl_p) in enumerate(zip(ix_sort_neur, ix_sort_pop)):
-        axn_eg.plot(iv, Y_val[vl_n, 0], 'k.')
+        axn_eg.plot(iv, Y_val[vl_n, 0], '.', color='darkblue')
         
         if iv == 0:
             axn_eg2 = axn_eg.twinx()
             axn_eg2.yaxis.label.set_color(np.array([.7, .7, .7]))
 
-        axn_eg2.plot(iv, Y_pred[vl_n][0], 'k*')
-        util_fcns.draw_plot(iv, Y_shuff[vl_n][0], 'gray', np.array([1., 1., 1., 0]), axn_eg2)
+        axn_eg2.plot(iv, Y_pred[vl_n][0], '*', color=analysis_config.blue_rgb)
+        util_fcns.draw_plot(iv, Y_shuff[vl_n][0], 'k', np.array([1., 1., 1., 0]), axn_eg2)
         axn_eg.plot(iv, -20, '.', color=get_color(X_lab[vl_n][0]), markersize=15)
         axn_eg.plot(iv, -21.5, '.', color=get_color(X_lab[vl_n][1]), markersize=15)
 
-        axpop_eg.plot(iv, Y_val[vl_p, 1], 'k.')
+        axpop_eg.plot(iv, Y_val[vl_p, 1], '.', color='darkblue')
         if iv == 0:
             axpop_eg2 = axpop_eg.twinx()
             axpop_eg2.yaxis.label.set_color(np.array([.7, .7, .7]))
         
-        axpop_eg2.plot(iv, Y_pred[vl_p][1], 'k*')
-        util_fcns.draw_plot(iv, Y_shuff[vl_p][1], 'gray', np.array([1., 1., 1., 0]), axpop_eg2)
+        axpop_eg2.plot(iv, Y_pred[vl_p][1], '*', color=analysis_config.blue_rgb)
+        util_fcns.draw_plot(iv, Y_shuff[vl_p][1], 'k', np.array([1., 1., 1., 0]), axpop_eg2)
         axpop_eg.plot(iv, 0., '.', color=get_color(X_lab[vl_p][0]), markersize=15)
         axpop_eg.plot(iv, -.03, '.', color=get_color(X_lab[vl_p][1]), markersize=15)
         
@@ -1168,6 +1151,11 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
     
     axn_eg.set_xlim([-1, len(X_lab)])
     axpop_eg.set_xlim([-1, len(X_lab)])
+
+    axn_eg.spines['top'].set_visible(False)
+    axn_eg2.spines['top'].set_visible(False)
+    axpop_eg.spines['top'].set_visible(False)
+    axpop_eg2.spines['top'].set_visible(False)
 
     axn_eg.set_xticks([]) #
     axpop_eg.set_xticks([]) #
@@ -1201,6 +1189,282 @@ def nplanm(x, y):
     assert(len(x) == len(y))
     assert(len(x.shape) == len(y.shape))
     return np.linalg.norm(x - y)/float(len(x))
+
+#### Fig 4 neural behavior correlations #####
+def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshuffs = 1, 
+    ncommands_psth = 5, min_commands = 15, min_move_per_command = 6): 
+
+    ##### Overall pooled over days #####
+    f, ax = plt.subplots(figsize = (3, 3))
+    fperc_sig, axperc_sig = plt.subplots(figsize = (3, 3))
+    faxsig_dist, axsig_dist = plt.subplots(figsize = (3, 3))
+
+    ### Open mag boundaries 
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+    for ia, animal in enumerate(['grom', 'jeev']):
+        
+        perc_sig = [] 
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+            
+            ###### pooled correlation plot ######
+            feg, axeg = plt.subplots(figsize=(3, 3))
+
+            ################################
+            ###### Extract real data #######
+            ################################
+            spks0, push0, tsk0, trg0, bin_num0, rev_bin_num0, move0, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+            spks0 = 10*spks0; 
+
+            #### Get subsampled
+            tm0, _ = generate_models.get_temp_spks_ix(dat['Data'])
+
+            ### Get subsampled 
+            spks_sub = spks0[tm0, :]
+            push_sub = push0[tm0, :]
+            move_sub = move0[tm0]
+            bin_num_sub = bin_num0[tm0]
+            rev_bin_num_sub = rev_bin_num0[tm0]
+
+            ### Get number of neurons 
+            nneur = spks_sub.shape[1]
+            
+            ###############################################
+            ###### Get predicted spikes from the model ####
+            ###############################################
+            model_set_number = 6; 
+            model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'
+            model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
+            model_dict = pickle.load(open(model_fname, 'rb'))
+            pred_spks = model_dict[day_ix, model_nm]
+            pred_spks = 10*pred_spks; 
+
+            ### Make sure spks and sub_spks match -- using the same time indices ###
+            assert(np.allclose(spks_sub, 10*model_dict[day_ix, 'spks']))
+            assert(np.all(bin_num0[tm0] > 0))
+
+            ###############################################
+            ###### Get shuffled prediction of  spikes  ####
+            ###############################################
+            pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
+                testing_mode = False)
+            pred_spks_shuffle = 10*pred_spks_shuffle; 
+
+            ##### Data pts to be used in the correlation 
+            D_pool = []; 
+            D_pred = []; 
+            D_shuff = {}
+            for i in range(nshuffs):
+                D_shuff[i] = []
+            D_grom0 = []
+
+            Ncommands = 0
+            Ncommands_sig = 0
+            DistSigCommands = []
+
+            ###############################################
+            ### For each command: #########################
+            ###############################################
+            for mag in range(4):
+                
+                for ang in range(8): 
+            
+                    #### Common indices 
+                    #### Get the indices for command ####
+                    ix_com = plot_fr_diffs.return_command_indices(bin_num_sub, rev_bin_num_sub, push_sub, mag_boundaries, mag=mag, ang=ang,
+                                           animal=animal, day_ix=day_ix, min_bin_num=min_bin_indices,
+                                           min_rev_bin_num=min_bin_indices)
+
+                    ##### Which movements go to the global? 
+                    ix_com_global = []
+                    global_comm_indices = {}
+
+                    if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
+                        feg2, axeg2 = plt.subplots(figsize=(4, 3))
+                        axeg22 = axeg2.twinx()
+                    D_comm = []
+                    D_comm_shuff = {}
+                    for i in range(nshuffs):
+                        D_comm_shuff[i] = []
+
+
+                    #### Go through the movements ####
+                    for mov in np.unique(move_sub[ix_com]):
+                        
+                        ### Movement specific command indices 
+                        ix_mc = np.nonzero(move_sub[ix_com] == mov)[0]
+                        ix_mc_all = ix_com[ix_mc]
+                        
+                        ### If enough of these then proceed; 
+                        if len(ix_mc) >= min_commands:    
+
+                            global_comm_indices[mov] = ix_mc_all
+                            ix_com_global.append(ix_mc_all)
+
+                    if len(ix_com_global) > 0:
+                        ix_com_global = np.hstack((ix_com_global))
+                        relevant_movs = np.array(global_comm_indices.keys())
+                        
+
+                        ##### Get the movements that count; 
+                        for imov, mov in enumerate(relevant_movs): 
+                            
+                            ### MOV specific 
+                            ### movements / command 
+                            ix_mc_all = global_comm_indices[mov]
+                            Nmov = len(ix_mc_all)
+
+                            ### Get movement #2 
+                            for imov2, mov2 in enumerate(relevant_movs[imov+1:]):
+
+                                assert(mov != mov2)
+                                ix_mc_all2 = global_comm_indices[mov2]
+                                Nmov2 = len(ix_mc_all2)
+
+                                #### match to the two distributions #######
+                                ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
+                                ix_ok1, ix_ok2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_sub[np.ix_(ix_mc_all, [3, 5])], 
+                                                             push_sub[np.ix_(ix_mc_all2, [3, 5])])
+
+                                if np.logical_and(len(ix_ok1) >= min_commands, len(ix_ok2) >= min_commands):
+
+                                    #######################################
+                                    ######### Indices check ###############
+                                    #######################################
+                                    assert(np.all(np.array([move_sub[i] == mov for i in ix_mc_all[ix_ok1]])))
+                                    assert(np.all(np.array([move_sub[i] == mov2 for i in ix_mc_all2[ix_ok2]])))
+
+                                    #### Proceed comparing these guys ##### 
+                                    mov_mean_FR1 = np.mean(spks_sub[ix_mc_all[ix_ok1], :], axis=0)
+                                    mov_mean_FR2 = np.mean(spks_sub[ix_mc_all2[ix_ok2], :], axis=0)
+
+                                    #### Proceed comparing these guys ##### 
+                                    mov_pred_mean_FR1 = np.mean(pred_spks[ix_mc_all[ix_ok1], :], axis=0)
+                                    mov_pred_mean_FR2 = np.mean(pred_spks[ix_mc_all2[ix_ok2], :], axis=0)
+
+                                    mov_shuf_mean_FR1 = np.mean(pred_spks_shuffle[ix_mc_all[ix_ok1], :, :], axis=0)
+                                    mov_shuf_mean_FR2 = np.mean(pred_spks_shuffle[ix_mc_all2[ix_ok2], :, :], axis=0)
+
+                                    #### This stays the same 
+                                    mov_PSTH1 = plot_fr_diffs.get_PSTH(bin_num_sub, rev_bin_num_sub, push_sub, ix_mc_all[ix_ok1], num_bins=ncommands_psth,
+                                        min_bin_set = 1)
+                                    mov_PSTH2 = plot_fr_diffs.get_PSTH(bin_num_sub, rev_bin_num_sub, push_sub, ix_mc_all2[ix_ok2], num_bins=ncommands_psth,
+                                        min_bin_set = 1)
+
+                                    if mov_PSTH1 is not None and mov_PSTH2 is not None:
+                                        assert(mov_PSTH1.shape[0] == 2*ncommands_psth + 1)
+                                        assert(mov_PSTH1.shape[1] == 2)
+
+                                        Nmov1 = len(ix_ok1)
+                                        Nmov2 = len(ix_ok2)
+
+                                        #### Matched dN and dB; 
+                                        dN = np.linalg.norm(mov_mean_FR1 -mov_mean_FR2)/nneur
+                                        dN_pred = np.linalg.norm(mov_pred_mean_FR1 -mov_pred_mean_FR2)/nneur
+                                        
+                                        dB = np.linalg.norm(mov_PSTH1 - mov_PSTH2)
+                                        D_pred.append([dB, dN, dN_pred])
+
+                                        for ishuff in range(nshuffs):
+                                            dN_pred_shuff = np.linalg.norm(mov_shuf_mean_FR1[:, ishuff] - mov_shuf_mean_FR2[:, ishuff])/nneur
+                                            D_shuff[ishuff].append([dB, dN_pred_shuff])
+                                            D_comm_shuff[ishuff].append([dB, dN_pred_shuff])
+
+                                        axeg.plot(dB, dN, '.', color='darkblue')
+                                        axeg.plot(dB, dN_pred, '.', color=analysis_config.blue_rgb)
+                                        
+                                        #### Pooled plot ###
+                                        D_pool.append([dB, dN, dN_pred])
+                                        D_comm.append([dB, dN, dN_pred])
+                                        if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
+                                            axeg2.plot(dB, dN, '.', color='darkblue')
+                                            axeg22.plot(dB, dN_pred, '.', color=analysis_config.blue_rgb)
+                                               
+                                    else:
+                                        print('Skipping %s, %d, command %d %d mov %1.f mov2 %.1f -- psth fail :(' %(animal, day_ix,
+                                            mag, ang, mov, mov2))
+                    
+                    if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
+                        D_comm = np.vstack((D_comm))
+                        _,_,rv_true,_,_ = scipy.stats.linregress(D_comm[:, 0], D_comm[:, 1])
+                        _,_,rv_pred_special_eg,_,_ = scipy.stats.linregress(D_comm[:, 0], D_comm[:, 2])
+                        axeg2.set_title('True %.3f, Pred %.3f'%(rv_true, rv_pred_special_eg), fontsize=8)
+                        feg2.tight_layout()
+                        axeg2.spines['top'].set_visible(False)
+                        axeg22.spines['top'].set_visible(False)
+                        util_fcns.savefig(feg2, 'grom0_eg_w_pred_dbeh_vs_dneur_corr')
+
+                    ######### Tabulate the commands #########
+                    ######### For this command see if rv > shuffle ? #####
+                    if len(D_comm) >= min_move_per_command: 
+
+                        ##### Vertical stack command #####
+                        D_comm = np.vstack((D_comm))
+                        _,_,rv_pred,_,_ = scipy.stats.linregress(D_comm[:, 0], D_comm[:, 2])
+
+                        rv_shuff = []
+                        for ishuff in range(nshuffs):
+                            D_ = np.vstack((D_comm_shuff[ishuff]))
+                            _,_,rv_,_,_ = scipy.stats.linregress(D_[:, 0], D_[:, 1])
+                            rv_shuff.append(rv_)
+
+                        ix = np.nonzero(rv_shuff>= rv_pred)[0]
+                        pv = float(len(ix)) / float(nshuffs)
+                        if pv < 0.05: 
+                            Ncommands_sig += 1
+                            DistSigCommands.append(rv_pred)
+                        Ncommands += 1
+
+            ######## Number of significant commands ####
+            axperc_sig.plot(ia, float(Ncommands_sig)/float(Ncommands), 'k.')
+            perc_sig.append(float(Ncommands_sig)/float(Ncommands))
+            util_fcns.draw_plot(10*ia + day_ix, DistSigCommands, 'k', np.array([1., 1., 1., 0]), axsig_dist)
+
+            if animal == 'grom' and day_ix == 0:
+                axsig_dist.plot(10*ia + day_ix, rv_pred_special_eg, '.', color=analysis_config.blue_rgb, markersize=10)
+            ######### Commands for pooled plot  ########
+            D_pool = np.vstack((D_pool))
+            _,_,rv_eg,_,_ = scipy.stats.linregress(D_pool[:, 0], D_pool[:, 1])
+            _,_,rv_pd,_,_ = scipy.stats.linregress(D_pool[:, 0], D_pool[:, 2])
+            axeg.set_title('True %.3f, Pred %.3f'%(rv_eg, rv_pd))
+            axsig_dist.plot(10*ia + day_ix, rv_pd, '.', color='gray', markersize = 10)
+
+            ######### Overall plot of distribution vs. pred vs. true over days #####
+            D_pred = np.vstack((D_pred))
+            _,_,rv_true,_,_ = scipy.stats.linregress(D_pred[:, 0], D_pred[:, 1])
+            _,_,rv_pred,_,_ = scipy.stats.linregress(D_pred[:, 0], D_pred[:, 2])
+            ax.plot(ia*10 + day_ix, rv_true, '.', color='darkblue', markersize=10)
+            ax.plot(ia*10 + day_ix, rv_pred, '*', color=analysis_config.blue_rgb, markersize=10)
+
+            rv_shuff = []
+            for i_shuff in range(nshuffs):
+                D = np.vstack((D_shuff[i_shuff]))
+                _,_,rv,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
+                rv_shuff.append(rv)
+            util_fcns.draw_plot(ia*10 + day_ix, rv_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+        
+        ######### Bars for frac commands sig ####
+        axperc_sig.bar(ia, np.mean(perc_sig), color='k', width=.8, alpha=0.2)
+
+    for axi in [axsig_dist, ax]:
+        axi.set_xlim([-1, 14])
+        axi.set_xticks([])
+
+    ax.set_ylabel('Pooled Corr. Coeff.')
+    f.tight_layout()
+    feg.tight_layout()
+    faxsig_dist.tight_layout()
+
+    util_fcns.savefig(f, 'pooled_cc_true_vs_pred_vs_shuff')
+    util_fcns.savefig(feg, 'eg_session_cc_true_vs_pred_vs_shuff')
+    util_fcns.savefig(faxsig_dist, 'dist_cc_pred')
+
+    axperc_sig.set_xticks([0, 1])
+    axperc_sig.set_xticklabels(['G', 'J'])
+    axperc_sig.set_ylabel('Frac. Commands\n with Sig. Correlation')
+    fperc_sig.tight_layout()
+    util_fcns.savefig(fperc_sig, 'frac_commands_sig_pred')
 
 ###### Def error functions for each #########
 def distGlobal_dirTrue(mFR, global_mFR, pred_mFR):
