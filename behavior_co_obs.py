@@ -2072,17 +2072,9 @@ def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, i
 
     for t in range(0,T-1):
         state_e = (A+B*K[0,t])*state_e
-
-        # state_e = (A-B*K[0,t])*state_e
-        # state_e = (A+B*K[t])*state_e
         state_e_list.append(state_e)
-
         u = K[0,t]*state_e
-        # u = -K[0,t]*state_e
-        # u = K[t]*state_e
         u_list.append(u)
-
-        
         if not trial_complete:
             sim_len+=1
             dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
@@ -2093,7 +2085,6 @@ def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, i
             if(hold_i>=hold_req):
                 trial_complete = True
             
-
     #RESULTS:
     #input:
     u_mat = np.array(u_list).squeeze().T
@@ -2139,35 +2130,33 @@ def sim_lqr_nk_obs_trial(A,B,K,T,target,waypoint,state_init, state_label, input_
 
     return u_da, state_da, state_e_da, sim_len
 
-def def_nk_QR(Q_p_scalar, Q_v_scalar, R_scalar, state_label, num_neurons, num_kin, n_list, kin_var, offset_var):
+def def_nk_QR(Qfp_s, Qfv_s, Qp_s, Qv_s, R_s, state_label, state_dim, num_neurons, num_kin, n_list, kin_var, offset_var):
     """
     for the state defition as [neural, kin], define the Q and R matrices based on input scalars
     """
 
-    Q_scalar = 1e2
-    Q_p_scalar = Q_scalar
-    Q_v_scalar = Q_scalar
-    R_scalar = 1e0
-
-    #State Cost Q: 
-    state_dim = num_neurons+num_kin+1
-    state_label = n_list+kin_var+offset_var
     Q = np.zeros((state_dim,state_dim))
-    Q_da = xr.DataArray(Q, coords={'out':state_label, 'in':state_label}, dims=['out', 'in'])
-    #Put cost on position and velocity.  
-    #we need the velocity cost especially for the obstacle task that has a waypoint with defined velocity.
-    Q_da.loc['kin_px', 'kin_px'] = 1*Q_p_scalar
-    Q_da.loc['kin_py', 'kin_py'] = 1*Q_p_scalar
-    Q_da.loc['kin_vx', 'kin_vx'] = 1*Q_v_scalar
-    Q_da.loc['kin_vy', 'kin_vy'] = 1*Q_v_scalar
+    Q_init = xr.DataArray(Q, coords={'out':state_label, 'in':state_label}, dims=['out', 'in'])
+
+    Q_da = copy.deepcopy(Q_init)
+    Q_da.loc['kin_px', 'kin_px'] = 1*Qp_s
+    Q_da.loc['kin_py', 'kin_py'] = 1*Qp_s
+    Q_da.loc['kin_vx', 'kin_vx'] = 1*Qv_s
+    Q_da.loc['kin_vy', 'kin_vy'] = 1*Qv_s
     Q = np.mat(Q_da)
-    # Q_f = Q
+
+    Q_f_da = copy.deepcopy(Q_init)
+    Q_f_da.loc['kin_px', 'kin_px'] = 1*Qfp_s
+    Q_f_da.loc['kin_py', 'kin_py'] = 1*Qfp_s
+    Q_f_da.loc['kin_vx', 'kin_vx'] = 1*Qfv_s
+    Q_f_da.loc['kin_vy', 'kin_vy'] = 1*Qfv_s
+    Qf = np.mat(Q_f_da)
 
     #Input Cost R:
     input_dim = num_neurons
-    R = np.eye(input_dim)*R_scalar    
+    R = np.eye(input_dim)*R_s
 
-    return Q, R
+    return Qf, Q, R
 
 def def_nk_AB(An, bn, Kn, F, num_neurons, num_kin):
     #A matrix of neural dynamics and cursor dynamics:
