@@ -2072,17 +2072,9 @@ def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, i
 
     for t in range(0,T-1):
         state_e = (A+B*K[0,t])*state_e
-
-        # state_e = (A-B*K[0,t])*state_e
-        # state_e = (A+B*K[t])*state_e
         state_e_list.append(state_e)
-
         u = K[0,t]*state_e
-        # u = -K[0,t]*state_e
-        # u = K[t]*state_e
         u_list.append(u)
-
-        
         if not trial_complete:
             sim_len+=1
             dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
@@ -2093,7 +2085,6 @@ def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, i
             if(hold_i>=hold_req):
                 trial_complete = True
             
-
     #RESULTS:
     #input:
     u_mat = np.array(u_list).squeeze().T
@@ -2110,3 +2101,180 @@ def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, i
     state_da = xr.DataArray(state_mat, coords={'v':state_label,'obs':np.arange(T)}, dims=['v', 'obs']) 
 
     return u_da, state_da, state_e_da, sim_len
+
+def sim_lqr_nk_obs_trial(A,B,K,T,target,waypoint,state_init, state_label, input_label, num_neurons, max_iter=1e5, hold_req=2, target_r=1.7):
+    """
+    Cursor first hits a waypoint and then hits a target.  
+    Each half of the movement is implemented with a finite horizon lqr controller run for T steps. 
+    Assumes 
+    TODO: detect obstacle collision 
+    """
+    #UNPACK:
+    state_T = target
+    state_waypoint = waypoint
+
+    #SIMULATE FIRST HALF: 
+    u_da_0, state_da_0, state_e_da_0, sim_len_0 = sim_lqr_nk_co_trial_finite_horizon(A,B,K,\
+                T,state_waypoint, state_init, state_label, input_label, num_neurons, max_iter=1e5, hold_req=2, target_r=1.7)
+    
+    #Simulate second half: 
+    state_init_1 = np.mat(state_da_0.loc[:,T-1]).T
+    u_da_1, state_da_1, state_e_da_1, sim_len_1 = sim_lqr_nk_co_trial_finite_horizon(A,B,K,\
+                T,state_T, state_init_1, state_label, input_label, num_neurons, max_iter=1e5, hold_req=2, target_r=1.7)    
+
+    #Combine halves: 
+    u_da = xr.DataArray(np.concatenate((u_da_0, u_da_1), axis=1), coords={'v':input_label,'obs':np.arange(2*T-2)}, dims=['v', 'obs'])    
+    state_da = xr.DataArray(np.concatenate((state_da_0[:,:-1], state_da_1), axis=1), coords={'v':state_label,'obs':np.arange(2*T-1)}, dims=['v', 'obs'])
+    state_e_da = xr.DataArray(np.concatenate((state_e_da_0[:,:-1], state_e_da_1), axis=1), coords={'v':state_label,'obs':np.arange(2*T-1)}, dims=['v', 'obs'])
+    sim_len = T+sim_len_1-1
+
+    return u_da, state_da, state_e_da, sim_len
+
+def def_nk_QR(Qfp_s, Qfv_s, Qp_s, Qv_s, R_s, state_label, state_dim, num_neurons, num_kin, n_list, kin_var, offset_var):
+    """
+    for the state defition as [neural, kin], define the Q and R matrices based on input scalars
+    """
+
+    Q = np.zeros((state_dim,state_dim))
+    Q_init = xr.DataArray(Q, coords={'out':state_label, 'in':state_label}, dims=['out', 'in'])
+
+    Q_da = copy.deepcopy(Q_init)
+    Q_da.loc['kin_px', 'kin_px'] = 1*Qp_s
+    Q_da.loc['kin_py', 'kin_py'] = 1*Qp_s
+    Q_da.loc['kin_vx', 'kin_vx'] = 1*Qv_s
+    Q_da.loc['kin_vy', 'kin_vy'] = 1*Qv_s
+    Q = np.mat(Q_da)
+
+    Q_f_da = copy.deepcopy(Q_init)
+    Q_f_da.loc['kin_px', 'kin_px'] = 1*Qfp_s
+    Q_f_da.loc['kin_py', 'kin_py'] = 1*Qfp_s
+    Q_f_da.loc['kin_vx', 'kin_vx'] = 1*Qfv_s
+    Q_f_da.loc['kin_vy', 'kin_vy'] = 1*Qfv_s
+    Qf = np.mat(Q_f_da)
+
+    #Input Cost R:
+    input_dim = num_neurons
+    R = np.eye(input_dim)*R_s
+
+    return Qf, Q, R
+
+def def_nk_AB(An, bn, Kn, F, num_neurons, num_kin):
+    #A matrix of neural dynamics and cursor dynamics:
+    #n_d - neural dynamics
+    #n_o - neural offset
+    #
+    #A_top: [An, 0, bn]
+    #A_bot: [Kn, F]
+    #
+    #Assemble A matrices with zero-ed out neural dynamics and neural offset 
+    A_list = ['n_do', 'n_o', 'n_null']
+    A_dic = {}
+
+    num_kin = 4
+    n_z = np.zeros((num_neurons, num_neurons))
+    n_k_z = np.zeros((num_neurons, num_kin))
+    no_z = np.zeros((num_neurons,1))
+
+    A_bot = np.hstack((Kn, F))
+
+    A_top_n_do = np.hstack((An, n_k_z, bn))
+    A_dic['n_do'] = np.vstack((A_top_n_do, A_bot))
+
+    A_top_n_o = np.hstack((n_z, n_k_z, bn))
+    A_dic['n_o'] = np.vstack((A_top_n_o, A_bot))
+
+    A_top_n_null = np.hstack((n_z, n_k_z, no_z))
+    A_dic['n_null'] = np.vstack((A_top_n_null, A_bot))
+
+    #B matrix of inputs to neural dynamics:
+    #B_top = eye(num_neurons)
+    #B_bot = 0
+    num_non_n = num_kin+1
+    B = np.vstack((np.eye(num_neurons), np.zeros((num_non_n, num_neurons))))
+
+    return A_list, A_dic, B
+
+
+
+def def_nk_lqr_models(inf_horizon, T, model_list, A_dic, B, Q, Q_f, R):
+    lqr_m = {}
+    for k in model_list:
+        lqr_m[k] = {}
+        lqr_m[k]['A'] = np.mat(A_dic[k])
+        lqr_m[k]['B'] = np.mat(B)
+        lqr_m[k]['Q'] = np.mat(Q)
+        lqr_m[k]['Q_f'] = np.mat(Q_f)
+        lqr_m[k]['R'] = np.mat(R)
+        lqr_m[k]['T'] = T
+        
+    for k in model_list:
+        #unpack:
+        A = lqr_m[k]['A']
+        B = lqr_m[k]['B']
+        Q = lqr_m[k]['Q']
+        R = lqr_m[k]['R']    
+        if inf_horizon:
+            K = solve_lqr_K_inf_horizon(A,B,Q,R)
+            lqr_m[k]['K'] = K
+        else:
+            Q_f = lqr_m[k]['Q_f']
+            T = lqr_m[k]['T']
+            K = dlqr(A,B,Q,R,Q_f=Q_f,T=T,max_iter=1e5)
+            lqr_m[k]['K'] = K         
+    return lqr_m
+
+def def_movements_for_nk_lqr(target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed, state_dim, num_neurons):
+    #Construct movements
+    #target
+    #task_rot:
+    #1.1 is counterclockwise, 1.2 is clockwise
+    move_lqr = {}
+
+    #--------------------------------------------------------------------
+    #Initial State:
+    
+    state_init = np.zeros(state_dim)
+    state_init[:num_neurons] = n_init #initialize neural activity
+    state_init[num_neurons:num_neurons+2] = center #initialize neural activity to its average value
+    state_init[-1] = 1 #for now, start neural activity at zeros
+    state_init = np.mat(state_init).T
+
+    for target in target_list:
+        T_pos = np.squeeze(target_pos[target,:])
+        T_theta = np.angle(T_pos[0]-center[0] + 1j*(T_pos[1]-center[1]))
+    #     print('T theta: ', T_theta*180/np.pi)
+        #--------------------------------------------------------------------
+        #Target
+        state_T = np.mat([T_pos[0], T_pos[1], 0, 0, 0]).T
+        n_z = np.mat(np.zeros(num_neurons)).T
+        state_T = np.vstack((n_z, state_T))    
+        
+        for task in task_list:
+            move_lqr[target,task] = {}
+            move_lqr[target,task]['state_init'] = state_init
+            move_lqr[target,task]['state_T'] = state_T
+            if task > 1: 
+                obs_center = obs_pos[target,:]
+                obs_theta = np.angle(obs_center[0]-center[0] + 1j*(obs_center[1]-center[1]))
+    #             print('obs theta: ', obs_theta*180/np.pi)
+                if task==1.1:
+                    cw_bool = False
+                    displace_theta = obs_theta-np.pi/2
+                elif task==1.2:
+                    cw_bool = True
+                    displace_theta = obs_theta+np.pi/2
+                else:
+                    print('ERROR!: ', str(task))
+                #--------------------------------------------------------------------
+                #Waypoint State:
+                #take the obstacle position, and move orthogonal to it by 'obs_margin'
+                waypoint_pos = obs_center + obs_margin*np.array([np.cos(displace_theta), np.sin(displace_theta)])    
+                waypoint_vel = waypoint_speed*np.array([np.cos(obs_theta), np.sin(obs_theta)])
+                state_waypoint = np.zeros(state_dim)
+                state_waypoint[num_neurons:num_neurons+2] = waypoint_pos
+                state_waypoint[num_neurons+2:num_neurons+4] = waypoint_vel
+                state_waypoint = np.mat(state_waypoint).T
+                move_lqr[target,task]['state_waypoint'] = state_waypoint
+
+    return move_lqr
+

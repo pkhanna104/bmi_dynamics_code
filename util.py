@@ -476,6 +476,13 @@ def sim_bmi(cursor_state_in, spk_cnts, F, K):
 		num_samples-1 X num
 	r_kn: decompose cursor update into terms due to kinematics and those due to current neural activity
 	r_d: decompose cursor update into terms due to each type of input: ['p', 'v', 'o', 'n'], where 'o' is offset
+
+	var_idxs['o'] = [6]
+	var_idxs['p'] = [0,2]
+	var_idxs['v'] = [3,5]
+	var_idxs['n'] = range(0, K.shape[1])
+	output_idxs = [0,2,3,5,6]
+
 	"""
 	len_cursor_state = 7
 	d = decompose_decoder(F,K)
