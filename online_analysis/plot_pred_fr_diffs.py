@@ -804,8 +804,10 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
 ####### Fig 4 Eigenvalue plots ########
 def get_data_EVs(): 
     model_set_number = 6
-    model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0'
-    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'
+
+    ### Want the true data ####
+    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
     
     fnum, axnum = plt.subplots(figsize = (3, 4))
     ffrac, axfrac = plt.subplots(figsize = (3, 4))
@@ -830,7 +832,7 @@ def get_data_EVs():
 
             ### Get alpha ### 
             alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
-
+            print('%s, %d alpha %.1f' %(animal, day_ix, alpha_spec))
             ### Get Ridge; 
             model = Ridge(alpha=alpha_spec, fit_intercept=True)
 
