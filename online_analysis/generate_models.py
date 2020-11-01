@@ -1823,7 +1823,6 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
 
         ### Get all the variables together ###
         variables = np.hstack(( [vel_model_nms, pos_model_nms, tg_model_nms, tsk_model_nms, push_model_nms, neur_nms1, neur_nms2] ))
-
         #### Unique without resorting the neurons for dynamics models 
         variables_keep = []
         for v in variables:

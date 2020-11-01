@@ -61,10 +61,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         Exception: if try to shuffle both within bin and shuffle everything; 
     """
 
-    if 'trial_ix' in kwargs:
-        trial_ix = kwargs['trial_ix']
-    else:
-        trial_ix = None
+    trial_ix = kwargs.pop('trial_ix', None)
+    skip_plot = kwargs.pop('skip_plot', False)
 
     if 'day_ix' not in kwargs.keys():
         raise Exception('Need to include day ix to get mag boundaries for shuffling wihtin bin and figure out cw/ccw boundaries')
@@ -605,7 +603,10 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     ##################################
     data_temp = pandas.DataFrame(tmp_dict)
     if nsi == 0:
-        plot_data_temp(data_temp, animal, True)
+        if skip_plot:
+            pass
+        else:
+            plot_data_temp(data_temp, animal, True)
 
     if nshuffs == 1:
         return data, data_temp, sub_spk0_temp_all, sub_spk_temp_all, sub_push_all
