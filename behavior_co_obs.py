@@ -2000,6 +2000,8 @@ def sim_lqr_nk_co_trial(A,B,K, target, state_init, state_label, input_label, num
     """
 
     state_T = target
+    # e_sub = np.linalg.pinv(A)*state_T
+
     state_e_init = state_init-state_T
     state_e_list = []
     state_e = state_e_init
@@ -2019,7 +2021,7 @@ def sim_lqr_nk_co_trial(A,B,K, target, state_init, state_label, input_label, num
         state_e = (A+B*K)*state_e
         state_e_list.append(state_e)
         
-        u = K*state_e
+        u = K*state_e#(state-e_sub)
         u_list.append(u)    
         
         dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
@@ -2048,6 +2050,8 @@ def sim_lqr_nk_co_trial(A,B,K, target, state_init, state_label, input_label, num
 
     return u_da, state_da, sim_len
 
+
+
 def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, input_label, num_neurons, max_iter=1e5, hold_req=2, target_r=1.7):
     """
     simulates lqr control of a joint neural-kinematic dynamical system for a center-out trial 
@@ -2056,12 +2060,22 @@ def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, i
     in state vector, first all neurons are listed, then all cursor kinematics are listed.
     """
 
+    #Target state
     state_T = target
-    state_e_init = state_init-state_T
-    state_e_list = []
-    state_e = state_e_init
-    state_e_list.append(state_e)
+    state_dim = state_T.shape[0]
+    #steady input for target state:
+    u_star = 0#np.linalg.pinv(B)*(np.eye(state_dim)-A)*state_T
+    u_T = 0# -np.linalg.pinv(B)*A*state_T
 
+    # print(u_T)
+    # u_star = B_inv*np.mat(np.eye(state_dim)-A)*state_T
+
+    #State
+    state = copy.copy(state_init)
+    state_list = [state]
+    #State error
+    state_e = state-state_T
+    state_e_list = [state_e]
     #Input
     u_list = []
 
@@ -2069,12 +2083,25 @@ def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, i
     trial_complete = False
     sim_len = 1
     hold_i = 0
-
+    
     for t in range(0,T-1):
-        state_e = (A+B*K[0,t])*state_e
-        state_e_list.append(state_e)
+        #Calculate u
+        # u_T = np.linalg.pinv(np.linalg.pinv((np.eye(state_dim)-(A+B*K[0,t])))*B)*state_T
+        # u = K[0,t]*state_e + u_T
+
+        # u_T = np.linalg.pinv(B)*(np.eye(state_dim)-(A+B*K[0,t]))*state_T
         u = K[0,t]*state_e
+        # u = K[0,t]*state_e
         u_list.append(u)
+
+        #Calculate state_e
+        state_e = A*state_e + B*u
+        state_e_list.append(state_e)
+
+        #Calculate state: 
+        state = state_e + state_T
+        state_list.append(state)
+
         if not trial_complete:
             sim_len+=1
             dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
@@ -2086,21 +2113,22 @@ def sim_lqr_nk_co_trial_finite_horizon(A,B,K,T,target,state_init, state_label, i
                 trial_complete = True
             
     #RESULTS:
+
+    #state error:
+    state_e_mat = np.array(state_e_list).squeeze().T
+    state_e_da = xr.DataArray(state_e_mat, coords={'v':state_label,'obs':np.arange(T)}, dims=['v', 'obs'])
+
     #input:
     u_mat = np.array(u_list).squeeze().T
     u_da = xr.DataArray(u_mat, coords={'v':input_label,'obs':np.arange(T-1)}, dims=['v', 'obs'])
 
-    #state error:
-    state_e_mat = np.array(state_e_list).squeeze().T
-    # state_e_mat = state_e_mat.squeeze().T
-    state_e_da = xr.DataArray(state_e_mat, coords={'v':state_label,'obs':np.arange(T)}, dims=['v', 'obs'])
-
     #state:
-    state_mat = copy.deepcopy(state_e_mat)
-    state_mat[num_neurons:,:] = state_mat[num_neurons:,:] + state_T[num_neurons:,:] #add the target kinematic state back to the error
+    state_mat = np.array(state_list).squeeze().T
+    # state_mat[num_neurons:,:] = state_mat[num_neurons:,:] + state_T[num_neurons:,:] #add the target kinematic state back to the error
     state_da = xr.DataArray(state_mat, coords={'v':state_label,'obs':np.arange(T)}, dims=['v', 'obs']) 
 
     return u_da, state_da, state_e_da, sim_len
+  
 
 def sim_lqr_nk_obs_trial(A,B,K,T,target,waypoint,state_init, state_label, input_label, num_neurons, max_iter=1e5, hold_req=2, target_r=1.7):
     """
@@ -2125,10 +2153,16 @@ def sim_lqr_nk_obs_trial(A,B,K,T,target,waypoint,state_init, state_label, input_
     #Combine halves: 
     u_da = xr.DataArray(np.concatenate((u_da_0, u_da_1), axis=1), coords={'v':input_label,'obs':np.arange(2*T-2)}, dims=['v', 'obs'])    
     state_da = xr.DataArray(np.concatenate((state_da_0[:,:-1], state_da_1), axis=1), coords={'v':state_label,'obs':np.arange(2*T-1)}, dims=['v', 'obs'])
-    state_e_da = xr.DataArray(np.concatenate((state_e_da_0[:,:-1], state_e_da_1), axis=1), coords={'v':state_label,'obs':np.arange(2*T-1)}, dims=['v', 'obs'])
+    state_e_da = xr.DataArray(np.concatenate((state_e_da_0[:,:-1], state_e_da_1), axis=1), coords={'v':state_label,'obs':np.arange(2*T-1)}, dims=['v', 'obs'])    
+
     sim_len = T+sim_len_1-1
 
-    return u_da, state_da, state_e_da, sim_len
+    h0 = {'u_da':u_da_0, 'state_da':state_da_0, 'state_e_da':state_e_da_0, 'sim_len':sim_len_0}
+    h1 = {'u_da':u_da_1, 'state_da':state_da_1, 'state_e_da':state_e_da_1, 'sim_len':sim_len_1}
+    
+
+
+    return u_da, state_da, state_e_da, sim_len, h0, h1
 
 def def_nk_QR(Qfp_s, Qfv_s, Qp_s, Qv_s, R_s, state_label, state_dim, num_neurons, num_kin, n_list, kin_var, offset_var):
     """
@@ -2223,6 +2257,130 @@ def def_nk_lqr_models(inf_horizon, T, model_list, A_dic, B, Q, Q_f, R):
             lqr_m[k]['K'] = K         
     return lqr_m
 
+def def_move_models(move_horizon, model_list, A_dic, B, Q, R, Q_f, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed, state_dim, num_neurons):
+    """
+    (set move_horizon to be odd, so co and obs movements can be the same length)
+    for each movement model: 
+        state_init
+        state_T_list
+        horizon_list
+        A_list
+        B
+        K_list
+    """
+
+    move_lqr = {}
+    #--------------------------------------------------------------------
+    #Initial State:
+    state_init = np.zeros(state_dim)
+    state_init[:num_neurons] = n_init #initialize neural activity
+    state_init[num_neurons:num_neurons+2] = center #initial position
+    state_init[-1] = 1 #offset
+    state_init = np.mat(state_init).T
+
+    for m in model_list:
+        for target in target_list:
+            T_pos = np.squeeze(target_pos[target,:])
+            T_theta = np.angle(T_pos[0]-center[0] + 1j*(T_pos[1]-center[1]))
+        #     print('T theta: ', T_theta*180/np.pi)
+            #--------------------------------------------------------------------
+            #Target
+            state_T = np.mat([T_pos[0], T_pos[1], 0, 0, 0]).T
+            n_z = np.mat(np.zeros(num_neurons)).T
+            state_T = np.vstack((n_z, state_T))
+
+            for task in task_list: 
+                #if co, then there's only one target state
+                if task == 0:
+                    state_T_list = [state_T]
+                    horizon_list = [move_horizon]
+                else:
+                    horizon_list = [(move_horizon+1)/2, (move_horizon+1)/2]
+                    obs_center = obs_pos[target,:]
+                    if task == 1.1:
+                        cw_bool = False
+                    elif task == 1.2:
+                        cw_bool = True
+                    state_wp = calc_obs_waypoint(obs_center, center, cw_bool, obs_margin, waypoint_speed, state_dim, num_neurons)
+                    state_T_list =[state_wp, state_T]
+                #Error dynamics: 
+                A_e_list = calc_error_dynamics(A_dic[m], state_T_list)
+                #Feedback controller:
+                K_list = []
+                for i in range(len(A_e_list)):
+                    h = horizon_list[i]
+                    A = A_e_list[i]
+                    K = dlqr(A, B, Q, R, Q_f, T=h, max_iter=1000, eps=1e-10, dtype=np.mat)
+                    K_list.append(K)
+
+                #Simulate: 
+
+
+                #ASSIGN:                
+                move_lqr[target, task, m] = {}
+                move_lqr[target, task, m]['state_init'] = state_init
+                move_lqr[target, task, m]['state_T_list'] = state_T_list
+                move_lqr[target, task, m]['horizon_list'] = horizon_list
+                move_lqr[target, task, m]['K_list'] = K_list
+                move_lqr[target, task, m]['A_e_list'] = A_e_list
+                move_lqr[target, task, m]['B'] = B
+                move_lqr[target, task, m]['Q'] = Q
+                move_lqr[target, task, m]['Q_f'] = Q_f
+                move_lqr[target, task, m]['R'] = R
+    return move_lqr
+
+
+
+
+def calc_obs_waypoint(obs_center, center, cw_bool, obs_margin, waypoint_speed, state_dim, num_neurons):
+    """
+    assumes a movement from workspace center to target.
+    assumes state vector is arranged as: 
+    neurons (num_neurons), kinematics (4), offset (1)
+
+    """
+    
+    obs_theta = np.angle(obs_center[0]-center[0] + 1j*(obs_center[1]-center[1]))
+    #             print('obs theta: ', obs_theta*180/np.pi)
+    if cw_bool:
+        displace_theta = obs_theta+np.pi/2
+    else:
+        displace_theta = obs_theta-np.pi/2
+    #--------------------------------------------------------------------
+    #Waypoint State:
+    #take the obstacle position, and move orthogonal to it by 'obs_margin'
+    waypoint_pos = obs_center + obs_margin*np.array([np.cos(displace_theta), np.sin(displace_theta)])    
+    waypoint_vel = waypoint_speed*np.array([np.cos(obs_theta), np.sin(obs_theta)])
+    state_waypoint = np.zeros(state_dim)
+    state_waypoint[num_neurons:num_neurons+2] = waypoint_pos
+    state_waypoint[num_neurons+2:num_neurons+4] = waypoint_vel
+    state_waypoint = np.mat(state_waypoint).T   
+    return state_waypoint 
+
+def calc_error_dynamics(A, state_T_list):
+    """
+    assumes the last component of the state vector is '1' for offset, which means last column of A is is the offset to dynamics
+    """
+    # print(state_T_list)
+    A = np.mat(A)
+
+
+    state_dim = state_T_list[0].shape[0]
+    A_e_list = []
+    for state_T in state_T_list:
+        A_e = copy.deepcopy(A)
+        #modify dynamics with offset due to target state:
+        I = np.mat(np.eye(state_dim))
+        A_offset = (A_e-I)*state_T
+        A_e[:,-1] = A_e[:,-1] + A_offset        
+        A_e_list.append(A_e)
+    return A_e_list
+
+
+
+
+
+
 def def_movements_for_nk_lqr(target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed, state_dim, num_neurons):
     #Construct movements
     #target
@@ -2277,4 +2435,69 @@ def def_movements_for_nk_lqr(target_list, task_list, center, target_pos, obs_pos
                 move_lqr[target,task]['state_waypoint'] = state_waypoint
 
     return move_lqr
+
+def lqr_sim_nk(A_list, B, K_list, state_init, state_T_list, horizon_list, state_label, hold_req=2, target_r=1.7):
+    """
+    To Do:
+    """
+    
+    #Simulate trial: 
+    trial_complete = False
+    sim_len = 1
+    hold_i = 0
+
+    num_seg = len(horizon_list)
+    state_list = []
+    state_e_list = []
+    u_list = []
+
+    for i in range(num_seg):
+        #Initialize:
+        state_T = state_T_list[i]
+        A = A_list[i]
+        K = K_list[i]
+
+        #Starting state of this segment:
+        if i==0:
+            state = copy.copy(state_init)
+            state_list.append(state)
+        else:
+            state = state_master[i-1][-1] #load state from last segment
+        state_e = state-state_T
+        state_e_list.append(state_e)
+
+        for t in range(0,horizon_list[i]-1):
+            u = K[0,t]*state_e
+            u_list.append(u)
+
+            #Calculate state_e
+            state_e = A*state_e + B*u
+            if (t < (horizon_list[i]-1)) or (i==(num_seg-1)):
+                state_e_list.append(state_e) #only append if it's not the last error, or if it's the last segment
+
+            #Calculate state: 
+            state = state_e + state_T
+            state_list.append(state)
+
+            if not trial_complete:
+                sim_len+=1
+                dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
+                if dist2target <= target_r:
+                    hold_i+=1
+                else:
+                    hold_i=0
+                if(hold_i>=hold_req):
+                    trial_complete = True
+        state_master.append(state_list)
+        state_e_master.append(state_e_list)
+        state_master.append(state_list)
+
+    #TODO: complete this section
+    move_len = sum(horizon_list)
+    #state error:
+    state_e_mat = np.array(state_e_list).squeeze().T
+    state_e_da = xr.DataArray(state_e_mat, coords={'v':state_label,'obs':np.arange(T)}, dims=['v', 'obs'])
+    return 
+
+
 
