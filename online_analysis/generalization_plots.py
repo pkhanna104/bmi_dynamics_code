@@ -454,7 +454,7 @@ def plot_err_by_cat(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', yval = 'err',
 ######## Fit general model ############
 def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False, 
     n_folds = 5, min_num_per_cat_lo = 15, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
-    model_set_number = 6):
+    model_set_number = 6, match_command_dist = False):
 
     """Summary
     
@@ -510,26 +510,24 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
             spks_tm0 = sub_spk_temp_all[:, 1, :]
             
             ############# Estimate command dist diffs?  ###############
-            ix_tsk0 = np.nonzero(data_temp['tsk']==0)[0]
-            ix_tsk1 = np.nonzero(data_temp['tsk']==1)[0]
-            # for i in [0, 1]:
-            #     _, pv = scipy.stats.ttest_ind(push_tm0[ix_tsk0, i], push_tm0[ix_tsk1, i])
-            #     print('Push ix %d, pv = %.3f' %(i, pv))
+            if match_command_dist:
+                ix_tsk0 = np.nonzero(data_temp['tsk']==0)[0]
+                ix_tsk1 = np.nonzero(data_temp['tsk']==1)[0]
 
-            ############# Match the command distributions #############
-            ix_keep1, ix_keep2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_tm0[ix_tsk0,:], push_tm0[ix_tsk1, :], perc_drop = 0.01)
-            analyze_indices = np.hstack(( ix_tsk0[ix_keep1], ix_tsk1[ix_keep2] ))
+                ############# Match the command distributions #############
+                ix_keep1, ix_keep2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_tm0[ix_tsk0,:], push_tm0[ix_tsk1, :], perc_drop = 0.01)
+                analyze_indices = np.hstack(( ix_tsk0[ix_keep1], ix_tsk1[ix_keep2] ))
 
-            ############ Re-index everything ###########################
-            tmp_dict = {}
-            for k in data_temp.keys():
-                tmp_dict[k] = np.array(data_temp[k][analyze_indices])
-            data_temp = pandas.DataFrame(tmp_dict)
-            spks_tm0 = spks_tm0[analyze_indices, :]
-            spks_tm1 = spks_tm1[analyze_indices, :]
-            push_tm0 = push_tm0[analyze_indices, :]
+                ############ Re-index everything ###########################
+                tmp_dict = {}
+                for k in data_temp.keys():
+                    tmp_dict[k] = np.array(data_temp[k][analyze_indices])
+                data_temp = pandas.DataFrame(tmp_dict)
+                spks_tm0 = spks_tm0[analyze_indices, :]
+                spks_tm1 = spks_tm1[analyze_indices, :]
+                push_tm0 = push_tm0[analyze_indices, :]
 
-
+            ############ Mean subtraction -- task specifci ######
             if mean_sub_tsk_spec:
                 mean_spks_true = []; mean_spks_ix = []; 
                 for i in range(2):
@@ -544,6 +542,7 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
                     mean_spks_true.append(mean_spks_true0)
                     mean_spks_ix.append(ix0)
                 add_spks = [mean_spks_ix, mean_spks_true]
+            
             else:
                 add_spks = None
 
