@@ -1,7 +1,8 @@
 import numpy as np 
 import matplotlib.pyplot as plt 
 import pickle 
-import os 
+import os
+import pandas
 
 from online_analysis import util_fcns, generate_models, generate_models_list, generate_models_utils
 from online_analysis import plot_generated_models, plot_pred_fr_diffs, plot_fr_diffs
@@ -177,22 +178,42 @@ def check_ix_lo(lo_ix, com_true, mov_true, left_out, cat):
     elif cat == 'com':
         assert(np.all(com_true[lo_ix, 0]*8 + com_true[lo_ix, 1] == left_out))
 
-#### model fitting utls ###########
-def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG):
+########## model fitting utls ###########
+def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG,
+    add_mean = None):
     """Summary
     
     Parameters
     ----------
-    data_temp : TYPE
-        dictonary from get_spike_kinematics 
+    spks_tm1 : TYPE
+        Description
+    spks : TYPE
+        Description
+    push : TYPE
+        Description
     train : TYPE
         np.array of training indicies 
     test : TYPE
         np.array of test indices 
     alpha : TYPE
         ridge parameter for regression for this day from swept alphas. 
-    nneur : int 
+    KG : TYPE
+        Description
+    add_mean : None, optional
+         add_mean = [mean_spks_ix, mean_spks_true]
+    
+    Deleted Parameters
+    ------------------
+    data_temp : TYPE
+        dictonary from get_spike_kinematics 
+    nneur : int
         number of neurons
+    
+    Returns
+    -------
+    TYPE
+        Description
+    
     """
     X_train = spks_tm1[train, :]
     X_test = spks_tm1[test, :]
@@ -206,9 +227,15 @@ def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG):
 
     ### Estimate error covariance; 
     y_train_est = model.predict(X_train)
-
     y_test_pred = model.predict(X_test)
     
+    if add_mean:
+        cnt = 0 
+        for i, (ix, mn) in enumerate(zip(add_mean[0], add_mean[1])):
+            ixx = np.array([ji for ji, j in enumerate(test) if j in ix]); 
+            y_test_pred[ixx, :] = y_test_pred[ixx, :] + mn[np.newaxis, :]
+            cnt += len(ixx)
+        assert(cnt == len(test))
 
     ### Row is a variable, column is an observation for np.cov
     W = np.cov((y_train - y_train_est).T)
@@ -243,14 +270,14 @@ def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG):
 
         pred_w_cond.append(np.squeeze(np.array(mu1_2_i)))
 
-    return np.vstack((pred_w_cond))
+    return np.vstack((pred_w_cond)), model.coef_, model.intercept_
 
 def get_com(tby2_push, animal, day_ix):
     command_bins = util_fcns.commands2bins([tby2_push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[0, 1])[0]
     return command_bins[:, 0]*8 + command_bins[:, 1]
 
-######## Bar plots by task / target / command ####
+######## Bar plots by task / target / command ##########
 def plot_err_by_cat(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', yval = 'err',
     run_f_test = True): 
     
@@ -424,9 +451,11 @@ def plot_err_by_cat(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', yval = 'err',
         #axcom.plot([0, Ncom], [1.1*np.max(ymax), 1.1*np.max(ymax)], '-')
         #plot_stars(axcom, ymax, .5*Ncom, pv_com)
 
-######## Fit general model ######
-def fit_predict_loo_model(cat='tsk', n_folds = 5, min_num_per_cat_lo = 15,
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6):
+######## Fit general model ############
+def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False, 
+    n_folds = 5, min_num_per_cat_lo = 15, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
+    model_set_number = 6):
+
     """Summary
     
     Parameters
@@ -447,7 +476,7 @@ def fit_predict_loo_model(cat='tsk', n_folds = 5, min_num_per_cat_lo = 15,
 
     ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'] , 'max_alphas_ridge_model_set%d.pkl'%model_set_number), 'rb')); 
 
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['jeev']):#grom', 'jeev']):
 
         input_type = analysis_config.data_params['%s_input_type'%animal]
         ord_input_type = analysis_config.data_params['%s_ordered_input_type'%animal]
@@ -469,52 +498,117 @@ def fit_predict_loo_model(cat='tsk', n_folds = 5, min_num_per_cat_lo = 15,
             for n in range(nneur):
                 assert(np.allclose(sub_spk_temp_all[:, 0, n], data_temp['spk_tm1_n%d'%n]))
                 assert(np.allclose(sub_spk_temp_all[:, 1, n], data_temp['spk_tm0_n%d'%n]))
-            
-            ############## Get subspikes ##############
-            spks_tm1 = sub_spk_temp_all[:, 0, :]
-            spks_tm0 = sub_spk_temp_all[:, 1, :]
-            
+
             push_tm0 = np.vstack((data_temp['pshx_tm0'], data_temp['pshy_tm0'])).T
 
             #### Add teh movement category ###
             data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
             data_temp['com'] = get_com(sub_push_all, animal, day_ix)
             
+            ############## Get subspikes ##############
+            spks_tm1 = sub_spk_temp_all[:, 0, :]
+            spks_tm0 = sub_spk_temp_all[:, 1, :]
+            
+            ############# Estimate command dist diffs?  ###############
+            ix_tsk0 = np.nonzero(data_temp['tsk']==0)[0]
+            ix_tsk1 = np.nonzero(data_temp['tsk']==1)[0]
+            # for i in [0, 1]:
+            #     _, pv = scipy.stats.ttest_ind(push_tm0[ix_tsk0, i], push_tm0[ix_tsk1, i])
+            #     print('Push ix %d, pv = %.3f' %(i, pv))
+
+            ############# Match the command distributions #############
+            ix_keep1, ix_keep2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_tm0[ix_tsk0,:], push_tm0[ix_tsk1, :], perc_drop = 0.01)
+            analyze_indices = np.hstack(( ix_tsk0[ix_keep1], ix_tsk1[ix_keep2] ))
+
+            ############ Re-index everything ###########################
+            tmp_dict = {}
+            for k in data_temp.keys():
+                tmp_dict[k] = np.array(data_temp[k][analyze_indices])
+            data_temp = pandas.DataFrame(tmp_dict)
+            spks_tm0 = spks_tm0[analyze_indices, :]
+            spks_tm1 = spks_tm1[analyze_indices, :]
+            push_tm0 = push_tm0[analyze_indices, :]
+
+
+            if mean_sub_tsk_spec:
+                mean_spks_true = []; mean_spks_ix = []; 
+                for i in range(2):
+                    ix0 = np.nonzero(data_temp['tsk']==i)[0]
+
+                    ### Make the means the same 
+                    mean_spks_true0 = np.mean(spks_tm0, axis=0)
+
+                    #mean_spks_true0 = np.mean(spks_tm0[ix0, :], axis=0)
+                    spks_tm0[ix0, :] = spks_tm0[ix0, :] - mean_spks_true0[np.newaxis, :]
+                    spks_tm1[ix0, :] = spks_tm1[ix0, :] - mean_spks_true0[np.newaxis, :]
+                    mean_spks_true.append(mean_spks_true0)
+                    mean_spks_ix.append(ix0)
+                add_spks = [mean_spks_ix, mean_spks_true]
+            else:
+                add_spks = None
+
             #### Make 5 folds --> all must exclude the thing you want to exclude, but distribute over the test set; 
             test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
 
             #### setup data storage 
             LOO_dict = {}
+            LOO_dict['analyze_indices'] = analyze_indices
+            LOO_dict_ctrl = {}
+            LOO_dict_ctrl['analyze_indices'] = analyze_indices
 
             for lo in leave_out_cats: 
    
                 #### Which indices must be removed from all training sets? 
                 ix_rm = np.nonzero(data_temp[leave_out_field] == lo)[0]
 
+                N = len(data_temp[leave_out_field])
+                n = len(ix_rm)
+                ix_rm_rand = np.random.permutation(N)[:n]
+
                 if len(ix_rm) >= min_num_per_cat_lo: 
 
                     LOO_dict[lo] = {}
+                    LOO_dict_ctrl[lo] = {}
 
-                    y_pred = np.zeros_like(spks_tm0) + np.nan
+                    y_pred_lo  = np.zeros_like(spks_tm0) + np.nan
+                    y_pred_nlo = np.zeros_like(spks_tm0) + np.nan
 
                     #### Go through the train_ix and remove the particualr thing; 
-                    for i_fold in range(5):
-                        print('Starting fold %d for LO %1.f' %(i_fold, lo))
-
+                    for i_fold in range(n_folds):
+                        
                         train_fold_full = train_ix[i_fold]
                         test_fold  = test_ix[i_fold]
 
                         #### removes indices 
-                        train_fold = np.array([ i for i in train_fold_full if i not in ix_rm])
+                        train_fold_lo = np.array([ i for i in train_fold_full if i not in ix_rm])
+                        
+                        print('Starting fold %d for LO %1.f, training pts = %d' %(i_fold, lo, len(train_fold_lo)))
+
+                        #### randomly remove indices 
+                        train_fold_nlo = np.array([i for i in train_fold_full if i not in ix_rm_rand])
 
                         #### train the model and predict held-out data ###
-                        y_pred[test_fold, :] = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
-                            train_fold, test_fold, alpha_spec, KG)
-                        
-                    
-                    #### Now go through and compute movement-specific commands ###
-                    assert(np.sum(np.isnan(y_pred)) == 0)
+                        y_pred_lo[test_fold, :], coef, intc = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
+                            train_fold_lo, test_fold, alpha_spec, KG, add_mean = add_spks)
 
+                        ### Train the model and predict held out data -- but subselect so that 
+                        ### Add these predictions to test_fold: 
+                        ### The idea here is to create a normal dynamics prediction that has used the 
+                        ### same amount of training data; 
+                        test_fold_nlo = np.sort(np.hstack((test_fold, ix_rm_rand)))
+                        y_pred_nlo[test_fold_nlo, :], coef_nlo, intc_nlo = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
+                            train_fold_nlo, test_fold_nlo, alpha_spec, KG, add_mean = add_spks)
+                        
+                        ### Save the matrices; 
+                        LOO_dict[lo][i_fold, 'coef_lo'] = coef
+                        LOO_dict[lo][i_fold, 'intc_lo'] = intc
+                        LOO_dict_ctrl[lo][i_fold, 'coef_nlo'] = coef_nlo
+                        LOO_dict_ctrl[lo][i_fold, 'intc_nlo'] = intc_nlo
+
+                    #### Now go through and compute movement-specific commands ###
+                    assert(np.sum(np.isnan(y_pred_lo)) == 0)
+                    assert(np.sum(np.isnan(y_pred_nlo)) == 0)
+                        
                     for mag in range(4):
                         for ang in range(8):
                             for mov in np.unique(data_temp['mov']):
@@ -522,17 +616,26 @@ def fit_predict_loo_model(cat='tsk', n_folds = 5, min_num_per_cat_lo = 15,
                                 assert(type(mc) is tuple)
                                 mc = mc[0]
                                 if len(mc) >= 15:
-                                    LOO_dict[lo][mag, ang, mov] = y_pred[mc, :].copy()
+                                    LOO_dict[lo][mag, ang, mov] = y_pred_lo[mc, :].copy()
                                     LOO_dict[lo][mag, ang, mov, 'ix'] = mc.copy()
 
                     #### Also generally save the indices of the thing you left out of training; 
-                    LOO_dict[lo][-1, -1, -1] = y_pred[ix_rm, :].copy()
+                    LOO_dict[lo][-1, -1, -1] = y_pred_lo[ix_rm, :].copy()
                     LOO_dict[lo][-1, -1, -1, 'ix'] = ix_rm.copy()
 
-                #### Save this LOO ####
-            pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'wb'))
+                    ### otherwise sampled data ####
+                    LOO_dict_ctrl[lo]['y_pred_nlo'] = y_pred_nlo.copy()
 
-def plot_loo_r2_overall(cat='tsk', yval='err', nshuffs = 100): 
+                #### Save this LOO ####
+            if mean_sub_tsk_spec:
+                pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d_tsksub.pkl'%(cat, animal, day_ix)), 'wb'))
+                pickle.dump(LOO_dict_ctrl, open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d_tsksub.pkl'%(cat, animal, day_ix)), 'wb'))
+
+            else:
+                pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'wb'))
+                pickle.dump(LOO_dict_ctrl, open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'wb'))
+
+def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, yval='err', nshuffs = 100, n_folds = 5): 
     '''
     For each model type lets plot the held out data vs real data correlations 
     ''' 
@@ -545,48 +648,71 @@ def plot_loo_r2_overall(cat='tsk', yval='err', nshuffs = 100):
     model_set_number = 6
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'    
 
-    f, ax = plt.subplots(figsize=(2, 3))
+    f, ax = plt.subplots(figsize=(4, 3))
     f_spec, ax_spec = plt.subplots(ncols = 2); 
 
-    for i_a, animal in enumerate(['grom', 'jeev']):
-
-        model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
-        model_dict = pickle.load(open(model_fname, 'rb'))
+    for i_a, animal in enumerate(['jeev']):#grom', 'jeev']):
 
         r2_stats = []
 
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
+            fmn, axmn = plt.subplots()
+            feig, axeig = plt.subplots()
+
+            if mean_sub_tsk_spec:
+                ext = '_tsksub'
+            else:
+                ext = ''
+
+            NLOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s.pkl'%(cat, animal, day_ix, ext)), 'rb'))
+
             ### Load the category dictonary: 
-            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'rb'))
+            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s.pkl'%(cat, animal, day_ix, ext)), 'rb'))
 
             ### Load the true data ###
             spks_true, com_true, mov_true, _ = get_spks(animal, day_ix)
 
-            ### Load predicted daata freom the model 
-            spks_pred = 10*model_dict[day_ix, model_nm]
+            if 'analyze_indices' in LOO_dict.keys():
+                an_ind = LOO_dict['analyze_indices']
+            else:
+                an_ind = np.arange(len(spks_true))
+
+            ######## re index #####
+            spks_true = spks_true[an_ind, :]
+            com_true = com_true[an_ind, :]
+            mov_true = mov_true[an_ind]
 
             ### Load shuffled dynamics --> same as shuffled, not with left out shuffled #####
             pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
                 testing_mode = False)
-            pred_spks_shuffle = 10*pred_spks_shuffle; 
+            pred_spks_shuffle = 10*pred_spks_shuffle[an_ind, :, :]; 
 
             ### Go through the items that have been held out: 
             left_outters = LOO_dict.keys()
+            left_outters = [l for l in left_outters if l != 'analyze_indices']
 
             lo_true_all = []
             lo_pred_all = []
             nlo_pred_all = []
             shuff_pred_all = []
 
-            r2_stats_spec = []
+            r2_stats_spec = []; 
+            r2_stats_spec_nlo = [];
 
             for left_out in left_outters: 
 
-                try:
+                if len(LOO_dict[left_out].keys()) == 0:
+                    pass
+                else:
                     #### Get the thing that was left out ###
                     lo_pred = 10*LOO_dict[left_out][-1, -1, -1]
                     lo_ix = LOO_dict[left_out][-1, -1, -1, 'ix']
+
+                    ##### Get predicted spikes ###
+                    spks_pred = 10*NLOO_dict[left_out]['y_pred_nlo']
+                    #spks_pred = spks_pred - 
+                    nneur = spks_pred.shape[1]
 
                     #### Check that these indices corresond to the left out thing; 
                     check_ix_lo(lo_ix, com_true, mov_true, left_out, cat)
@@ -598,10 +724,28 @@ def plot_loo_r2_overall(cat='tsk', yval='err', nshuffs = 100):
 
                     #### r2 stats specific ####
                     tmp,_=yfcn(spks_true[lo_ix, :], spks_pred[lo_ix, :])
-                    r2_stats_spec.append([left_out, tmp])
+                    r2_stats_spec_nlo.append([left_out, tmp])
 
-                except:
-                    assert(len(LOO_dict[left_out].keys()) == 0)
+                    tmp2,_=yfcn(spks_true[lo_ix, :], lo_pred)
+                    r2_stats_spec.append([left_out, tmp2])
+
+                    for i_fold in range(n_folds):
+                        try:
+                            axmn.plot(np.arange(nneur), LOO_dict[left_out][i_fold, 'intc_lo'], '-', color=analysis_config.pref_colors[left_out], linewidth=.5)
+                            axmn.plot(np.arange(nneur), NLOO_dict[left_out][i_fold, 'intc_nlo'], 'k-', linewidth=.5)                    
+                        except:
+                            pass            
+                        hz, decay = plot_pred_fr_diffs.get_ang_td(LOO_dict[left_out][i_fold, 'coef_lo'], plt_evs_gte=.99, dt=0.1)
+                        axeig.plot(decay, hz, '.', color=analysis_config.pref_colors[left_out])
+                        
+                        hz, decay = plot_pred_fr_diffs.get_ang_td(NLOO_dict[left_out][i_fold, 'coef_nlo'], plt_evs_gte=.99, dt=0.1)
+                        axeig.plot(decay, hz, 'k.')
+
+
+            axmn.set_title('%s, day = %d'%(animal, day_ix))
+            axeig.set_title('%s, day = %d'%(animal, day_ix))
+            fmn.tight_layout()
+            feig.tight_layout()
 
             ##### For this day, plot the R2 comparisons #####
             lo_true_all = np.vstack((lo_true_all))
@@ -624,7 +768,12 @@ def plot_loo_r2_overall(cat='tsk', yval='err', nshuffs = 100):
 
             ### Animal specific plot 
             r2_stats_spec = np.vstack((r2_stats_spec))
+            r2_stats_spec_nlo = np.vstack((r2_stats_spec_nlo))
+
             ax_spec[i_a].plot(r2_stats_spec[:, 0], r2_stats_spec[:, 1], '.', 
+                color=analysis_config.pref_colors[day_ix])
+
+            ax_spec[i_a].plot(r2_stats_spec_nlo[:, 0]+.2, r2_stats_spec_nlo[:, 1], '^', 
                 color=analysis_config.pref_colors[day_ix])
 
         ### Vstack r2_stats ####
