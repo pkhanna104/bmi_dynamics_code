@@ -609,9 +609,11 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
     fax_n, ax_n = plt.subplots(figsize=(2, 3))
     fax_p, ax_p = plt.subplots(figsize=(2, 3))
 
+    fax_n_err, ax_n_err = plt.subplots(figsize=(2, 3))
+    fax_p_err, ax_p_err = plt.subplots(figsize=(2, 3))
 
-    for ia, animal in enumerate(['grom', 'jeev']):
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+    for ia, animal in enumerate(['grom']):#, 'jeev']):
+        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
 
             ####### Save the data ##########
             pw_dict = dict(); 
@@ -731,6 +733,8 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
                         dat = np.vstack((pw_dict[n, t]))
                         axi.plot(dat[:, 0], dat[:, 1], 'k.', markersize=2.)
                         
+                        print('Day %d, Animal %s, len(data) %s, %s = %d'%(day_ix, animal, t, n, len(dat)))
+
                         ### Stats on data ###
                         slp,intc,rv,_,_ = scipy.stats.linregress(dat[:, 0], dat[:, 1])
                         err = np.mean(np.abs(dat[:, 0] - dat[:, 1]))
@@ -770,37 +774,53 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
                 util_fcns.savefig(faxpwpop, 'pop_pw_scatter')
 
             ###### Plot the CCs for single neurons adn for population ####
-            ax_ = [ax_n, ax_p]
+            ax_ = [ax_n, ax_p, ax_n_err, ax_p_err]
             for i_t, t in enumerate(['true', 'shuff']):
                 for i_n, n in enumerate(['su', 'pop']): 
                     axi = ax_[i_n]
+                    axi2 = ax_[i_n + 2]
 
                     if t == 'true': 
                         dat = np.vstack((pw_dict_all[n, t]))
                         _,_,rv,_,_ = scipy.stats.linregress(dat[:, 0], dat[:, 1])
                         axi.plot(ia*10+day_ix, rv, '.', color=analysis_config.blue_rgb, markersize=10)
 
+                        #### true / pred ####
+                        mer = mnerr(dat[:, 0], dat[:, 1])
+                        axi2.plot(ia*10 + day_ix, mer, '.', color=analysis_config.blue_rgb, markersize=10)
+
                     elif t == 'shuff': 
-                        rv_shuff = []
+                        rv_shuff = []; er_shuff = []
                         for i_shuff in range(nshuffs):
                             dat = np.vstack((pw_dict_all[n, t, i_shuff]))
                             _,_,rv,_,_ = scipy.stats.linregress(dat[:, 0], dat[:, 1])
                             rv_shuff.append(rv)
+                            er_shuff.append(mnerr(dat[:, 0], dat[:, 1]))
+
                         util_fcns.draw_plot(ia*10+day_ix, rv_shuff, 'k', 
                             np.array([1., 1., 1., 0.]), axi)
 
-    ax_ = [ax_n, ax_p]
+                        util_fcns.draw_plot(ia*10+day_ix, er_shuff, 'k', 
+                            np.array([1., 1., 1., 0.]), axi2)
+
+    ax_ = [ax_n, ax_p, ax_n_err, ax_p_err]
     for axi in ax_:
         axi.set_xlim([-1, 14])
     ax_n.set_ylabel('Corr. Coeff., Neuron Dist.', fontsize=10)
     ax_p.set_ylabel('Corr. Coeff., Pop. Dist.', fontsize=10)
+    ax_n_err.set_ylabel('Avg. Err. Neuron Dist.', fontsize=10)
+    ax_p_err.set_ylabel('Avg. Err. Pop. Dist.', fontsize=10)
 
     fax_n.tight_layout()
     fax_p.tight_layout()
+    fax_n_err.tight_layout()
+    fax_p_err.tight_layout()
 
     util_fcns.savefig(fax_n, 'corr_neuron_diffs')
     util_fcns.savefig(fax_p, 'corr_pop_dist')
-
+    util_fcns.savefig(fax_n_err, 'err_neuron_diffs')
+    util_fcns.savefig(fax_p_err, 'err_pop_diffs')
+    
 ####### Fig 4 Eigenvalue plots ########
 def get_data_EVs(): 
     model_set_number = 6
@@ -1191,6 +1211,18 @@ def nplanm(x, y):
     assert(len(x) == len(y))
     assert(len(x.shape) == len(y.shape))
     return np.linalg.norm(x - y)/float(len(x))
+
+def mnerr(true, pred):
+    '''
+    each dot is a population (or single neuron) distance; 
+    each is a pairwise comparison
+    '''
+    assert(len(pred) == len(true))
+
+    ### Average error in units of pred/true
+    err = np.mean(np.abs(np.array(true)-np.array(pred)))
+
+    return err 
 
 #### Fig 4 neural behavior correlations #####
 def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshuffs = 1, 
