@@ -105,6 +105,74 @@ def err(y_true, y_pred):
     n = float(y_true.shape[1])
     return np.mean(np.linalg.norm(y_true-y_pred, axis=1)/n), np.std(np.linalg.norm(y_true-y_pred, axis=1)/n)
 
+def get_spks(animal, day_ix):
+    spks0, push, _, _, _, _, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+    spks0 = 10*spks0; 
+
+    #### Get subsampled
+    tm0, _ = generate_models.get_temp_spks_ix(dat['Data'])
+
+    ### Get subsampled 
+    spks_sub = spks0[tm0, :]
+    push_sub = push[tm0, :]
+    move_sub = move[tm0]
+
+    ### Get command bins 
+    command_bins = util_fcns.commands2bins([push_sub], mag_boundaries, animal, day_ix, 
+                                       vel_ix=[3, 5])[0]
+
+
+    return spks_sub, command_bins, move_sub
+
+def lo_in_key(lo_key, lo_val, cat):
+        """check where the left out value (lo_val)
+        corresponds to the key of the saved predictions (lo_key)
+        
+        Parameters
+        ----------
+        lo_key : tuple? 
+            key of saved preditions 
+        lo_val : str
+            value corresponding to left out thing 
+        cat : str
+            category of left out thing (tsk/mov/com)
+        
+        Returns
+        -------
+        TYPE
+            Description
+        """
+        in_key = False 
+
+        if cat == 'tsk':
+            if lo_key[2] >= 10. and int(lo_val) == 1:
+                in_key = True
+            elif lo_key[2] < 10. and int(lo_val) == 0:
+                in_key = True
+        elif cat == 'mov':
+            if lo_key[2] == lo_val:
+                in_key = True
+        elif cat == 'com':
+            if lo_key[0]*8 + lo_key[1] == lo_val:
+                in_key = True
+
+        return in_key
+
+def check_ix_lo(lo_ix, com_true, mov_true, left_out, cat):
+    
+    if cat == 'tsk':
+        if left_out == 0.:  
+            assert(np.all(mov_true[lo_ix] < 10))
+        elif left_out == 1.:
+            assert(np.all(mov_true[lo_ix] >= 10.))
+    
+    elif cat == 'mov':
+        assert(np.all(mov_true[lo_ix] == left_out))
+    
+    elif cat == 'com':
+        assert(np.all(com_true[lo_ix, 0]*8 + com_true[lo_ix, 1] == left_out))
+
+
 #### model fitting utls ###########
 def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG):
     """Summary
@@ -415,14 +483,15 @@ def fit_predict_loo_model(cat='tsk', n_folds = 5, min_num_per_cat_lo = 15,
             LOO_dict = {}
 
             for lo in leave_out_cats: 
-                LOO_dict[lo] = {}
-
-                y_pred = np.zeros_like(spks_tm0) + np.nan
-    
+   
                 #### Which indices must be removed from all training sets? 
                 ix_rm = np.nonzero(data_temp[leave_out_field] == lo)[0]
 
                 if len(ix_rm) >= min_num_per_cat_lo: 
+
+                    LOO_dict[lo] = {}
+
+                    y_pred = np.zeros_like(spks_tm0) + np.nan
 
                     #### Go through the train_ix and remove the particualr thing; 
                     for i_fold in range(5):
@@ -448,19 +517,115 @@ def fit_predict_loo_model(cat='tsk', n_folds = 5, min_num_per_cat_lo = 15,
                                 mc = np.where((data_temp['com'] == mag*8 + ang) & (data_temp['mov'] == mov))
                                 assert(type(mc) is tuple)
                                 mc = mc[0]
-                                
                                 if len(mc) >= 15:
                                     LOO_dict[lo][mag, ang, mov] = y_pred[mc, :].copy()
                                     LOO_dict[lo][mag, ang, mov, 'ix'] = mc.copy()
 
+                    #### Also generally save the indices of the thing you left out of training; 
+                    LOO_dict[lo][-1, -1, -1] = y_pred[ix_rm, :].copy()
+                    LOO_dict[lo][-1, -1, -1, 'ix'] = ix_rm.copy()
+
                 #### Save this LOO ####
             pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'wb'))
 
-def plot_loo_model(): 
+def plot_loo_r2_overall(cat='tsk', yval='err'): 
     '''
     For each model type lets plot the held out data vs real data correlations 
-        -- Also the R2? 
-        -- Another way to 
     ''' 
+    if yval == 'err':
+        yfcn = err; 
+
+    elif yval == 'r2':
+        yfcn = r2; 
+
+    model_set_number = 6
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'    
+
+    f, ax = plt.subplots()
+    f_spec, ax_spec = plt.subplots(ncols = 2); 
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
+        model_dict = pickle.load(open(model_fname, 'rb'))
+
+        r2_stats = []
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            ### Load the category dictonary: 
+            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'rb'))
+
+            ### Load the true data ###
+            spks_true, com_true, mov_true = get_spks(animal, day_ix)
+            spks_pred = 10*model_dict[day_ix, model_nm]
+
+            ### Go through the items that have been held out: 
+            left_outters = LOO_dict.keys()
+
+            lo_true_all = []
+            lo_pred_all = []
+            nlo_pred_all = []
+
+            r2_stats_spec = []
+
+            for left_out in left_outters: 
+
+                try:
+                    #### Get the thing that was left out ###
+                    lo_pred = 10*LOO_dict[left_out][-1, -1, -1]
+                    lo_ix = LOO_dict[left_out][-1, -1, -1, 'ix']
+
+                    #### Check that these indices corresond to the left out thing; 
+                    check_ix_lo(lo_ix, com_true, mov_true, left_out, cat)
+
+                    lo_pred_all.append(lo_pred)
+                    lo_true_all.append(spks_true[lo_ix, :])
+                    nlo_pred_all.append(spks_pred[lo_ix, :])
+
+                    #### r2 stats specific ####
+                    tmp,_=yfcn(spks_true[lo_ix, :], spks_pred[lo_ix, :])
+                    r2_stats_spec.append([left_out, tmp])
+
+                except:
+                    assert(len(LOO_dict[left_out].keys()) == 0)
+
+            ##### For this day, plot the R2 comparisons #####
+            lo_true_all = np.vstack((lo_true_all))
+            lo_pred_all = np.vstack((lo_pred_all))
+            nlo_pred_all = np.vstack((nlo_pred_all))
+
+            r2_pred, _ = yfcn(lo_true_all, lo_pred_all)
+            r2_pred_lo, _ = yfcn(lo_true_all, nlo_pred_all)
+            
+            r2_stats.append([r2_pred_lo, r2_pred])
+            ax.plot([3*i_a, (3*i_a) + 1], [r2_pred_lo, r2_pred], '-', color='gray', linewidth=0.5)
+
+            ### Animal specific plot 
+            r2_stats_spec = np.vstack((r2_stats_spec))
+            ax_spec[i_a].plot(r2_stats_spec[:, 0], r2_stats_spec[:, 1], '.', 
+                color=analysis_config.pref_colors[day_ix])
+
+        ### Vstack r2_stats ####
+        r2_stats = np.vstack((r2_stats))
+        assert(r2_stats.shape[0] == len(range(analysis_config.data_params['%s_ndays'%animal])))
+        assert(r2_stats.shape[1] == 2)
+
+        r2_stats = np.mean(r2_stats, axis=0)
+        assert(len(r2_stats) == 2)
+        ax.bar(3*i_a, r2_stats[0], width=0.8, color='k', alpha=.2)
+        ax.bar((3*i_a)+1, r2_stats[1], width=0.8, color='k', alpha=.2)
+
+        #### Plot task-specific ####
+        ax_spec[i_a].set_ylabel(yval)
+        ax_spec[i_a].set_xlabel('Diff %s s'%(cat))
+
+
+    ax.set_title('Held out category: %s' %cat)
+    ax.set_ylabel(yval)
+    ax.set_xticks([0, 1, 3, 4])
+    ax.set_xticklabels(['Dyn\nG', 'H-O Dyn\nG', 'Dyn\nJ', 'H-O Dyn\nJ'], rotation=45)
+    f.tight_layout()
+    f_spec.tight_layout()
 
 
