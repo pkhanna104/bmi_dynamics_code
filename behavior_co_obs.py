@@ -1239,6 +1239,12 @@ def preprocess_bmi_df(df, target_pos, num_prefix, num_tasks, num_targets):
     #CW vs CCW:
     df_determine_cw_ccw(df, target_pos)     
 
+def df_bmi_cartesian2polar(df):
+    df['p_mag'], df['p_angle'] = cartesian2polar(df['kin_py'], df['kin_px'])
+    df['v_mag'], df['v_angle'] = cartesian2polar(df['kin_vy'], df['kin_vx'])
+    df['u_p_mag'], df['u_p_angle'] = cartesian2polar(df['u_py'], df['u_px'])
+    df['u_v_mag'], df['u_v_angle'] = cartesian2polar(df['u_vy'], df['u_vx'])
+
 
 def df_determine_cw_ccw(df, target_pos):
     #Identify if each trajectory is more clockwise or counterclockwise around the axis from center to target: 
@@ -2257,7 +2263,8 @@ def def_nk_lqr_models(inf_horizon, T, model_list, A_dic, B, Q, Q_f, R):
             lqr_m[k]['K'] = K         
     return lqr_m
 
-def def_move_models(move_horizon, model_list, A_dic, B, Q, R, Q_f, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed, state_dim, num_neurons):
+def def_move_models(move_horizon, model_list, A_dic, B, Q, R, Q_f, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed,\
+    state_label, state_dim, input_label, num_neurons, hold_req=2, target_r=1.7):
     """
     (set move_horizon to be odd, so co and obs movements can be the same length)
     for each movement model: 
@@ -2314,7 +2321,8 @@ def def_move_models(move_horizon, model_list, A_dic, B, Q, R, Q_f, target_list, 
                     K_list.append(K)
 
                 #Simulate: 
-
+                u_da, state_da, state_e_da, move_len, sim_len = \
+                lqr_sim_nk(A_e_list, B, K_list, state_init, state_T_list, horizon_list, state_label, input_label, num_neurons, hold_req=2, target_r=1.7)
 
                 #ASSIGN:                
                 move_lqr[target, task, m] = {}
@@ -2322,11 +2330,18 @@ def def_move_models(move_horizon, model_list, A_dic, B, Q, R, Q_f, target_list, 
                 move_lqr[target, task, m]['state_T_list'] = state_T_list
                 move_lqr[target, task, m]['horizon_list'] = horizon_list
                 move_lqr[target, task, m]['K_list'] = K_list
+                move_lqr[target, task, m]['A'] = A_dic[m]
                 move_lqr[target, task, m]['A_e_list'] = A_e_list
                 move_lqr[target, task, m]['B'] = B
                 move_lqr[target, task, m]['Q'] = Q
                 move_lqr[target, task, m]['Q_f'] = Q_f
                 move_lqr[target, task, m]['R'] = R
+                #simulations:
+                move_lqr[target, task, m]['u_da'] = u_da
+                move_lqr[target, task, m]['state_da'] = state_da
+                move_lqr[target, task, m]['state_e_da'] = state_e_da
+                move_lqr[target, task, m]['move_len'] = move_len
+                move_lqr[target, task, m]['sim_len'] = sim_len
     return move_lqr
 
 
@@ -2436,9 +2451,9 @@ def def_movements_for_nk_lqr(target_list, task_list, center, target_pos, obs_pos
 
     return move_lqr
 
-def lqr_sim_nk(A_list, B, K_list, state_init, state_T_list, horizon_list, state_label, hold_req=2, target_r=1.7):
+def lqr_sim_nk(A_list, B, K_list, state_init, state_T_list, horizon_list, state_label, input_label, num_neurons, hold_req=2, target_r=1.7):
     """
-    To Do:
+    
     """
     
     #Simulate trial: 
@@ -2448,32 +2463,38 @@ def lqr_sim_nk(A_list, B, K_list, state_init, state_T_list, horizon_list, state_
 
     num_seg = len(horizon_list)
     state_list = []
+    state = copy.copy(state_init)
+    state_list.append(state)    
+
     state_e_list = []
     u_list = []
 
-    for i in range(num_seg):
+    #Loop segements
+    # num_seg = 1
+    seg_last = num_seg-1
+    for seg in range(num_seg):
         #Initialize:
-        state_T = state_T_list[i]
-        A = A_list[i]
-        K = K_list[i]
+        state_T = state_T_list[seg]
+        A = A_list[seg]
+        K = K_list[seg]
 
-        #Starting state of this segment:
-        if i==0:
-            state = copy.copy(state_init)
-            state_list.append(state)
-        else:
-            state = state_master[i-1][-1] #load state from last segment
+        #Starting state e of this segment:
         state_e = state-state_T
         state_e_list.append(state_e)
 
-        for t in range(0,horizon_list[i]-1):
+        #Iterate samples within the segment
+        #Adds h-1 samples.
+        t_last = horizon_list[seg]-2
+        for t in range(0,t_last+1):
             u = K[0,t]*state_e
             u_list.append(u)
 
             #Calculate state_e
             state_e = A*state_e + B*u
-            if (t < (horizon_list[i]-1)) or (i==(num_seg-1)):
+            if not (t==t_last):
                 state_e_list.append(state_e) #only append if it's not the last error, or if it's the last segment
+            elif seg==seg_last:
+                state_e_list.append(state_e) #only append if it's not the last error, or if it's the last segmen
 
             #Calculate state: 
             state = state_e + state_T
@@ -2481,23 +2502,29 @@ def lqr_sim_nk(A_list, B, K_list, state_init, state_T_list, horizon_list, state_
 
             if not trial_complete:
                 sim_len+=1
-                dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
-                if dist2target <= target_r:
-                    hold_i+=1
-                else:
-                    hold_i=0
-                if(hold_i>=hold_req):
-                    trial_complete = True
-        state_master.append(state_list)
-        state_e_master.append(state_e_list)
-        state_master.append(state_list)
+                #If in last segment, check when sim ends: 
+                if (seg==(num_seg-1)):
+                    dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
+                    if dist2target <= target_r:
+                        hold_i+=1
+                    else:
+                        hold_i=0
+                    if(hold_i>=hold_req):
+                        trial_complete = True
 
-    #TODO: complete this section
-    move_len = sum(horizon_list)
+    move_len = sum(horizon_list)-num_seg+1
     #state error:
     state_e_mat = np.array(state_e_list).squeeze().T
-    state_e_da = xr.DataArray(state_e_mat, coords={'v':state_label,'obs':np.arange(T)}, dims=['v', 'obs'])
-    return 
+    state_e_da = xr.DataArray(state_e_mat, coords={'v':state_label,'obs':np.arange(move_len)}, dims=['v', 'obs'])
+    #state:
+    state_mat = np.array(state_list).squeeze().T
+    state_da = xr.DataArray(state_mat, coords={'v':state_label,'obs':np.arange(move_len)}, dims=['v', 'obs'])    
+    #:
+    u_mat = np.array(u_list).squeeze().T
+    u_da = xr.DataArray(u_mat, coords={'v':input_label,'obs':np.arange(move_len-1)}, dims=['v', 'obs'])    
+
+    return u_da, state_da, state_e_da, move_len, sim_len
+    # return u_list, state_list, state_e_list
 
 
 
