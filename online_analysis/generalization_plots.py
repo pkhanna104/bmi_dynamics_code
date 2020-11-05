@@ -237,6 +237,9 @@ def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG,
             cnt += len(ixx)
         assert(cnt == len(test))
 
+    return add_cond(y_train, y_train_est, X_train, KG, y_test_pred, push_test, model)
+
+def add_cond(y_train, y_train_est, X_train, KG, y_test_pred, push_test, model):
     ### Row is a variable, column is an observation for np.cov
     W = np.cov((y_train - y_train_est).T)
     assert(W.shape[0] == X_train.shape[1])
@@ -247,7 +250,7 @@ def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG,
     cov22 = np.dot(KG, np.dot(W, KG.T))
     cov22I = np.linalg.inv(cov22)
 
-    T = len(test)
+    T = y_test_pred.shape[0]
 
     pred_w_cond = []
     
@@ -272,11 +275,48 @@ def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG,
 
     return np.vstack((pred_w_cond)), model.coef_, model.intercept_
 
+class Mod(object):
+    def __init__(self, A, b):
+        self.coef_ = A 
+        self.intercept_ = b
+
+def train_spec_b(spks_tm1, spks, push, train, test, KG, Agen):
+    X_train = spks_tm1[train, :]
+    X_test = spks_tm1[test, :]
+    
+    push_test = push[test, :]
+    y_train = spks[train, :]
+
+    ### Estimate y_t - Ay_{t-1}
+    rez = y_train - np.dot(Agen, X_train.T).T
+    B = np.mean(rez, axis=0) 
+    y_train_est = np.dot(Agen, X_train.T).T + B[np.newaxis, :]
+    y_test_pred = np.dot(Agen, X_test.T).T + B[np.newaxis, :]
+
+    model = Mod(Agen, B)
+
+    return add_cond(y_train, y_train_est, X_train, KG, y_test_pred, push_test, model)
+
 def get_com(tby2_push, animal, day_ix):
     command_bins = util_fcns.commands2bins([tby2_push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[0, 1])[0]
     return command_bins[:, 0]*8 + command_bins[:, 1]
 
+def save_ax_cc_err(ax, ax_err, f, f_err, cat):
+    ax.set_xlim([-1, 14])
+    ax.set_xticks([])
+    ax.set_ylabel('Corr Coeff')
+
+    ax_err.set_xlim([-1, 14])
+    ax_err.set_xticks([])
+    ax_err.set_ylabel('Err')
+
+    f.tight_layout()
+    f_err.tight_layout()
+
+    util_fcns.savefig(f, '%s_lo_pop_dist_rv'%cat)
+    util_fcns.savefig(f_err, '%s_lo_pop_dist_err'%cat)
+    
 ######## Bar plots by task / target / command ##########
 def plot_err_by_cat(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', yval = 'err',
     run_f_test = True): 
@@ -454,7 +494,7 @@ def plot_err_by_cat(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', yval = 'err',
 ######## Fit general model ############
 def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False, 
     n_folds = 5, min_num_per_cat_lo = 15, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
-    model_set_number = 6, match_command_dist = False):
+    model_set_number = 6, match_command_dist = False, zero_alpha=False, tsk_spec_alphas=False):
 
     """Summary
     
@@ -473,10 +513,12 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
     leave_out_cats = cat_dict[cat][1]
 
     ### get the right alphase for the model ####
+    if tsk_spec_alphas:
+        ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'tsk_spec_alphas.pkl'), 'rb')); 
+    else:
+        ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'] , 'max_alphas_ridge_model_set%d.pkl'%model_set_number), 'rb')); 
 
-    ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'] , 'max_alphas_ridge_model_set%d.pkl'%model_set_number), 'rb')); 
-
-    for i_a, animal in enumerate(['jeev']):#grom', 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
         input_type = analysis_config.data_params['%s_input_type'%animal]
         ord_input_type = analysis_config.data_params['%s_ordered_input_type'%animal]
@@ -486,7 +528,15 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
             print('Starting %s, Day %d' %(animal, day_ix))
 
             #### Get ridge alpha ####
-            alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
+            if zero_alpha:
+                alpha_spec = 1.
+            elif tsk_spec_alphas:
+                #### Alphas if fitting on Co / OBS = [ridge_dict[animal, day_ix, 0], ridge_dict[animal, day_ix, 1]] 
+                #### Alphase if leaving out CO / OBS = [ridge_dict[animal, day_ix, 1], ridge_dict[animal, day_ix, 0]] 
+                alpha_spec_list = [ridge_dict[animal, day_ix, 1], ridge_dict[animal, day_ix, 0]] 
+            else:
+                alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
+
             KG = util_fcns.get_decoder(animal, day_ix)
 
             #### Get data ####
@@ -509,6 +559,9 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
             spks_tm1 = sub_spk_temp_all[:, 0, :]
             spks_tm0 = sub_spk_temp_all[:, 1, :]
             
+            LOO_dict = {}
+            LOO_dict_ctrl = {}
+
             ############# Estimate command dist diffs?  ###############
             if match_command_dist:
                 ix_tsk0 = np.nonzero(data_temp['tsk']==0)[0]
@@ -519,13 +572,12 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
                 analyze_indices = np.hstack(( ix_tsk0[ix_keep1], ix_tsk1[ix_keep2] ))
 
                 ############ Re-index everything ###########################
-                tmp_dict = {}
-                for k in data_temp.keys():
-                    tmp_dict[k] = np.array(data_temp[k][analyze_indices])
-                data_temp = pandas.DataFrame(tmp_dict)
+                data_temp = subsampPd(data_temp, analyze_indices)
                 spks_tm0 = spks_tm0[analyze_indices, :]
                 spks_tm1 = spks_tm1[analyze_indices, :]
                 push_tm0 = push_tm0[analyze_indices, :]
+                LOO_dict['analyze_indices'] = analyze_indices
+                LOO_dict_ctrl['analyze_indices'] = analyze_indices
 
             ############ Mean subtraction -- task specifci ######
             if mean_sub_tsk_spec:
@@ -550,11 +602,6 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
             test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
 
             #### setup data storage 
-            LOO_dict = {}
-            LOO_dict['analyze_indices'] = analyze_indices
-            LOO_dict_ctrl = {}
-            LOO_dict_ctrl['analyze_indices'] = analyze_indices
-
             for lo in leave_out_cats: 
    
                 #### Which indices must be removed from all training sets? 
@@ -572,6 +619,9 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
                     y_pred_lo  = np.zeros_like(spks_tm0) + np.nan
                     y_pred_nlo = np.zeros_like(spks_tm0) + np.nan
 
+                    if tsk_spec_alphas:
+                        alpha_spec = alpha_spec_list[int(lo)]
+
                     #### Go through the train_ix and remove the particualr thing; 
                     for i_fold in range(n_folds):
                         
@@ -581,7 +631,7 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
                         #### removes indices 
                         train_fold_lo = np.array([ i for i in train_fold_full if i not in ix_rm])
                         
-                        print('Starting fold %d for LO %1.f, training pts = %d' %(i_fold, lo, len(train_fold_lo)))
+                        print('Starting fold %d for LO %1.f, training pts = %d, alpha %.1f' %(i_fold, lo, len(train_fold_lo), alpha_spec))
 
                         #### randomly remove indices 
                         train_fold_nlo = np.array([i for i in train_fold_full if i not in ix_rm_rand])
@@ -627,14 +677,200 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
 
                 #### Save this LOO ####
             if mean_sub_tsk_spec:
-                pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d_tsksub.pkl'%(cat, animal, day_ix)), 'wb'))
-                pickle.dump(LOO_dict_ctrl, open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d_tsksub.pkl'%(cat, animal, day_ix)), 'wb'))
-
+                ext1 = '_tsksub'
             else:
-                pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'wb'))
-                pickle.dump(LOO_dict_ctrl, open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'wb'))
+                ext1 = ''
 
-def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, yval='err', nshuffs = 100, n_folds = 5): 
+            if zero_alpha:
+                ext2 = '_zeroalph'
+            elif tsk_spec_alphas:
+                ext2 = '_tskalph'
+            else:
+                ext2 = ''
+
+            pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext1, ext2)), 'wb'))
+            pickle.dump(LOO_dict_ctrl, open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext1, ext2)), 'wb'))
+
+######## Fit move group model #####
+def fit_predict_lomov_model(min_num_per_cat_lo = 15, 
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6):
+
+    """Summary
+    
+    Parameters
+    ----------
+    cat : str, optional
+        Description
+    """
+    cat_dict = {}
+    cat_dict['vert']     = dict(grom=[1., 5., 11.0, 11.1, 15.0, 15.1], jeev=[2.0, 6.0, 12.0, 12.1, 13.0, 13.1, 14.0, 14.1, 15.0, 15.1])
+    cat_dict['horz']     = dict(grom=[3., 7., 13.0, 13.1, 17.0, 17.1], jeev=[0.0, 4.0, 18.0, 18.1, 19.0, 19.1])
+    cat_dict['diag_pos'] = dict(grom=[0., 4., 10.0, 10.1, 14.0, 14.1], jeev=[1.0, 5.0, 16.0, 16.1])
+    cat_dict['diag_neg'] = dict(grom=[2., 6., 12.0, 12.1, 16.0, 16.1])
+    
+    ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'] , 'max_alphas_ridge_model_set%d.pkl'%model_set_number), 'rb')); 
+
+    for cat_ in cat_dict.keys(): 
+
+        animals = cat_dict[cat_].keys()
+        f, ax = plt.subplots()
+        ax.set_title(cat_)
+
+        ##### cycle through the animals for this ###
+        for i_a, animal in enumerate(animals):
+
+            input_type = analysis_config.data_params['%s_input_type'%animal]
+            ord_input_type = analysis_config.data_params['%s_ordered_input_type'%animal]
+            mov_train = cat_dict[cat_][animal]
+
+            model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(6)+'_.pkl'
+            model_dict = pickle.load(open(model_fname, 'rb'))
+            model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'
+
+            for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+                print('Starting %s, Day %d Mov Cat %s' %(animal, day_ix, cat_))
+
+                alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
+
+                KG = util_fcns.get_decoder(animal, day_ix)
+
+                # #### Get data ####
+                data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, input_type[day_ix], 
+                    ord_input_type[day_ix], 1, within_bin_shuffle = False, day_ix = day_ix, skip_plot = True)
+
+                ### Load predicted data freom the model 
+                spks_pred = model_dict[day_ix, model_nm]
+
+                # ############## Data checking ##############
+                nneur = sub_spikes.shape[1]
+                for n in range(nneur):
+                    assert(np.allclose(sub_spk_temp_all[:, 0, n], data_temp['spk_tm1_n%d'%n]))
+                    assert(np.allclose(sub_spk_temp_all[:, 1, n], data_temp['spk_tm0_n%d'%n]))
+
+                push_tm0 = np.vstack((data_temp['pshx_tm0'], data_temp['pshy_tm0'])).T
+
+                # #### Add teh movement category ###
+                data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
+                
+                ############## Get subspikes ##############
+                spks_tm1 = sub_spk_temp_all[:, 0, :]
+                spks_tm0 = sub_spk_temp_all[:, 1, :]
+                
+                LOO_dict = {}
+                LOO_dict_ctrl = {}
+
+                train_ix = []; N = push_tm0.shape[0]
+                for mt in mov_train:
+                    ix_mt = np.nonzero(data_temp['mov'] == mt)[0]
+                    if len(ix_mt) > 0:
+                        train_ix.append(ix_mt)
+
+                ##### Train / Test #####
+                train_ix = np.sort(np.hstack((train_ix)))
+                test_ix = np.array([i for i in range(N) if i not in train_ix])
+                
+                ##### Model fitting; #####
+                y_lo_pred, _, _ = train_and_pred(spks_tm1, spks_tm0, push_tm0,
+                    train_ix, test_ix, alpha_spec, KG)
+                
+                y_std_pred = spks_pred[test_ix, :]
+
+                r2_lo = util_fcns.get_R2(spks_tm0[test_ix, :], y_lo_pred)
+                r2_std = util_fcns.get_R2(spks_tm0[test_ix, :], y_std_pred)
+                ax.plot(i_a*10 + day_ix - 0.1, r2_lo, '.', color='purple')
+                ax.plot(i_a*10 + day_ix + 0.1, r2_std, '.', color=analysis_config.blue_rgb)
+        ax.set_xlim([-1, 14])
+        ax.set_xticks([])
+        f.tight_layout()
+                
+def get_tsk_spec_alpha(n_folds=5):
+    alphas = [np.arange(10, 100, 10), np.arange(100, 1000, 100), np.arange(1000, 10000, 1000)]; 
+    # for i in range(-4, 7):
+    #     alphas.append((1./4)*10**i)
+    #     alphas.append((2./4.)*10**i)
+    #     alphas.append((3./4.)*10**i)
+    #     alphas.append(1.*10**i)
+    alphas = np.hstack((alphas))
+    alphas = alphas.astype(float)
+
+    max_alpha = {}
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        input_type = analysis_config.data_params['%s_input_type'%animal]
+        ord_input_type = analysis_config.data_params['%s_ordered_input_type'%animal]
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+            
+            print('Starting %s, Day %d' %(animal, day_ix))
+            KG = util_fcns.get_decoder(animal, day_ix)
+
+            #### Get data ####
+            data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, input_type[day_ix], 
+            ord_input_type[day_ix], 1, within_bin_shuffle = False, day_ix = day_ix, skip_plot = True)
+            
+            ############## Data checking ##############
+            nneur = sub_spikes.shape[1]
+            for n in range(nneur):
+                assert(np.allclose(sub_spk_temp_all[:, 0, n], data_temp['spk_tm1_n%d'%n]))
+                assert(np.allclose(sub_spk_temp_all[:, 1, n], data_temp['spk_tm0_n%d'%n]))
+            
+            ############## Get subspikes ##############
+            push_tm0 = np.vstack((data_temp['pshx_tm0'], data_temp['pshy_tm0'])).T
+            spks_tm1 = sub_spk_temp_all[:, 0, :]
+            spks_tm0 = sub_spk_temp_all[:, 1, :]
+            
+            ### Specifically for task ####
+            for tsk in [0, 1]: 
+                r2_alph = np.zeros_like(alphas)
+
+                #### Which indices must be removed from all training sets? 
+                ix_keep = np.nonzero(data_temp['tsk'] == tsk)[0]
+   
+                #### Make 5 folds --> all must exclude the thing you want to exclude, but distribute over the test set; 
+                test_ix, train_ix = generate_models_utils.get_training_testings(n_folds, subsampPd(data_temp, ix_keep))
+                push_tm0_tsk = push_tm0[ix_keep, :]
+                spks_tm1_tsk = spks_tm1[ix_keep, :]
+                spks_tm0_tsk = spks_tm0[ix_keep, :]
+                
+                for ialpha, alpha_spec in enumerate(alphas):
+                    
+                    y_pred_lo  = np.zeros_like(spks_tm0_tsk) + np.nan
+                    print('Starting alpha%.1f tsk %1.f, training pts = %d' %(alpha_spec, tsk, len(train_ix[0])))
+                    #### Go through the train_ix and remove the particualr thing; 
+                    for i_fold in range(n_folds):
+                        
+                        train_fold_full = train_ix[i_fold]
+                        test_fold  = test_ix[i_fold]
+
+                       #### train the model and predict held-out data ###
+                        y_pred_lo[test_fold, :], coef, intc = train_and_pred(spks_tm1_tsk, spks_tm0_tsk, push_tm0_tsk, 
+                            train_fold_full, test_fold, alpha_spec, KG)
+
+                    #### Get the r2 of held out data ###
+                    r2_alph[ialpha] = util_fcns.get_R2(spks_tm0_tsk, y_pred_lo)
+
+                #### Get the max alpha ###
+                print('%s, %d, tsk=%d, '%(animal, day_ix, tsk))
+                print(r2_alph)
+
+                ix_max = np.argmax(r2_alph)
+                max_alpha[animal, day_ix, tsk] = alphas[ix_max]
+                max_alpha[animal, day_ix, tsk, 'N_trn'] = len(train_fold_full)
+
+    #### Save max_alpha ###
+    pickle.dump(max_alpha, open(os.path.join(analysis_config.config['grom_pref'], 'tsk_spec_alphas.pkl'), 'wb'))
+
+def subsampPd(dat, ix_keep):
+    ############ Re-index everything ###########################
+    tmp_dict = {}
+    for k in dat.keys():
+        tmp_dict[k] = np.array(dat[k][ix_keep])
+    return pandas.DataFrame(tmp_dict)
+
+def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False,
+    tsk_spec_alphas = False, yval='err', nshuffs = 100, n_folds = 5, plot_eig = False): 
     '''
     For each model type lets plot the held out data vs real data correlations 
     ''' 
@@ -647,27 +883,35 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, yval='err', nshuff
     model_set_number = 6
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'    
 
-    f, ax = plt.subplots(figsize=(4, 3))
+    f, ax = plt.subplots(figsize=(3, 3))
     f_spec, ax_spec = plt.subplots(ncols = 2); 
 
-    for i_a, animal in enumerate(['jeev']):#grom', 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
         r2_stats = []
 
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
-            fmn, axmn = plt.subplots()
-            feig, axeig = plt.subplots()
+            if plot_eig:
+                fmn, axmn = plt.subplots()
+                feig, axeig = plt.subplots()
 
             if mean_sub_tsk_spec:
                 ext = '_tsksub'
             else:
                 ext = ''
 
-            NLOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s.pkl'%(cat, animal, day_ix, ext)), 'rb'))
+            if zero_alpha:
+                ext2 = '_zeroalph'
+            elif tsk_spec_alphas:
+                ext2 = '_tskalph'
+            else:
+                ext2 = ''
+
+            NLOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext, ext2)), 'rb'))
 
             ### Load the category dictonary: 
-            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s.pkl'%(cat, animal, day_ix, ext)), 'rb'))
+            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext, ext2)), 'rb'))
 
             ### Load the true data ###
             spks_true, com_true, mov_true, _ = get_spks(animal, day_ix)
@@ -728,23 +972,24 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, yval='err', nshuff
                     tmp2,_=yfcn(spks_true[lo_ix, :], lo_pred)
                     r2_stats_spec.append([left_out, tmp2])
 
-                    for i_fold in range(n_folds):
-                        try:
-                            axmn.plot(np.arange(nneur), LOO_dict[left_out][i_fold, 'intc_lo'], '-', color=analysis_config.pref_colors[left_out], linewidth=.5)
-                            axmn.plot(np.arange(nneur), NLOO_dict[left_out][i_fold, 'intc_nlo'], 'k-', linewidth=.5)                    
-                        except:
-                            pass            
-                        hz, decay = plot_pred_fr_diffs.get_ang_td(LOO_dict[left_out][i_fold, 'coef_lo'], plt_evs_gte=.99, dt=0.1)
-                        axeig.plot(decay, hz, '.', color=analysis_config.pref_colors[left_out])
-                        
-                        hz, decay = plot_pred_fr_diffs.get_ang_td(NLOO_dict[left_out][i_fold, 'coef_nlo'], plt_evs_gte=.99, dt=0.1)
-                        axeig.plot(decay, hz, 'k.')
+                    if plot_eig:
+                        for i_fold in range(n_folds):
+                            try:
+                                axmn.plot(np.arange(nneur), LOO_dict[left_out][i_fold, 'intc_lo'], '-', color=analysis_config.pref_colors[left_out], linewidth=.5)
+                                axmn.plot(np.arange(nneur), NLOO_dict[left_out][i_fold, 'intc_nlo'], 'k-', linewidth=.5)                    
+                            except:
+                                pass            
+                            hz, decay = plot_pred_fr_diffs.get_ang_td(LOO_dict[left_out][i_fold, 'coef_lo'], plt_evs_gte=.99, dt=0.1)
+                            axeig.plot(decay, hz, '.', color=analysis_config.pref_colors[left_out])
+                            
+                            hz, decay = plot_pred_fr_diffs.get_ang_td(NLOO_dict[left_out][i_fold, 'coef_nlo'], plt_evs_gte=.99, dt=0.1)
+                            axeig.plot(decay, hz, 'k.')
 
-
-            axmn.set_title('%s, day = %d'%(animal, day_ix))
-            axeig.set_title('%s, day = %d'%(animal, day_ix))
-            fmn.tight_layout()
-            feig.tight_layout()
+            if plot_eig:
+                axmn.set_title('%s, day = %d'%(animal, day_ix))
+                axeig.set_title('%s, day = %d'%(animal, day_ix))
+                fmn.tight_layout()
+                feig.tight_layout()
 
             ##### For this day, plot the R2 comparisons #####
             lo_true_all = np.vstack((lo_true_all))
@@ -762,7 +1007,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, yval='err', nshuff
             
             r2_stats.append([r2_pred_lo, r2_pred_nlo])
             ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=analysis_config.blue_rgb, markersize=10)
-            ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='green', markersize=10)
+            ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='purple', markersize=10)
             util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
 
             ### Animal specific plot 
@@ -793,6 +1038,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, yval='err', nshuff
     ax.set_title('Cat: %s' %cat)
     ax.set_ylabel(yval)
     ax.set_xlim([-1, 14])
+    ax.set_xticks([])
     #ax.set_xticks([0, 1, 3, 4])
     #ax.set_xticklabels(['Dyn\nG', 'H-O Dyn\nG', 'Dyn\nJ', 'H-O Dyn\nJ'], rotation=45)
     f.tight_layout()
@@ -800,6 +1046,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, yval='err', nshuff
 
     util_fcns.savefig(f, 'held_out_cat%s'%cat)
 
+######## Plot whether the move-speicfic command activity has the right structure #####
 def plot_pop_dist_corr_COMMAND(nshuffs=2, min_commands = 15): 
     cat = 'com'
     model_set_number = 6
@@ -1053,21 +1300,131 @@ def plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff
         er_shuff.append(plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_shuff[i]))
     util_fcns.draw_plot(xpos, er_shuff, 'k', np.array([1., 1., 1., 0.]), ax_err)
 
-def save_ax_cc_err(ax, ax_err, f, f_err, cat):
-    ax.set_xlim([-1, 14])
-    ax.set_xticks([])
-    ax.set_ylabel('Corr Coeff')
+######## Test whether activity is move specific or not ##############
+def move_spec_dyn(n_folds=5, zero_alpha = False):
+    ''' 
+    method to test whether movements can be better explained by 
+    mov-specific or general dynamics 
 
-    ax_err.set_xlim([-1, 14])
-    ax_err.set_xticks([])
-    ax_err.set_ylabel('Err')
+    try to match the training data sizes 
+    ''' 
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'
+    model_set_number = 6 
+    ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'] , 'max_alphas_ridge_model_set%d.pkl'%model_set_number), 'rb')); 
 
-    f.tight_layout()
-    f_err.tight_layout()
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
-    util_fcns.savefig(f, '%s_lo_pop_dist_rv'%cat)
-    util_fcns.savefig(f_err, '%s_lo_pop_dist_err'%cat)
+        input_type = analysis_config.data_params['%s_input_type'%animal]
+        ord_input_type = analysis_config.data_params['%s_ordered_input_type'%animal]
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+            
+            print('Starting %s, Day %d' %(animal, day_ix))
+            f, ax = plt.subplots(figsize = (8, 8))
+
+            #### Get ridge alpha ####
+            if zero_alpha:
+                alpha_spec = 1.
+            else:
+                alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
+            KG = util_fcns.get_decoder(animal, day_ix)
+
+            #### Get data ####
+            data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, input_type[day_ix], 
+            ord_input_type[day_ix], 1, within_bin_shuffle = False, day_ix = day_ix, skip_plot = True)
+
+            ############## Data checking ##############
+            nneur = sub_spikes.shape[1]
+            for n in range(nneur):
+                assert(np.allclose(sub_spk_temp_all[:, 0, n], data_temp['spk_tm1_n%d'%n]))
+                assert(np.allclose(sub_spk_temp_all[:, 1, n], data_temp['spk_tm0_n%d'%n]))
+
+            ############## Data checking ##############
+            push_tm0 = np.vstack((data_temp['pshx_tm0'], data_temp['pshy_tm0'])).T
+
+            #### Add teh movement category ###
+            data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
+            data_temp['com'] = get_com(sub_push_all, animal, day_ix)
+            
+            ############## Get subspikes ##############
+            spks_tm1 = sub_spk_temp_all[:, 0, :]
+            spks_tm0 = sub_spk_temp_all[:, 1, :]
+            push_tm0 = np.vstack((data_temp['pshx_tm0'], data_temp['pshy_tm0'])).T
+
+            #### Add teh movement category ###
+            data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
+
+            ######### Use these same indices ---> 
+            _, Agen, _ = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
+                    np.arange(len(spks_tm1)), np.array([0]), alpha_spec, KG)
+
+            #### Make 5 folds --> all must exclude the thing you want to exclude, but distribute over the test set; 
+            test_ix_mov, train_ix_mov, _ = generate_models_utils.get_training_testings_condition_spec(n_folds, data_temp)
+            _, train_ix = generate_models_utils.get_training_testings(n_folds, data_temp)
+
+            for i_mov, mov in enumerate(np.unique(data_temp['mov'])):
+
+                y_g = []; y_gf = []
+                y_s = []; y_sb = []
+                tru = []
+
+                for i_f in range(n_folds):
     
+                    ######### Use these same indices ---> 
+                    ypred_mov, _, _ = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
+                            train_ix_mov[i_f, mov], test_ix_mov[i_f, mov], alpha_spec, KG)
 
+                    ypred_mov_b, _, b_spec = train_spec_b(spks_tm1, spks_tm0, push_tm0, 
+                            train_ix_mov[i_f, mov], test_ix_mov[i_f, mov], KG, Agen)
 
+                    N_trn_mov = len(train_ix_mov[i_f, mov])
+                    N_trl_all = len(train_ix[i_f])
+                    ix_sub = np.random.permutation(N_trl_all)[:N_trn_mov]
+                    train_gen = train_ix[i_f][ix_sub]
+
+                    ######### Use these same indices for testing, 
+                    ypred_gen, _, _ = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
+                            train_gen, test_ix_mov[i_f, mov], alpha_spec, KG)
+
+                    train_full = np.array([i for i in train_ix[i_f] if i not in test_ix_mov[i_f, mov]])
+                    ypred_gen_full_TD, _, _ = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
+                            train_full, test_ix_mov[i_f, mov], alpha_spec, KG)
+
+                    ######## True spks; 
+                    true_sub = spks_tm0[test_ix_mov[i_f, mov], :]
+
+                    y_g.append(ypred_gen)
+                    y_gf.append(ypred_gen_full_TD)
+                    y_s.append(ypred_mov)
+                    y_sb.append(ypred_mov_b)
+                    tru.append(true_sub)
+
+                ####### get r2 
+                r2_spec = util_fcns.get_R2(np.vstack((tru)), np.vstack((y_s)))
+                r2_bspec_Agen = util_fcns.get_R2(np.vstack((tru)), np.vstack((y_sb)))
+                r2_gen  = util_fcns.get_R2(np.vstack((tru)), np.vstack((y_g)))
+                r2_gen_f= util_fcns.get_R2(np.vstack((tru)), np.vstack((y_gf)))
+
+                if i_mov == 0:
+                    #ax.plot(mov, r2_gen, 'k.', markersize=15, label='Gen dyn fit w $N_{mov}$') #### General dynamnics, trainign dataset size matched to mov spec; 
+                    ax.plot(mov, r2_gen_f, 'k^', label='Gen dyn fit w $N_{full}$') ### General dynamics, full training data set size; 
+                    ax.plot(mov, r2_bspec_Agen, 'd', color=util_fcns.get_color(mov), markersize=10,
+                        label='$A_{gen}, b_{mov}$', markeredgewidth=3.) ### move specific b, general A 
+                    #ax.plot(mov, r2_spec, '.', color=util_fcns.get_color(mov), markersize=15,
+                    #    label='Mov spec dyn fit w $N_{mov}$', markeredgewidth=3.) ### move specific predictions 
+                else:
+                    #ax.plot(mov, r2_gen, 'k.', markersize=15) #### General dynamnics, trainign dataset size matched to mov spec; 
+                    ax.plot(mov, r2_gen_f, 'k^') ### General dynamics, full training data set size; 
+                    ax.plot(mov, r2_bspec_Agen, 'd', color=util_fcns.get_color(mov), markersize=10,
+                        markeredgewidth=3.) ### move specific b, general A 
+                    #ax.plot(mov, r2_spec, '.', color=util_fcns.get_color(mov), markersize=15,
+                    #    markeredgewidth=3.) ### move specific predictions                     
+                
+                #ax.plot([mov, mov, mov, mov], [r2_gen, r2_gen_f, r2_bspec_Agen, r2_spec], 'k-', linewidth=.5)
+            
+            ax.set_xlabel('Movement')
+            ax.set_ylabel('R2')
+            ax.legend()
+            ax.set_title('%s, %d' %(animal, day_ix))
+            f.tight_layout()
 
