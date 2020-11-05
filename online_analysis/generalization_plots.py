@@ -693,7 +693,7 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
 
 ######## Fit move group model #####
 def fit_predict_lomov_model(min_num_per_cat_lo = 15, 
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6):
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6, nshuffs=10):
 
     """Summary
     
@@ -712,7 +712,7 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
 
     for cat_ in cat_dict.keys(): 
 
-        animals = cat_dict[cat_].keys()
+        animals = np.sort(cat_dict[cat_].keys())
         f, ax = plt.subplots()
         ax.set_title(cat_)
 
@@ -741,6 +741,9 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
 
                 ### Load predicted data freom the model 
                 spks_pred = model_dict[day_ix, model_nm]
+                
+                spks_pred_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
+                    testing_mode = False)
 
                 # ############## Data checking ##############
                 nneur = sub_spikes.shape[1]
@@ -780,6 +783,14 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                 r2_std = util_fcns.get_R2(spks_tm0[test_ix, :], y_std_pred)
                 ax.plot(i_a*10 + day_ix - 0.1, r2_lo, '.', color='purple')
                 ax.plot(i_a*10 + day_ix + 0.1, r2_std, '.', color=analysis_config.blue_rgb)
+                
+                r2_shuff = []
+                for i in range(nshuffs):
+                    y_shuf = spks_pred_shuffle[test_ix, :, i]
+                    r2_shuff.append(util_fcns.get_R2(spks_tm0[test_ix, :], y_shuf))
+                util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+
+
         ax.set_xlim([-1, 14])
         ax.set_xticks([])
         f.tight_layout()
@@ -1047,7 +1058,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
     util_fcns.savefig(f, 'held_out_cat%s'%cat)
 
 ######## Plot whether the move-speicfic command activity has the right structure #####
-def plot_pop_dist_corr_COMMAND(nshuffs=2, min_commands = 15): 
+def plot_pop_dist_corr_COMMAND(nshuffs=10, min_commands = 15): 
     cat = 'com'
     model_set_number = 6
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'    
@@ -1273,10 +1284,10 @@ def plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff
     #####Plot all the pts too ####
     ### R2 and Error ###
     f_spec, ax_spec = plt.subplots(figsize=(3, 3)); 
-    ax_spec.plot(pop_dist_true, pop_dist_pred, 'k.', markersize=5.)
-    ax_spec.plot(pop_dist_true, pop_dist_pred_lo, '.', color='green', markersize=5.)    
-    #ax_spec.plot(pop_dist_true, pop_dist_shuff[0], '.', color='gray', alpha=0.2)    
-    ax_spec.set_title('%s: %d, CCg=%.3f, CCk =%.3f' %(animal, day_ix,
+    ax_spec.plot(pop_dist_true, pop_dist_pred, 'k.', markersize=2.)
+    ax_spec.plot(pop_dist_true, pop_dist_pred_lo, '.', color='purple', markersize=7., alpha=0.6)    
+    
+    ax_spec.set_title('%s: %d, CC lo =%.3f, CC pred =%.3f' %(animal, day_ix,
         cc(pop_dist_true, pop_dist_pred_lo), cc(pop_dist_true, pop_dist_pred)), fontsize=10)
     f_spec.tight_layout()
     # if animal == 'grom' and day_ix == 0:
@@ -1284,7 +1295,7 @@ def plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff
 
     #### Get correlation and plot 
     ax.plot(xpos-.1, cc(pop_dist_true, pop_dist_pred), '.', color=analysis_config.blue_rgb, markersize=10)
-    ax.plot(xpos+.1, cc(pop_dist_true, pop_dist_pred_lo), '.', color='green', markersize=10)
+    ax.plot(xpos+.1, cc(pop_dist_true, pop_dist_pred_lo), '.', color='purple', markersize=10)
     
     rv_shuff = []
     for i in range(nshuffs):
@@ -1293,7 +1304,7 @@ def plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff
     
     ################ Get error ################ 
     ax_err.plot(xpos-.1, plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred), '.', color=analysis_config.blue_rgb, markersize=10)
-    ax_err.plot(xpos+.1, plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred_lo), '.', color='green', markersize=10)
+    ax_err.plot(xpos+.1, plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred_lo), '.', color='purple', markersize=10)
     
     er_shuff = []
     for i in range(nshuffs):
