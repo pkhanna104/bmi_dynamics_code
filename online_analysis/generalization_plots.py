@@ -713,7 +713,7 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
     for cat_ in cat_dict.keys(): 
 
         animals = np.sort(cat_dict[cat_].keys())
-        f, ax = plt.subplots()
+        f, ax = plt.subplots(figsize=(3, 3))
         ax.set_title(cat_)
 
         ##### cycle through the animals for this ###
@@ -794,6 +794,7 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
         ax.set_xlim([-1, 14])
         ax.set_xticks([])
         f.tight_layout()
+        util_fcns.savefig(f, 'mov_grp_train_%s'%cat_)
                 
 def get_tsk_spec_alpha(n_folds=5):
     alphas = [np.arange(10, 100, 10), np.arange(100, 1000, 100), np.arange(1000, 10000, 1000)]; 
@@ -1066,12 +1067,12 @@ def plot_pop_dist_corr_COMMAND(nshuffs=10, min_commands = 15):
     f, ax = plt.subplots(figsize=(2, 3))
     f_err, ax_err = plt.subplots(figsize=(2, 3))
     
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['grom']):#, 'jeev']):
 
         model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
         model_dict = pickle.load(open(model_fname, 'rb'))
 
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
 
             ### Load the category dictonary: 
             LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'rb'))
@@ -1148,7 +1149,7 @@ def plot_pop_dist_corr_COMMAND(nshuffs=10, min_commands = 15):
 
             print('n comparisons %d'%(len(pop_dist_true)))
             plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff, ax, ax_err, nshuffs, i_a*10 + day_ix,
-                animal, day_ix)
+                animal, day_ix, title_str='command')
     
     save_ax_cc_err(ax, ax_err, f, f_err, 'com')
 
@@ -1160,12 +1161,12 @@ def plot_pop_dist_corr_MOV_TSK(nshuffs=2, cat='mov', min_commands=15):
     f, ax = plt.subplots(figsize=(2, 3))
     f_err, ax_err = plt.subplots(figsize=(2, 3))
     
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['grom']):#, 'jeev']):
 
         model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
         model_dict = pickle.load(open(model_fname, 'rb'))
 
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
 
             ### Load the category dictonary: 
             LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'rb'))
@@ -1273,25 +1274,25 @@ def plot_pop_dist_corr_MOV_TSK(nshuffs=2, cat='mov', min_commands=15):
             
             #### For each movement, comparison b/w LO commadn estimate for a given movement vs. predicted 
             plot_LO_means(true_diff, pred_diff, pred_lo_diff, shuff_diff, ax, ax_err, nshuffs, i_a*10 + day_ix,
-                animal, day_ix)
+                animal, day_ix, title_str=cat)
     
     save_ax_cc_err(ax, ax_err, f, f_err, cat)
 
 def plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff, ax, ax_err, nshuffs, xpos,
-    animal, day_ix):
+    animal, day_ix, title_str=''):
 
     ###### For each day / animal plot the CC and Error? ####
     #####Plot all the pts too ####
     ### R2 and Error ###
     f_spec, ax_spec = plt.subplots(figsize=(3, 3)); 
-    ax_spec.plot(pop_dist_true, pop_dist_pred, 'k.', markersize=2.)
-    ax_spec.plot(pop_dist_true, pop_dist_pred_lo, '.', color='purple', markersize=7., alpha=0.6)    
+    ax_spec.plot(pop_dist_true, pop_dist_pred, 'k.', markersize=5.)
+    ax_spec.plot(pop_dist_true, pop_dist_pred_lo, '.', color='purple', markersize=5.) 
     
     ax_spec.set_title('%s: %d, CC lo =%.3f, CC pred =%.3f' %(animal, day_ix,
         cc(pop_dist_true, pop_dist_pred_lo), cc(pop_dist_true, pop_dist_pred)), fontsize=10)
     f_spec.tight_layout()
-    # if animal == 'grom' and day_ix == 0:
-    #     util_fcns.savefig(f_spec, 'eg_leave_one_out_command_%s_%d'%(animal, day_ix))
+    if animal == 'grom' and day_ix == 0:
+        util_fcns.savefig(f_spec, 'eg_leave_one_out_command_%s_%d_%s'%(animal, day_ix, title_str))
 
     #### Get correlation and plot 
     ax.plot(xpos-.1, cc(pop_dist_true, pop_dist_pred), '.', color=analysis_config.blue_rgb, markersize=10)
