@@ -498,6 +498,7 @@ def plot_jeev_trials(task = 'obs', targ_only = 3, day_ix = 0, binsize = 0.1):
             else:
                 ax[ti].plot(cursor_state[trl][:, 0], cursor_state[trl][:, 2], '-', color = colors[i], linewidth=1.0)
                 ax[ti].plot(cursor_state[trl][0, 0], cursor_state[trl][0, 2], 'r.')
+                ax[ti].set_title("Targ %d" %(i))
     f.tight_layout()
 
 def plot_percent_correct_t2t(plot=True, min_obs_targ = 2): 
