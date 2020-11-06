@@ -1,5 +1,5 @@
 import analysis_config
-from online_analysis import util_fcns, generate_models
+from online_analysis import util_fcns, generate_models, generate_models_utils
 from matplotlib import colors as mpl_colors
 
 import scipy.stats 
@@ -1819,10 +1819,114 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
     util_fcns.savefig(fps, 'perc_comm_w_sig_cc')
     util_fcns.savefig(fcc, 'dist_of_sig_cc')
 
+######## Plot the command PSTH as arrows ###########
+def eg_command_PSTH(animal='grom', day_ix = 0, mag = 0, ang = 7, nbins_past_fut = 5,
+    arrow_scale = .003, width=.001): 
 
-def get_PSTH(bin_num, rev_bin_num, push, indices, num_bins=5, min_bin_set = 0):
-    assert(np.min(bin_num) == min_bin_set)
-    assert(np.min(rev_bin_num) == min_bin_set)
+    ### Mag boundaries ####
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+    ### Get data ####
+    spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+    
+    ### Get push PSTH ####
+    command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
+                                       vel_ix=[3, 5])[0]
+
+    ### go through movements
+    for i_m, mov in enumerate(np.unique(move)):
+
+        ix = np.nonzero((command_bins[:, 0] == mag) & (command_bins[:, 1] == ang) & (move==mov))[0]
+        if len(ix) >= 15: 
+            f, ax = plt.subplots(figsize=(10, 2))
+            ax.axis('square')
+
+            ### Get this; 
+            PSTH = get_PSTH(bin_num, rev_bin_num, push, ix)
+            for i in range(PSTH.shape[0]):
+                ax.quiver(i*1.5, 2, PSTH[i, 0], PSTH[i, 1],
+                    width=arrow_scale*2, color = util_fcns.get_color(mov), 
+                    angles='xy', scale=1, scale_units='xy')
+            ax.set_ylim([0.5, 3.5])
+            ax.set_xlim([-2, 20])
+
+            util_fcns.savefig(f, 'cm_com_psth_mov%.1f'%mov)
+
+def eg_command_PSTH_pred(animal='grom', day_ix=0, mag=0, ang=7, nbins_past_fut=1,
+    arrow_scale = .03, width=.001):
+
+    ### Mag boundaries ####
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+    model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    model_set_number = 6
+    model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
+    model_dict = pickle.load(open(model_fname, 'rb'))
+    KG = util_fcns.get_decoder(animal, day_ix)
+
+    ##### Get the predicted spikes ######
+    pred_spks = model_dict[day_ix, model_nm]
+
+    ##### get predicted action ######
+    pred_push = np.dot(KG, pred_spks.T).T
+    N = pred_push.shape[0]
+    pred_push = np.hstack((np.zeros((N, 3)), pred_push[:, 0][:, np.newaxis], 
+        np.zeros((N, 1)), pred_push[:, 1][:, np.newaxis], np.zeros((N, 1))))
+
+    #### Get other stuff #####
+    spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+
+    ### Get tm0/tm1 to match 
+    tm0, tm1 = generate_models.get_temp_spks_ix(dat['Data'])
+    push_tm1 = push[tm1, :]
+    command_bins_tm1 = util_fcns.commands2bins([push_tm1], mag_boundaries, animal, day_ix, 
+                                       vel_ix=[3, 5])[0]
+    bin_num_tm1 = bin_num[tm1]
+    rev_bin_num1 = rev_bin_num[tm1]
+    move_tm1 = move[tm1]
+
+    f, ax = plt.subplots(figsize=(5, 10))
+    cnt = 0; 
+    for i_m, mov in enumerate(np.unique(move)):
+        ix = np.nonzero((command_bins_tm1[:, 0] == mag) & (command_bins_tm1[:, 1] == ang) & (move_tm1==mov))[0]
+        if len(ix) >= 15: 
+            
+            ax.axis('square')
+            psth_push = get_PSTH(bin_num_tm1, rev_bin_num1, push_tm1, ix, num_bins=1, min_bin_set=2,
+                skip_assert_min = True)
+            psth_pred = get_PSTH(bin_num_tm1, rev_bin_num1, pred_push, ix, num_bins=1, min_bin_set=2,
+                skip_assert_min = True)
+
+            ax.quiver(1, 10-cnt, psth_push[1, 0], psth_push[1, 1],
+                width=arrow_scale*2, color = util_fcns.get_color(mov), 
+                angles='xy', scale=1, scale_units='xy')
+
+            ax.quiver(2, 10-cnt, psth_push[2, 0], psth_push[2, 1],
+                width=arrow_scale*2, color = util_fcns.get_color(mov), 
+                angles='xy', scale=1, scale_units='xy')
+
+            ax.quiver(3, 10-cnt, psth_pred[2, 0], psth_pred[2, 1],
+                width=arrow_scale*2, color = util_fcns.get_color(mov), 
+                angles='xy', scale=1, scale_units='xy')
+
+            cnt += 1
+            
+    ax.set_ylim([-1, 11])
+    ax.set_xlim([-1, 5])
+
+    util_fcns.savefig(f, 'cm_com_pred_psth_mov%.1f'%mov)
+
+
+
+
+
+def get_PSTH(bin_num, rev_bin_num, push, indices, num_bins=5, min_bin_set = 0, skip_assert_min = False):
+
+    if skip_assert_min:
+        pass
+    else:
+        assert(np.min(bin_num) == min_bin_set)
+        assert(np.min(rev_bin_num) == min_bin_set)
     
     all_push = []
     push_vel = push[:, [3, 5]]
