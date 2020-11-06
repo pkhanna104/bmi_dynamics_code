@@ -2453,7 +2453,8 @@ def def_movements_for_nk_lqr(target_list, task_list, center, target_pos, obs_pos
 
 def lqr_sim_nk(A_list, B, K_list, state_init, state_T_list, horizon_list, state_label, input_label, num_neurons, hold_req=2, target_r=1.7):
     """
-    
+    This is the most recent lqr simulation code which handles movement segments with different target states
+    The different target states are encoded in "error dynamics". 
     """
     
     #Simulate trial: 
@@ -2526,5 +2527,182 @@ def lqr_sim_nk(A_list, B, K_list, state_init, state_T_list, horizon_list, state_
     return u_da, state_da, state_e_da, move_len, sim_len
     # return u_list, state_list, state_e_list
 
+def lqr_sim_nk_noise(state_noise_mean, state_noise_cov, A_list, B, K_list, state_init, state_T_list, horizon_list, state_label, input_label, num_neurons, hold_req=2, target_r=1.7):
+    """
+    This is the most recent lqr simulation code which handles movement segments with different target states
+    The different target states are encoded in "error dynamics". 
+    """
+    
+    #Simulate trial: 
+    trial_complete = False
+    sim_len = 1
+    hold_i = 0
+
+    num_seg = len(horizon_list)
+    state_list = []
+    state = copy.copy(state_init)
+    state_list.append(state)    
+
+    state_e_list = []
+    u_list = []
+    state_noise_list = []
+
+    #Loop segements
+    # num_seg = 1
+    seg_last = num_seg-1
+    for seg in range(num_seg):
+        #Initialize:
+        state_T = state_T_list[seg]
+        A = A_list[seg]
+        K = K_list[seg]
+
+        #Starting state e of this segment:
+        state_e = state-state_T
+        state_e_list.append(state_e)
+
+        #Iterate samples within the segment
+        #Adds h-1 samples.
+        t_last = horizon_list[seg]-2
+        for t in range(0,t_last+1):
+            #input
+            u = K[0,t]*state_e
+            u_list.append(u)
+
+            #state noise
+            w = np.random.multivariate_normal(mean=state_noise_mean, cov=state_noise_cov)
+            w = np.mat(w).T
+            state_noise_list.append(w)
+
+            #Calculate state_e
+            state_e = A*state_e + B*u + w
+            if not (t==t_last):
+                state_e_list.append(state_e) #only append if it's not the last error, or if it's the last segment
+            elif seg==seg_last:
+                state_e_list.append(state_e) #only append if it's not the last error, or if it's the last segmen
+
+            #Calculate state: 
+            state = state_e + state_T
+            state_list.append(state)
+
+            if not trial_complete:
+                sim_len+=1
+                #If in last segment, check when sim ends: 
+                if (seg==(num_seg-1)):
+                    dist2target = np.linalg.norm(state_e[num_neurons:(num_neurons+2)])
+                    if dist2target <= target_r:
+                        hold_i+=1
+                    else:
+                        hold_i=0
+                    if(hold_i>=hold_req):
+                        trial_complete = True
+
+    move_len = sum(horizon_list)-num_seg+1
+    #state error:
+    state_e_mat = np.array(state_e_list).squeeze().T
+    state_e_da = xr.DataArray(state_e_mat, coords={'v':state_label,'obs':np.arange(move_len)}, dims=['v', 'obs'])
+    #state:
+    state_mat = np.array(state_list).squeeze().T
+    state_da = xr.DataArray(state_mat, coords={'v':state_label,'obs':np.arange(move_len)}, dims=['v', 'obs'])    
+    #:
+    u_mat = np.array(u_list).squeeze().T
+    u_da = xr.DataArray(u_mat, coords={'v':input_label,'obs':np.arange(move_len-1)}, dims=['v', 'obs'])    
+    #:
+    state_noise_mat = np.array(state_noise_list).squeeze().T
+    state_noise_da = xr.DataArray(state_noise_mat, coords={'v':state_label,'obs':np.arange(move_len-1)}, dims=['v', 'obs'])   
 
 
+    return u_da, state_da, state_e_da, state_noise_da, move_len, sim_len
+    # return u_list, state_list, state_e_list
+
+def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f, state_noise_mean, state_noise_cov, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed,\
+    state_label, state_dim, input_label, num_neurons, hold_req=2, target_r=1.7):
+    """
+    (set move_horizon to be odd, so co and obs movements can be the same length)
+    for each movement model: 
+        state_init
+        state_T_list
+        horizon_list
+        A_list
+        B
+        K_list
+    """
+
+    move_lqr = {}
+    #--------------------------------------------------------------------
+    #Initial State:
+    state_init = np.zeros(state_dim)
+    state_init[:num_neurons] = n_init #initialize neural activity
+    state_init[num_neurons:num_neurons+2] = center #initial position
+    state_init[-1] = 1 #offset
+    state_init = np.mat(state_init).T
+
+    for m in model_list:
+        for target in target_list:
+            T_pos = np.squeeze(target_pos[target,:])
+            T_theta = np.angle(T_pos[0]-center[0] + 1j*(T_pos[1]-center[1]))
+        #     print('T theta: ', T_theta*180/np.pi)
+            #--------------------------------------------------------------------
+            #Target
+            state_T = np.mat([T_pos[0], T_pos[1], 0, 0, 0]).T
+            n_z = np.mat(np.zeros(num_neurons)).T
+            state_T = np.vstack((n_z, state_T))
+
+            for task in task_list: 
+                #if co, then there's only one target state
+                if task == 0:
+                    state_T_list = [state_T]
+                    horizon_list = [move_horizon]
+                else:
+                    horizon_list = [(move_horizon+1)/2, (move_horizon+1)/2]
+                    obs_center = obs_pos[target,:]
+                    if task == 1.1:
+                        cw_bool = False
+                    elif task == 1.2:
+                        cw_bool = True
+                    state_wp = calc_obs_waypoint(obs_center, center, cw_bool, obs_margin, waypoint_speed, state_dim, num_neurons)
+                    state_T_list =[state_wp, state_T]
+                #Error dynamics: 
+                A_e_list = calc_error_dynamics(A_dic[m], state_T_list)
+                #Feedback controller:
+                K_list = []
+                for i in range(len(A_e_list)):
+                    h = horizon_list[i]
+                    A = A_e_list[i]
+                    K = dlqr(A, B, Q, R, Q_f, T=h, max_iter=1000, eps=1e-10, dtype=np.mat)
+                    K_list.append(K)
+
+                #Simulate: 
+                state_noise_list = []
+                u_list = []
+                state_list = []
+                state_e_list = []
+                for t in range(num_trials):
+                    u_da, state_da, state_e_da, state_noise_da, move_len, sim_len = \
+                    lqr_sim_nk_noise(state_noise_mean, state_noise_cov, A_e_list, B, K_list, state_init, state_T_list, horizon_list, state_label, input_label, num_neurons, hold_req=2, target_r=1.7)
+                    #assign:
+                    u_list.append(u_da)
+                    state_list.append(state_da)
+                    state_e_list.append(state_e_da)
+                    state_noise_list.append(state_noise_da)
+
+
+                #ASSIGN:                
+                move_lqr[target, task, m] = {}
+                move_lqr[target, task, m]['state_init'] = state_init
+                move_lqr[target, task, m]['state_T_list'] = state_T_list
+                move_lqr[target, task, m]['horizon_list'] = horizon_list
+                move_lqr[target, task, m]['K_list'] = K_list
+                move_lqr[target, task, m]['A'] = A_dic[m]
+                move_lqr[target, task, m]['A_e_list'] = A_e_list
+                move_lqr[target, task, m]['B'] = B
+                move_lqr[target, task, m]['Q'] = Q
+                move_lqr[target, task, m]['Q_f'] = Q_f
+                move_lqr[target, task, m]['R'] = R
+                #simulations:
+                move_lqr[target, task, m]['state_noise_list'] = state_noise_da
+                move_lqr[target, task, m]['u_list'] = u_list
+                move_lqr[target, task, m]['state_list'] = state_list
+                move_lqr[target, task, m]['state_e_list'] = state_e_list
+                move_lqr[target, task, m]['move_len'] = move_len
+                move_lqr[target, task, m]['sim_len'] = sim_len
+    return move_lqr

@@ -710,7 +710,10 @@ def draw_boxplot(data, offset,edge_color, fill_color):
 	for patch in bp['boxes']:
 		patch.set(facecolor=fill_color)
 
-def hist_step_plot(bins, H, color, alpha=1):
+def hist_step_plot(bins, H, color, alpha=1,label=None):
+	"""
+	bins: are the bin edges
+	"""
 	num_bins = bins.shape[0]-1
 	print(num_bins)
 	bin_edge_plot = np.zeros(2*num_bins+2)
@@ -722,7 +725,8 @@ def hist_step_plot(bins, H, color, alpha=1):
 	for i in range(num_bins):
 		bin_edge_plot[(2*i+1):(2*i+2+1)] = bins[i:(i+2)]
 		H_edge_plot[(2*i+1):(2*i+2+1)] = H[i]
-	plt.step(bin_edge_plot, H_edge_plot, color=color, alpha=alpha) 
+	plt.step(bin_edge_plot, H_edge_plot, color=color, alpha=alpha,label=label) 
+	
 
 def proj_null_potent(mat, data_mat):
 	#mat: num_dim x num_col.  Wnat to find projection of data_mat into column space of mat.
