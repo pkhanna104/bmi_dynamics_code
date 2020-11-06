@@ -803,7 +803,8 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                     y_shuf = spks_pred_shuffle[test_ix, :, i]
                     r2_shuff.append(util_fcns.get_R2(spks_tm0[test_ix, :], y_shuf))
                 util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
-
+                ax.plot([i_a*10 + day_ix, i_a*10 + day_ix], [np.mean(r2_shuff), np.max([r2_lo, r2_std])],
+                    'k-', linewidth=0.5)
 
         ax.set_xlim([-1, 14])
         ax.set_xticks([])
@@ -1179,12 +1180,12 @@ def plot_pop_dist_corr_MOV_TSK(nshuffs=2, cat='mov', min_commands=15):
     f, ax = plt.subplots(figsize=(2, 3))
     f_err, ax_err = plt.subplots(figsize=(2, 3))
     
-    for i_a, animal in enumerate(['grom']):#, 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
         model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
         model_dict = pickle.load(open(model_fname, 'rb'))
 
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             ### Load the category dictonary: 
             LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'rb'))
@@ -1327,13 +1328,16 @@ def plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff
 
 
     ################ Get error ################ 
-    ax_err.plot(xpos-.1, plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred), '.', color=analysis_config.blue_rgb, markersize=10)
-    ax_err.plot(xpos+.1, plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred_lo), '.', color='purple', markersize=10)
+    e1 = plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred)
+    e2 = plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred_lo)
+    ax_err.plot(xpos-.1, e1, '.', color=analysis_config.blue_rgb, markersize=10)
+    ax_err.plot(xpos+.1, e2, '.', color='purple', markersize=10)
     
     er_shuff = []
     for i in range(nshuffs):
         er_shuff.append(plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_shuff[i]))
     util_fcns.draw_plot(xpos, er_shuff, 'k', np.array([1., 1., 1., 0.]), ax_err)
+    ax_err.plot([xpos, xpos], [np.mean(er_shuff), np.max(np.array([e1, e2]))], 'k-', linewidth=0.5)
 
 ######## Test whether activity is move specific or not ##############
 def move_spec_dyn(n_folds=5, zero_alpha = False):
