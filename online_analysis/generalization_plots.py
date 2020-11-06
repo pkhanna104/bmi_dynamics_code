@@ -115,20 +115,22 @@ def get_spks(animal, day_ix):
     spks0, push, _, _, _, _, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
     spks0 = 10*spks0; 
 
-    #### Get subsampled
-    tm0, _ = generate_models.get_temp_spks_ix(dat['Data'])
+     #### Get subsampled
+    tm0, tm1 = generate_models.get_temp_spks_ix(dat['Data'])
 
     ### Get subsampled 
     spks_sub = spks0[tm0, :]
     push_sub = push[tm0, :]
+    push_sub_tm1 = push[tm1, :]
     move_sub = move[tm0]
 
     ### Get command bins 
     command_bins = util_fcns.commands2bins([push_sub], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
+    command_bins_tm1 = util_fcns.commands2bins([push_sub_tm1], mag_boundaries, animal, day_ix, 
+                                       vel_ix=[3, 5])[0]
 
-
-    return spks_sub, command_bins, move_sub, push_sub
+    return spks_sub, command_bins, move_sub, push_sub, command_bins_tm1
 
 def lo_in_key(lo_key, lo_val, cat):
         """check where the left out value (lo_val)
@@ -164,7 +166,7 @@ def lo_in_key(lo_key, lo_val, cat):
 
         return in_key
 
-def check_ix_lo(lo_ix, com_true, mov_true, left_out, cat):
+def check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat):
     
     if cat == 'tsk':
         if left_out == 0.:  
@@ -176,7 +178,10 @@ def check_ix_lo(lo_ix, com_true, mov_true, left_out, cat):
         assert(np.all(mov_true[lo_ix] == left_out))
     
     elif cat == 'com':
-        assert(np.all(com_true[lo_ix, 0]*8 + com_true[lo_ix, 1] == left_out))
+        vl0 = com_true[lo_ix, 0]*8+com_true[lo_ix,1]==left_out
+        vl1 = com_true_tm1[lo_ix, 0]*8+com_true_tm1[lo_ix,1]==left_out
+        vl2 = np.logical_or(vl0, vl1)
+        assert(np.all(vl2))
 
 ########## model fitting utls ###########
 def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG,
@@ -300,7 +305,7 @@ def train_spec_b(spks_tm1, spks, push, train, test, KG, Agen):
 def get_com(tby2_push, animal, day_ix):
     command_bins = util_fcns.commands2bins([tby2_push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[0, 1])[0]
-    return command_bins[:, 0]*8 + command_bins[:, 1]
+    return command_bins[:, 0]*8 + command_bins[:, 1], command_bins[:, 0], command_bins[:, 1]
 
 def save_ax_cc_err(ax, ax_err, f, f_err, cat):
     ax.set_xlim([-1, 14])
@@ -504,12 +509,15 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
         Description
     """
     cat_dict = {}
-    cat_dict['tsk'] = ['tsk', np.arange(2)]
-    cat_dict['mov'] = ['mov', np.unique(np.hstack((np.arange(8), np.arange(10, 20), np.arange(10, 20)+.1)))]
-    cat_dict['com'] = ['com', np.arange(32)]
+    cat_dict['tsk'] = [['tsk'], np.arange(2)]
+    cat_dict['mov'] = [['mov'], np.unique(np.hstack((np.arange(8), np.arange(10, 20), np.arange(10, 20)+.1)))]
+    cat_dict['com'] = [['com', 'com1'], np.arange(32)]
+    cat_dict['com_ang'] = [['com_ang', 'com_ang1'], np.arange(8)]
+    cat_dict['com_mag'] = [['com_mag', 'com_mag1'], np.arange(4)]
+
 
     #### which category are we dealing with ####
-    leave_out_field = cat_dict[cat][0]
+    leave_out_fields = cat_dict[cat][0]
     leave_out_cats = cat_dict[cat][1]
 
     ### get the right alphase for the model ####
@@ -550,10 +558,13 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
                 assert(np.allclose(sub_spk_temp_all[:, 1, n], data_temp['spk_tm0_n%d'%n]))
 
             push_tm0 = np.vstack((data_temp['pshx_tm0'], data_temp['pshy_tm0'])).T
+            push_tm1 = np.vstack((data_temp['pshx_tm1'], data_temp['pshy_tm1'])).T
+
 
             #### Add teh movement category ###
             data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
-            data_temp['com'] = get_com(sub_push_all, animal, day_ix)
+            data_temp['com'], data_temp['com_mag'], data_temp['com_ang'] = get_com(sub_push_all, animal, day_ix)
+            data_temp['com1'], data_temp['com_mag1'], data_temp['com_ang1'] = get_com(push_tm1, animal, day_ix)            
             
             ############## Get subspikes ##############
             spks_tm1 = sub_spk_temp_all[:, 0, :]
@@ -603,9 +614,12 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
 
             #### setup data storage 
             for lo in leave_out_cats: 
-   
-                #### Which indices must be removed from all training sets? 
-                ix_rm = np.nonzero(data_temp[leave_out_field] == lo)[0]
+    
+                ix_rm = []
+                for leave_out_field in leave_out_fields:
+                    #### Which indices must be removed from all training sets? 
+                    ix_rm.append(np.nonzero(data_temp[leave_out_field] == lo)[0])
+                ix_rm = np.hstack((ix_rm))
 
                 N = len(data_temp[leave_out_field])
                 n = len(ix_rm)
@@ -926,7 +940,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext, ext2)), 'rb'))
 
             ### Load the true data ###
-            spks_true, com_true, mov_true, _ = get_spks(animal, day_ix)
+            spks_true, com_true, mov_true, push_true, com_true_tm1 = get_spks(animal, day_ix)
 
             if 'analyze_indices' in LOO_dict.keys():
                 an_ind = LOO_dict['analyze_indices']
@@ -936,6 +950,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             ######## re index #####
             spks_true = spks_true[an_ind, :]
             com_true = com_true[an_ind, :]
+            com_true_tm1 = com_true_tm1[an_ind]
             mov_true = mov_true[an_ind]
 
             ### Load shuffled dynamics --> same as shuffled, not with left out shuffled #####
@@ -970,7 +985,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                     nneur = spks_pred.shape[1]
 
                     #### Check that these indices corresond to the left out thing; 
-                    check_ix_lo(lo_ix, com_true, mov_true, left_out, cat)
+                    check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat)
 
                     lo_pred_all.append(lo_pred)
                     lo_true_all.append(spks_true[lo_ix, :])
@@ -1021,6 +1036,9 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=analysis_config.blue_rgb, markersize=10)
             ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='purple', markersize=10)
             util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+            mn = np.min([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
+            mx = np.max([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
+            ax.plot([i_a*10 + day_ix, i_a*10 + day_ix], [mn, mx], 'k-', linewidth=0.5)
 
             ### Animal specific plot 
             r2_stats_spec = np.vstack((r2_stats_spec))
@@ -1067,18 +1085,18 @@ def plot_pop_dist_corr_COMMAND(nshuffs=10, min_commands = 15):
     f, ax = plt.subplots(figsize=(2, 3))
     f_err, ax_err = plt.subplots(figsize=(2, 3))
     
-    for i_a, animal in enumerate(['grom']):#, 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
         model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
         model_dict = pickle.load(open(model_fname, 'rb'))
 
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             ### Load the category dictonary: 
             LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'rb'))
 
             ### Load the true data ###
-            spks_true, com_true, mov_true, push_true = get_spks(animal, day_ix)
+            spks_true, com_true, mov_true, push_true, _ = get_spks(animal, day_ix)
 
             ### Load predicted daata freom the model 
             spks_pred = 10*model_dict[day_ix, model_nm]
@@ -1172,7 +1190,7 @@ def plot_pop_dist_corr_MOV_TSK(nshuffs=2, cat='mov', min_commands=15):
             LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d.pkl'%(cat, animal, day_ix)), 'rb'))
 
             ### Load the true data ###
-            spks_true, com_true, mov_true, push_true = get_spks(animal, day_ix)
+            spks_true, com_true, mov_true, push_true, _ = get_spks(animal, day_ix)
 
             ### Load predicted daata freom the model 
             spks_pred = 10*model_dict[day_ix, model_nm]
@@ -1295,14 +1313,19 @@ def plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff
         util_fcns.savefig(f_spec, 'eg_leave_one_out_command_%s_%d_%s'%(animal, day_ix, title_str))
 
     #### Get correlation and plot 
-    ax.plot(xpos-.1, cc(pop_dist_true, pop_dist_pred), '.', color=analysis_config.blue_rgb, markersize=10)
-    ax.plot(xpos+.1, cc(pop_dist_true, pop_dist_pred_lo), '.', color='purple', markersize=10)
+    c1 = cc(pop_dist_true, pop_dist_pred)
+    c2 = cc(pop_dist_true, pop_dist_pred_lo)
+    
+    ax.plot(xpos-.1, c1, '.', color=analysis_config.blue_rgb, markersize=10)
+    ax.plot(xpos+.1, c2, '.', color='purple', markersize=10)
     
     rv_shuff = []
     for i in range(nshuffs):
         rv_shuff.append(cc(pop_dist_true, pop_dist_shuff[i]))
     util_fcns.draw_plot(xpos, rv_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
-    
+    ax.plot([xpos, xpos], [np.mean(rv_shuff), np.max(np.array([c1, c2]))], 'k-', linewidth=0.5)
+
+
     ################ Get error ################ 
     ax_err.plot(xpos-.1, plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred), '.', color=analysis_config.blue_rgb, markersize=10)
     ax_err.plot(xpos+.1, plot_pred_fr_diffs.mnerr(pop_dist_true, pop_dist_pred_lo), '.', color='purple', markersize=10)
@@ -1356,7 +1379,7 @@ def move_spec_dyn(n_folds=5, zero_alpha = False):
 
             #### Add teh movement category ###
             data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
-            data_temp['com'] = get_com(sub_push_all, animal, day_ix)
+            data_temp['com'], _, _ = get_com(sub_push_all, animal, day_ix)
             
             ############## Get subspikes ##############
             spks_tm1 = sub_spk_temp_all[:, 0, :]
