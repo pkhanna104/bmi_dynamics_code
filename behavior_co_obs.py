@@ -1478,7 +1478,8 @@ def subsample_dataset_to_match_mean_target_dataset(match_var, d_ss, d_target, p_
 
     INPUT: 
     match_var: list of variables which should have no significant difference in mean
-    d_list: list of data sets.  
+    d_ss: dataset to subsample
+    d_target: dataset to match to (the target dataset)
     each data set is an xarray
     xarray: num_var X num_observation
     this code will use the 'observation' label to choose the samples
