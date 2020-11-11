@@ -843,7 +843,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5), 'wb'))
 
 def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full',
-    nshuffs = 1000):
+    nshuffs = 1000, shuff_type = 'beh_maint'):
     '''
     general model tuning curves for shuffled data
     
@@ -854,6 +854,20 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
     latent_LDS : bool, optional
         Description
     latent_dim : str, optional
+        Description
+    nshuffs : int, optional
+        number of shuffles to generate 
+    shuff_type : str, 
+        "beh_maint" --> shuffle from figure 3, 4; shuffle activity across commands 
+        "mn_diff_maint" --> Shuffle actiivty across commands, but keep it so that mean diffs are still present
+            -- have a movement transition matrix; 
+            -- permute activity from movemnet to movement 
+            -- if not enough commands --> resample 
+        "null_roll" --> shuffle form figure 5; roll null with respect to potent 
+            -- each shuffle is a random roll integer sampled from 0-? 
+    Raises
+    ------
+    Exception
         Description
     '''
     if latent_LDS:
@@ -924,15 +938,39 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                     KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
 
                 # Get spike data from data fcn
-                Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                    order_dict[i_d], history_bins_max, within_bin_shuffle = True,
-                    day_ix = i_d, nshuffs = nshuffs)
+                if shuff_type == 'beh_maint':
+                    Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = True,
+                        day_ix = i_d, nshuffs = nshuffs)
+
+                elif shuff_type == 'mn_diff_maint':
+                    Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = True,
+                        day_ix = i_d, nshuffs = nshuffs)
+                    
+                elif shuff_type == 'null_roll': 
+                    Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True
+                        day_ix = i_d, nshuffs = nshuffs)
 
                 #### Save shuffle indices ####### 
-                shuff_ix_fname = save_directory + '%s_%d_shuff_ix.pkl' %(animal, i_d)
+                if shuff_type == 'beh_maint':
+                    shuff_ix_fname = save_directory + '%s_%d_shuff_ix.pkl' %(animal, i_d)
+                else:
+                    shuff_ix_fname = save_directory + '%s_%d_shuff_ix_%s.pkl' %(animal, i_d, shuff_type)
 
                 ### Re make data to be smaller 
                 Data2 = dict(spks=Data['spks'], push=Data['push'], bin_num=Data['bin_num'], targ=Data['targ'], task=Data['tsk'])
+
+                if shuff_type == 'null_roll':
+
+                    #### Get null vs. potent spkes #### 
+                    null, pot = decompose_null_pot(Data['spks'], Data['push'], KG, KG_null_proj, KG_potent_orth)
+
+                    #### Save these in Data2 ####
+                    Data2['spks_null'] = null.copy()
+                    Data2['spks_pot'] = pot.copy()
+                    Data2['KG'] = KG.copy()
 
                 #### Save data in this guy too ####
                 Shuff_ix['Data'] = Data2
@@ -945,6 +983,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                 Shuff_ix['test_ix'] = test_ix
                 Shuff_ix['train_ix'] = train_ix
                 Shuff_ix['temp_n']  = Sub_push.shape[0]
+
                 command_bins_disc = util_fcns.commands2bins([Sub_push], mag_boundaries, animal, i_d, vel_ix = [0, 1], ndiv=8)[0]
 
                 #### Save these guys ###
@@ -953,7 +992,10 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                 for shuffle in range(nshuffs):
 
                     ##### Shuffles and get trial starts #####
-                    sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks(Data2, Shuff_ix[shuffle])
+                    if shuff_type == 'potent_roll':
+                        sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks_null_pot_roll(Data2, Shuff_ix[shuffle])
+                    else:
+                        sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks(Data2, Shuff_ix[shuffle])
 
                     assert(np.allclose(Sub_spikes, Data2['spks'][tm0ix, :]))
                     assert(np.allclose(Sub_spk_temp_all[:, 0, :], Data2['spks'][tm1ix]))
@@ -1107,9 +1149,17 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
                         else:
                             save_dat['shuff_num'] = shuffle
-                            sio.savemat(save_directory+'%s_%d_shuff%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
 
-                        fname = save_directory+'%s_%d_shuff%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm)
+                            if shuff_type == 'beh_maint':
+                                sio.savemat(save_directory+'%s_%d_shuff%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
+                            else:
+                                sio.savemat(save_directory+'%s_%d_shuff%s_%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm, shuff_type), save_dat)
+
+                        if shuff_type == 'beh_maint':
+                            fname = save_directory+'%s_%d_shuff%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm)
+                        else:
+                            fname = save_directory+'%s_%d_shuff%s_%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm, shuff_type)
+                            
                         print('file %s' %(fname))
 
 def get_temp_spks_ix(Data2):
@@ -1138,7 +1188,6 @@ def get_temp_spks_ix(Data2):
     spks_keep = np.intersect1d(spks_t1, spks_t2)
 
     return spks_keep, spks_keep - 1
-
 
 def get_temp_spks(Data2, shuff_ix):
     ##### Shuffles and get trial starts #####
@@ -1169,6 +1218,84 @@ def get_temp_spks(Data2, shuff_ix):
     push_shuff = Data2['push'][shuff_ix, :]
 
     return spks_shuff[spks_keep], spks_shuff[spks_keep - 1], push_shuff[spks_keep], spks_keep, spks_keep - 1
+
+def get_temp_spks_null_pot_roll(Data2, shuff_ix):
+    """
+    method to get spikes according to rolling the null activity with respsect to the potent
+    
+    Parameters
+    ----------
+    Data2 : dict with all the data
+    shuff_ix : indices to roll the null activity 
+        np.array
+    
+    Returns
+    -------
+    TYPE
+        Description
+    """
+    ##### Shuffles and get trial starts #####
+    bin_num = np.hstack((Data2['bin_num']))
+
+    ### Get ones that are > first bin; 
+    spks_t1 = np.nonzero(bin_num > 0)[0]
+
+    ### Get the zero bins 
+    spks_not_t2 = np.nonzero(bin_num == 0)[0]
+
+    ### Remove the first trial 
+    spks_not_t2 = spks_not_t2[spks_not_t2 > 0]
+
+    ### Add teh last bine 
+    spks_not_t2 = np.hstack((spks_not_t2, len(bin_num)))
+
+    ### subtract by 1 to get the last bin
+    spks_not_t2 = spks_not_t2 - 1
+
+    assert(np.all(bin_num[spks_not_t2[:-1] + 1] == 0))
+    spks_t2 = np.array([i for i in range(len(bin_num)) if i not in spks_not_t2])
+
+    ##### Keep these guys --> anything that is NOT the first or the last bin in the trial 
+    spks_keep = np.intersect1d(spks_t1, spks_t2)
+
+    #### We need to keep spks_keep and spks_keep -1 together: 
+    spks_tm0 = Data2['spks_null']
+    spks_tm1 = np.vstack(( np.zeros((1, spks_tm0.shape[1])) + np.nan, Data2['spks_null'][:-1, :] ))
+    assert(spks_tm0.shape == spks_tm1.shape)
+
+    #### Roll the null activity ####
+    spks_null_tm0 = spks_tm0[shuff_ix, :]
+    spks_null_tm1 = spks_tm1[shuff_ix, :]
+
+    #### Potent ####
+    spks_pot_tm0  = Data2['spks_pot']
+    spks_pot_tm1  = np.vstack(( np.zeros((1, 2)), Data2['spks_pot'][:-1, :] ))
+
+    #### Get this ###
+    spks_shuff_tm0 = spks_null_tm0 + spks_pot_tm0
+    spks_shuff_tm1 = spks_null_tm1 + spks_pot_tm1
+    assert(np.allclose(np.dot(Data2['KG'], spks_shuff_tm0.T).T, Data2['push']))
+
+    push_shuff = Data2['push']
+
+    return spks_shuff_tm0[spks_keep], spks_shuff_tm1[spks_keep], push_shuff[spks_keep], spks_keep, spks_keep - 1
+
+def decompose_null_pot(spks, push, KG, KG_null_proj, KG_potent_orth):
+    '''
+    decompose null potent 
+    '''
+
+    assert(len(spks.shape) == 2)
+
+    null_spks = np.dot(KG_null_proj, spks.T).T
+    pot_spks = np.dot(KG_potent_orth, spks.T).T
+
+    assert(np.all(null_spks + pot_spks == spks))
+    assert(np.allclose(np.dot(KG, null_spks.T).T == 0.))
+    assert(np.allclose(np.dot(KG, pot_spks.T).T == push))
+
+    return null_spks, pot_spks
+
 
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
