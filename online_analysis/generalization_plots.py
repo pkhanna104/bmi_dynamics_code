@@ -37,14 +37,19 @@ class DataExtract(object):
         spks0 = 10*spks0; 
 
         #### Get subsampled
-        tm0, _ = generate_models.get_temp_spks_ix(dat['Data'])
+        tm0, tm1 = generate_models.get_temp_spks_ix(dat['Data'])
 
         ### Get subsampled 
         self.spks = spks0[tm0, :]
         self.push = push0[tm0, :]
+        self.push_tm1 = push0[tm1, :]
+
         self.command_bins = util_fcns.commands2bins([self.push], mag_boundaries, self.animal, self.day_ix, 
                                        vel_ix=[3, 5])[0]
+        self.command_bins_tm1 = util_fcns.commands2bins([self.push_tm1], mag_boundaries, self.animal, self.day_ix, 
+                                       vel_ix=[3, 5])[0]
         self.move = move0[tm0]
+        self.move_tm1 = move0[tm1]
 
         ### Set the task here 
         self.task = np.zeros_like(self.move)
@@ -912,8 +917,8 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
     f, ax = plt.subplots(figsize=(3, 3))
     f_spec, ax_spec = plt.subplots(ncols = 2); 
-
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    #flo, axlo = plt.subplots()
+    for i_a, animal in enumerate(['jeev']):#grom', 'jeev']):
 
         r2_stats = []
 
@@ -942,7 +947,6 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
             ### Load the true data ###
             spks_true, com_true, mov_true, push_true, com_true_tm1 = get_spks(animal, day_ix)
-
             if 'analyze_indices' in LOO_dict.keys():
                 an_ind = LOO_dict['analyze_indices']
             else:
@@ -971,6 +975,8 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             r2_stats_spec = []; 
             r2_stats_spec_nlo = [];
 
+            flo, axlo = plt.subplots(ncols=2)
+            
             for left_out in left_outters: 
 
                 if len(LOO_dict[left_out].keys()) == 0:
@@ -987,6 +993,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
                     #### Check that these indices corresond to the left out thing; 
                     check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat)
+                    
 
                     lo_pred_all.append(lo_pred)
                     lo_true_all.append(spks_true[lo_ix, :])
@@ -999,6 +1006,26 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
                     tmp2,_=yfcn(spks_true[lo_ix, :], lo_pred)
                     r2_stats_spec.append([left_out, tmp2])
+
+                    ###### PLot R2 by different categories; ######
+
+                    #### What fraction of the data is this left out data point ? #####
+                    #axlo[1].plot(left_out, float(len(lo_ix))/float(spks_pred.shape[0]), 'k.')
+                    tmp3 = float(len(lo_ix))/float(len(an_ind))
+                    print('Len lo_ix %d, len_overall %d = %.1f' %(len(lo_ix), len(an_ind), tmp3))
+                    axlo[1].plot(left_out, float(len(lo_ix))/float(len(an_ind)), 'k.')
+                    axlo[0].set_title('%s, %d' %(animal, day_ix))
+                    axlo[0].plot(left_out, tmp, '.', color=analysis_config.blue_rgb)
+                    axlo[0].plot(left_out, tmp2, '.', color='purple')
+                    tmp3 = []
+                    for i in range(nshuffs):
+                        t, _ = yfcn(spks_true[lo_ix, :], pred_spks_shuffle[lo_ix, :, i])
+                        tmp3.append(t)
+                    util_fcns.draw_plot(left_out, tmp3, 'k', np.array([1.,1.,1.,0.]), axlo[0])
+                    axlo[0].set_xlim([-1, np.max(left_outters)+1])
+
+                    #### relationship between how much data is left out and the drop in error 
+                    #axlo.plot(float(len(lo_ix))/float(spks_pred.shape[0]), tmp-tmp2, 'k.')
 
                     if plot_eig:
                         for i_fold in range(n_folds):
@@ -1053,7 +1080,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
         ### Vstack r2_stats ####
         r2_stats = np.vstack((r2_stats))
-        assert(r2_stats.shape[0] == len(range(analysis_config.data_params['%s_ndays'%animal])))
+#        assert(r2_stats.shape[0] == len(range(analysis_config.data_params['%s_ndays'%animal])))
         assert(r2_stats.shape[1] == 2)
 
         r2_stats = np.mean(r2_stats, axis=0)
