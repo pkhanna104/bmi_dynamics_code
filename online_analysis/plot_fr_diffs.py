@@ -1841,7 +1841,7 @@ def eg_command_PSTH(animal='grom', day_ix = 0, mag = 0, ang = 7, nbins_past_fut 
             f, ax = plt.subplots(figsize=(10, 2))
             ax.axis('square')
 
-            ### Get this; 
+            ### Get this PSTH ####
             PSTH = get_PSTH(bin_num, rev_bin_num, push, ix)
             for i in range(PSTH.shape[0]):
                 ax.quiver(i*1.5, 2, PSTH[i, 0], PSTH[i, 1],
@@ -1858,6 +1858,7 @@ def eg_command_PSTH_pred(animal='grom', day_ix=0, mag=0, ang=7, nbins_past_fut=1
     ### Mag boundaries ####
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
+    #### Note that this is NOT conditioned on push ####
     model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0'
     model_set_number = 6
     model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
@@ -1878,7 +1879,12 @@ def eg_command_PSTH_pred(animal='grom', day_ix=0, mag=0, ang=7, nbins_past_fut=1
 
     ### Get tm0/tm1 to match 
     tm0, tm1 = generate_models.get_temp_spks_ix(dat['Data'])
+    push_tm0 = push[tm0, :]
     push_tm1 = push[tm1, :]
+    if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+        assert(np.allclose(pred_push[:, [3, 5]], push[np.ix_(tm0, [3, 5])]))
+
+    ### Want to know push at tm1 --> so then can get estimate of push at tm0 for "next command"
     command_bins_tm1 = util_fcns.commands2bins([push_tm1], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
     bin_num_tm1 = bin_num[tm1]
@@ -1887,34 +1893,40 @@ def eg_command_PSTH_pred(animal='grom', day_ix=0, mag=0, ang=7, nbins_past_fut=1
 
     f, ax = plt.subplots(figsize=(5, 10))
     cnt = 0; 
-    for i_m, mov in enumerate(np.unique(move)):
+    
+    movs = np.unique(move)
+    ### Sort by target 
+    movs_mod = np.mod(movs, 10.)
+    ix_sort = np.argsort(movs_mod)
+
+
+    for i_m, mov in enumerate(movs[ix_sort]):
         ix = np.nonzero((command_bins_tm1[:, 0] == mag) & (command_bins_tm1[:, 1] == ang) & (move_tm1==mov))[0]
         if len(ix) >= 15: 
             
             ax.axis('square')
-            psth_push = get_PSTH(bin_num_tm1, rev_bin_num1, push_tm1, ix, num_bins=1, min_bin_set=2,
-                skip_assert_min = True)
-            psth_pred = get_PSTH(bin_num_tm1, rev_bin_num1, pred_push, ix, num_bins=1, min_bin_set=2,
-                skip_assert_min = True)
 
-            ax.quiver(1, 10-cnt, psth_push[1, 0], psth_push[1, 1],
+            ### Plto the command you're centering on ####
+            ax.quiver(1, 10-cnt, np.mean(push_tm1[ix, 3]), np.mean(push_tm1[ix, 5]),
                 width=arrow_scale*2, color = util_fcns.get_color(mov), 
                 angles='xy', scale=1, scale_units='xy')
 
-            ax.quiver(2, 10-cnt, psth_push[2, 0], psth_push[2, 1],
+            ### Plot the actual next command #######
+            ax.quiver(3, 10-cnt, np.mean(push_tm0[ix, 3]), np.mean(push_tm0[ix, 5]), 
                 width=arrow_scale*2, color = util_fcns.get_color(mov), 
                 angles='xy', scale=1, scale_units='xy')
 
-            ax.quiver(3, 10-cnt, psth_pred[2, 0], psth_pred[2, 1],
+            ### PLot the predicted next command #####
+            ax.quiver(5, 10-cnt, np.mean(pred_push[ix, 3]), np.mean(pred_push[ix, 5]),
                 width=arrow_scale*2, color = util_fcns.get_color(mov), 
                 angles='xy', scale=1, scale_units='xy')
 
             cnt += 1
             
     ax.set_ylim([-1, 11])
-    ax.set_xlim([-1, 5])
+    ax.set_xlim([-1, 7])
 
-    util_fcns.savefig(f, 'cm_com_pred_psth_mov%.1f'%mov)
+    util_fcns.savefig(f, 'cm_com_pred_psth_movs')
 
 
 
