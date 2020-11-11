@@ -36,7 +36,7 @@ class Model_Table(tables.IsDescription):
 
 #### Methods to get data needed for spike models ####
 def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False, 
-    within_bin_shuffle = False, shuffix = None, nshuffs = 1, **kwargs):
+    within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, shuffix = None, nshuffs = 1, **kwargs):
 
     """
     Create an xarray Dataset with all of the variables typically in the dictionary
@@ -79,6 +79,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     pos = []
     tsk = []
     trl = []
+    target = []
     bin_num = []
 
     ### Trial order -- which order in the day did this thing happen? 
@@ -281,6 +282,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                     assert(np.all(targ_i_all[ix_x, 1] == targ_i_all[ix_x[0], 1]))
                     trl_order_ix.append(order[i_t][i_te_num])
 
+                    target.append(targ_ix[ix_x])
+
             ### Remove trials that are -1: 
             ### Keep these trials ####
             ix_mod = np.array([iii for iii in ix_mod if iii not in rm_trls])
@@ -322,11 +325,12 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     tsk = np.hstack((tsk))
     trl = np.hstack((trl))
     pos = np.vstack((pos))
-    assert(spks.shape[0] == vel.shape[0] == push.shape[0] == tsk.shape[0] == trl.shape[0] == pos.shape[0])
+    target = np.hstack((target))
+    
+    assert(spks.shape[0] == vel.shape[0] == push.shape[0] == tsk.shape[0] == trl.shape[0] == pos.shape[0] == target.shape[0])
     assert(len(trg_trl) == len(np.unique(trl)) == len(trg_trl_pos) == len(trl_order_ix))
     assert(len(np.unique(tsk) == 2))
     assert(np.all(np.unique(trl) == np.arange(np.max(trl) + 1)))
-    
     ########################################################
     ##### Here we can safely add shuffles if we want #######
     ########################################################
@@ -346,9 +350,6 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     elif animal == 'jeev':
         assert(quick_reg(np.dot(KG[[3, 5], :], spks.T).T, push[:, [3, 5]]) > .99)
 
-
-
-
     for nsi in range(nshuffs):
 
         ################## INIT the shuffle seed #################
@@ -364,6 +365,9 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
         elif within_bin_shuffle:
             shuff_ix, KG = within_bin_shuffling(spks, push[:, [3, 5]], animal, day_ix)
+
+        elif mn_maint_within_bin_shuffle:
+            shuff_ix, KG = within_bin_shuffling_mean_main(spks, push[:, [3, 5]], animal, day_ix, tsk, target)
 
         else:
             shuff_ix = np.arange(spks.shape[0])
@@ -1263,11 +1267,140 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
 
     return shuff_ix, KG
 
+def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, target):
+    
+    ### Make sure enough push / spks / tsk / target
+    assert(bin_spk.shape[0] == decoder_all.shape[0] == len(tsk) == len(target))
+
+    #### Mag boundaries #######
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+    #### Get commands ####
+    command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [0, 1])[0]
+
+    assert(4. in np.unique(command_bins[:, 0]))
+    assert(bin_spk.shape[0] == command_bins.shape[0])
+
+    #### Get KG ###
+    if animal == 'grom':
+        _, KG = util_fcns.get_grom_decoder(day_ix)
+
+    elif animal == 'jeev':
+        KG_imp = util_fcns.get_jeev_decoder(day_ix)
+        KG = np.zeros((7, KG_imp.shape[1]))
+        KG[[3, 5], :] = KG_imp.copy()
+
+    shuff_ix = np.zeros((bin_spk.shape[0])) - 1
+    big_ix = []
+
+    movements = tsk*10 + target
+    unique_mov = np.unique(movements)
+
+    for i_m in range(5):
+        for i_a in range(8):
+
+            ### Get indices ######
+            ix = np.nonzero(np.logical_and(command_bins[:, 0] == i_m, command_bins[:, 1] == i_a))[0]
+            
+
+            if len(ix) > 0:
+                if len(big_ix) > 0:
+                    for i in ix: assert(i not in np.hstack((big_ix)))
+
+                ### For each command, generate a command to command mapping ####
+                mov_map = get_mov_map(unique_mov)
+
+                #### Now lets go through each mov_map pair ###
+                for m, (mov1, mov2) in enumerate(mov_map.items()): 
+
+                    #### mov1_ix 
+                    mov1_ix = np.nonzero(movements[ix] == mov1)[0]
+                    mov2_ix = np.nonzero(movements[ix] == mov2)[0]
+
+                    if len(mov1_ix) < len(mov2_ix): 
+
+                        ### Randomly select mov2 to --> mov1 
+                        mov2_ix_sub = mov2_ix[np.random.permutation(len(mov1_ix))]
+
+                        ### Makes sure mov 2 ix are jittered around ###
+                        shuff_ix[ix[mov1_ix]] = ix[mov2_ix_sub[np.random.permutation(len(mov1_ix))]]
+
+                    elif len(mov2_ix) < len(mov1_ix): 
+
+                        N = len(mov1_ix)
+                        cnt = len(mov2_ix)
+                        ix_keep = [mov2_ix]
+
+                        while cnt < N: 
+                            ix_keep.append(mov2_ix)
+                            cnt += len(mov2_ix)
+
+                        ix_keep = np.hstack((ix_keep))
+                        mov2_ix_sub = ix_keep[np.random.permutation(len(ix_keep))][:N]
+                        shuff_ix[ix[mov1_ix]] = ix[mov2_ix_sub]
+
+                    elif len(mov2_ix) == len(mov1_ix):
+                        N = len(mov2_ix)
+                        shuff_ix[ix[mov1_ix]] = ix[mov2_ix[np.random.permutation(N)]]
+
+                ### Which bins have been accounted for? 
+                big_ix.append(ix[mov1_ix].copy())
+                
+                ### Chekc that this map abides the move_map: 
+                chk_mov_map(i_m, i_a, ix, command_bins, shuff_ix, mov_map, movements)
+
+
+    assert(np.all(shuff_ix >=0 ))
+    shuff_ix = shuff_ix.astype(int)
+
+    big_ix_sort = np.sort(np.hstack((big_ix)))
+    assert(np.all(big_ix_sort == np.arange(shuff_ix.shape[0])))
+
+    ### Make sure applying shuffling to command_bins doesn't change the bins; 
+    assert(np.all(command_bins == command_bins[shuff_ix, :]))
+
+    return shuff_ix, KG
 
 ####### MODEL ADDING ########
 ######### Call from generate_models.sweep_ridge_alpha #########
 # h5file, model_, _ = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=name, 
 #     test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key)
+
+def get_mov_map(unique_mov): 
+    
+    ### Perumuted ####
+    Nmov = len(unique_mov)
+    ix_perm = np.random.permutation(Nmov)
+    unique_mov_perm = unique_mov[ix_perm]
+
+    ### 
+    mapping = dict()
+    for u, (m1, m2) in enumerate(zip(unique_mov, unique_mov_perm)): 
+
+        #### add #####
+        mapping[m1] = m2 
+
+    return mapping
+
+def chk_mov_map(mag, ang, com_ix, commands, shuff_ix, mov_map, movements): 
+
+    ### make the 
+    shuff_ix = shuff_ix.astype(int)
+    
+    assert(np.all(commands[com_ix, 0] == mag))
+    assert(np.all(commands[com_ix, 1] == ang))
+    assert(np.all(commands[shuff_ix[com_ix], 0] == mag))
+    assert(np.all(commands[shuff_ix[com_ix], 1] == ang))
+    
+    ### loop throught the movements 
+    for _, (mov1, mov2) in enumerate(mov_map.items()):
+
+        ### Which of these are for mov1? 
+        ix_mov1 = np.nonzero(movements[com_ix] == mov1)[0]
+
+        ### Make sure the shufle maps to mov2 
+        assert(np.all(movements[shuff_ix[com_ix[ix_mov1]]] == mov2))
+
 
 def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=None, 
     fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, 
