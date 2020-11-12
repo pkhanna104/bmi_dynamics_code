@@ -41,6 +41,8 @@ class DataExtract(object):
 
         ### Get subsampled 
         self.spks = spks0[tm0, :]
+        self.spks_tm1 = spks0[tm1, :]
+
         self.push = push0[tm0, :]
         self.push_tm1 = push0[tm1, :]
 
@@ -85,6 +87,12 @@ class DataExtract(object):
             self.pred_spks_shuffle = 10*pred_spks_shuffle; 
         
         self.loaded = True
+
+    def load_null_roll(self): 
+        pred, true = plot_generated_models.get_shuffled_data_pred_null_roll(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs,
+            testing_mode = False)
+        self.null_roll_pred = 10*pred; 
+        self.null_roll_true = 10*true
 
 ######### UTILS ##########
 def stack_dict(d):
@@ -190,7 +198,7 @@ def check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat):
 
 ########## model fitting utls ###########
 def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG,
-    add_mean = None):
+    add_mean = None, skip_cond = False):
     """Summary
     
     Parameters
@@ -247,7 +255,10 @@ def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG,
             cnt += len(ixx)
         assert(cnt == len(test))
 
-    return add_cond(y_train, y_train_est, X_train, KG, y_test_pred, push_test, model)
+    if skip_cond:
+        return y_test_pred, model.coef_, model.intercept_
+    else:
+        return add_cond(y_train, y_train_est, X_train, KG, y_test_pred, push_test, model)
 
 def add_cond(y_train, y_train_est, X_train, KG, y_test_pred, push_test, model):
     ### Row is a variable, column is an observation for np.cov
@@ -764,9 +775,9 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                     ord_input_type[day_ix], 1, within_bin_shuffle = False, day_ix = day_ix, skip_plot = True)
 
                 ### Load predicted data freom the model 
-                spks_pred = model_dict[day_ix, model_nm]
-                
-                spks_pred_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
+                sub_spikes = 10*sub_spikes
+                spks_pred = 10*model_dict[day_ix, model_nm]
+                spks_pred_shuffle = 10*plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
                     testing_mode = False)
 
                 # ############## Data checking ##############
@@ -783,8 +794,8 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                 data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
                 
                 ############## Get subspikes ##############
-                spks_tm1 = sub_spk_temp_all[:, 0, :]
-                spks_tm0 = sub_spk_temp_all[:, 1, :]
+                spks_tm1 = 10*sub_spk_temp_all[:, 0, :]
+                spks_tm0 = 10*sub_spk_temp_all[:, 1, :]
                 
                 LOO_dict = {}
                 LOO_dict_ctrl = {}
@@ -800,20 +811,23 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                 test_ix = np.array([i for i in range(N) if i not in train_ix])
                 
                 ##### Model fitting; #####
-                y_lo_pred, _, _ = train_and_pred(spks_tm1, spks_tm0, push_tm0,
+                y_lo_pred, _, _ = train_and_pred(0.1*spks_tm1, 0.1*spks_tm0, push_tm0,
                     train_ix, test_ix, alpha_spec, KG)
+
+                ### Multipy by 10 to match the spks
+                y_lo_pred_10 = y_lo_pred*10; 
                 
                 y_std_pred = spks_pred[test_ix, :]
 
-                r2_lo = util_fcns.get_R2(spks_tm0[test_ix, :], y_lo_pred)
-                r2_std = util_fcns.get_R2(spks_tm0[test_ix, :], y_std_pred)
+                r2_lo = util_fcns.get_R2(0.1*spks_tm0[test_ix, :], y_lo_pred)
+                r2_std = util_fcns.get_R2(0.1*spks_tm0[test_ix, :], 0.1*y_std_pred)
                 ax.plot(i_a*10 + day_ix - 0.1, r2_lo, '.', color='purple')
                 ax.plot(i_a*10 + day_ix + 0.1, r2_std, '.', color=analysis_config.blue_rgb)
                 
                 r2_shuff = []
                 for i in range(nshuffs):
                     y_shuf = spks_pred_shuffle[test_ix, :, i]
-                    r2_shuff.append(util_fcns.get_R2(spks_tm0[test_ix, :], y_shuf))
+                    r2_shuff.append(util_fcns.get_R2(0.1*spks_tm0[test_ix, :], 0.1*y_shuf))
                 util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
                 ax.plot([i_a*10 + day_ix, i_a*10 + day_ix], [np.mean(r2_shuff), np.max([r2_lo, r2_std])],
                     'k-', linewidth=0.5)
@@ -837,7 +851,10 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
 
                         #### Get command indices ####
                         ix_com_lo =  (command_bins[test_ix, 0] == mag) & (command_bins[test_ix, 1] == ang)
+                        ix_com_lo = np.nonzero(ix_com_lo)[0]
+
                         ix_com_all = (command_bins[:, 0]       == mag) & (command_bins[:, 1]       == ang)
+                        ix_com_all = np.nonzero(ix_com_all)[0]
 
                         #### Get movements 1 #####
                         for i_m1, mov1 in enumerate(unique_mov_lo): 
@@ -856,7 +873,7 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                                 
                                         ##### Match the distributions ####
                                         ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_tm0[test_ix[ix_com_lo[ix_mov1]], :],
-                                            push_tm1[ix_com_all[ix_mov2], :], psig=.05)
+                                            push_tm0[ix_com_all[ix_mov2], :], psig=.05)
 
                                         ##### If these match ###
                                         if len(ix1_1) >= min_commands and len(ix2_2) >= min_commands:
@@ -878,13 +895,13 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                                             assert(np.all(command_bins[mov2_ix, 1] == ang))
                                             assert(np.all(data_temp['mov'][mov2_ix] == mov2))
                                             
-                                            m1_left_out_mean = np.mean(y_lo_pred[mov1_ix_LO, :], axis=0)
+                                            m1_left_out_mean = np.mean(y_lo_pred_10[mov1_ix_LO, :], axis=0)
 
-                                            m1_pred_mean = np.mean(pred_spks[mov1_ix, :], axis=0)
-                                            m2_pred_mean = np.mean(pred_spks[mov2_ix, :], axis=0)
+                                            m1_pred_mean = np.mean(spks_pred[mov1_ix, :], axis=0)
+                                            m2_pred_mean = np.mean(spks_pred[mov2_ix, :], axis=0)
                                             
-                                            m1_true_mean = np.mean(data_temp['spks'][mov1_ix, :], axis=0)
-                                            m2_true_mean = np.mean(data_temp['spks'][mov2_ix, :], axis=0)
+                                            m1_true_mean = np.mean(sub_spikes[mov1_ix, :], axis=0)
+                                            m2_true_mean = np.mean(sub_spikes[mov2_ix, :], axis=0)
 
                                             m1_shuff_pred_mean = np.mean(spks_pred_shuffle[mov1_ix, :, :], axis=0)
                                             m2_shuff_pred_mean = np.mean(spks_pred_shuffle[mov2_ix, :, :], axis=0)
@@ -899,16 +916,16 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
 
                 #### For each movement, comparison b/w LO commadn estimate for a given movement vs. predicted 
                 plot_LO_means(True_diffs, Pred_diffs, LO_pred_diffs, shuff_diff, ax_cc, ax_err, nshuffs, i_a*10 + day_ix,
-                    animal, day_ix, title_str=cat)
+                    animal, day_ix, title_str='move_dir_loo_%s'%cat_)
 
-            save_ax_cc_err(ax_cc, ax_err, f_cc, f_err, cat)
+            save_ax_cc_err(ax_cc, ax_err, f_cc, f_err, 'move_dir_loo_%s'%cat_)
 
         ##### Plotting #####
         ax.set_xlim([-1, 14])
         ax.set_xticks([])
         f.tight_layout()
         util_fcns.savefig(f, 'mov_grp_train_%s'%cat_)
-                
+      
 def get_tsk_spec_alpha(n_folds=5):
     alphas = [np.arange(10, 100, 10), np.arange(100, 1000, 100), np.arange(1000, 10000, 1000)]; 
     # for i in range(-4, 7):
@@ -1430,6 +1447,7 @@ def plot_LO_means(pop_dist_true, pop_dist_pred, pop_dist_pred_lo, pop_dist_shuff
     ###### For each day / animal plot the CC and Error? ####
     #####Plot all the pts too ####
     ### R2 and Error ###
+
     f_spec, ax_spec = plt.subplots(figsize=(3, 3)); 
     ax_spec.plot(pop_dist_true, pop_dist_pred, 'k.', markersize=5.)
     ax_spec.plot(pop_dist_true, pop_dist_pred_lo, '.', color='purple', markersize=5.) 

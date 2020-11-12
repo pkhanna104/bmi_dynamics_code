@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
 
+
 def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 20, plot_action = False):
     
@@ -23,17 +24,25 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
             dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
                 model_set_number = model_set_number, nshuffs=nshuffs)
             dataObj.load()
+            dataObj.load_null_roll()
 
             if plot_action:
                 KG = util_fcns.get_decoder(animal, day_ix)
 
                 r2_true = util_fcns.get_R2(np.dot(KG, dataObj.spks.T).T, 
                     np.dot(KG, dataObj.pred_spks.T).T)
+                
                 r2_shuff = []
                 for n in range(nshuffs):
                     r2_shuff.append(util_fcns.get_R2(np.dot(KG, dataObj.spks.T).T, 
                         np.dot(KG, dataObj.pred_spks_shuffle[:, :, n].T).T))
 
+                r2_null_roll = []
+                for n in range(nshuffs):
+                    if animal == 'grom':
+                        assert(np.allclose(0.1*np.dot(KG, dataObj.null_roll_true[:, :, n].T).T, dataObj.push[:, [3, 5]]))
+                    r2_null_roll.append(util_fcns.get_R2(np.dot(KG, dataObj.null_roll_true[:, :, n].T).T, 
+                        np.dot(KG, dataObj.null_roll_pred[:, :, n].T).T))
             else:
                 ### get predictions ###
                 r2_true = util_fcns.get_R2(dataObj.spks, dataObj.pred_spks)
@@ -42,10 +51,17 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
                 for n in range(nshuffs):
                     r2_shuff.append(util_fcns.get_R2(dataObj.spks, dataObj.pred_spks_shuffle[:, :, n]))
 
+                r2_null_roll = []
+                for n in range(nshuffs):
+                    r2_null_roll.append(util_fcns.get_R2(dataObj.null_roll_true[:, :, n], dataObj.null_roll_pred[:, :, n]))
+
             ### Plot the r2 ###
             xpos = i_a*10 + day_ix
             ax.plot(xpos, r2_true, '.', markersize=15, color=col[plot_action])
+            
             util_fcns.draw_plot(xpos, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+            util_fcns.draw_plot(xpos, r2_null_roll, 'deeppink', np.array([1., 1., 1., 0.]), ax)
+            
             ax.plot([xpos, xpos], [np.mean(r2_shuff), r2_true], 'k-', linewidth=.5)
 
     ax.set_xlim([-1, 14])
@@ -108,24 +124,26 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
 def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6, nshuffs = 2,
     mag_eg=0, ang_eg=7):
 
-    f_cc, ax_cc = plt.subplots(figsize=(2, 3))
-    f_er, ax_er = plt.subplots(figsize=(2, 3))
+    f_cc, ax_cc = plt.subplots(figsize=(3, 3))
+    f_er, ax_er = plt.subplots(figsize=(3, 3))
 
     f_scat, ax_scatter = plt.subplots(figsize=(3, 3))
     f_scat_shuff, ax_scatter_shuff = plt.subplots(figsize=(3, 3))
     
     f_pw, ax_pw = plt.subplots(figsize=(5, 5))
     ax_pw2 = ax_pw.twinx()
-    PW_eg = []; PW_shuff = [] 
+    PW_eg = []; PW_shuff = []; PW_shuff_rol = []
 
 
-    for i_a, animal in enumerate(['grom']):#, 'jeev']):
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             ### Load data ###
             dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
                 model_set_number = model_set_number, nshuffs=nshuffs)
             dataObj.load()
+            dataObj.load_null_roll()
+
             KG = util_fcns.get_decoder(animal, day_ix)
 
             #### multipy by 0.1 so that pred_push is correct magnitude
@@ -134,10 +152,12 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
 
             X_shuff = {}; 
             pred_push_shuff = {}; 
+            pred_push_shuff_roll = {}
             for i in range(nshuffs):
                 X_shuff[i] = []
                 pred_push_shuff[i] = np.dot(KG, 0.1*dataObj.pred_spks_shuffle[:, :, i].T).T
-
+                pred_push_shuff_roll[i] = np.dot(KG, 0.1*dataObj.null_roll_pred[:, :, i].T).T
+                assert(not np.allclose(pred_push_shuff[i], pred_push_shuff_roll[i]))
 
             ### For each move / command is pred closer than shuffle 
             for mag in range(4):
@@ -181,17 +201,23 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
                                 #     import pdb; pdb.set_trace()
                                 # if np.isnan(pred_pw_dist):
                                 #     import pdb; pdb.set_trace()
-                                tmp = []
+                                tmp = []; tmp2 = []; 
                                 for i in range(nshuffs):
                                     shuf_mn1 = np.mean(pred_push_shuff[i][ix1[ix11], :], axis=0) 
                                     shuf_mn2 = np.mean(pred_push_shuff[i][ix2[ix22], :], axis=0) 
-                                    
                                     pred_pw_dist_shuff = np.linalg.norm(shuf_mn1 - shuf_mn2)
-                                    X_shuff[i].append([true_pw_dist, pred_pw_dist_shuff])
+                                    
+                                    shuf_rol1 = np.mean(pred_push_shuff_roll[i][ix1[ix11], :], axis=0)
+                                    shuf_rol2 = np.mean(pred_push_shuff_roll[i][ix2[ix22], :], axis=0)
+                                    pred_pw_dist_shuff_rol = np.linalg.norm(shuf_rol1 - shuf_rol2)
+
+                                    X_shuff[i].append([true_pw_dist, pred_pw_dist_shuff, pred_pw_dist_shuff_rol])
                                     tmp.append(pred_pw_dist_shuff)
+                                    tmp2.append(pred_pw_dist_shuff_rol)
 
                                     if animal == 'grom' and day_ix == 0 and i == 0:
                                         ax_scatter_shuff.plot(true_pw_dist, pred_pw_dist_shuff, 'k.', markersize=5.)
+                                        ax_scatter_shuff.plot(true_pw_dist, pred_pw_dist_shuff_rol, '.', color='deeppink', markersize=5.)
 
                                 if animal == 'grom' and day_ix == 0:
                                     ax_scatter.plot(true_pw_dist, pred_pw_dist, 'k.', markersize=5.)
@@ -199,6 +225,7 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
                                     if mag == mag_eg and ang == ang_eg:
                                         PW_eg.append([mov1, mov2, true_pw_dist, pred_pw_dist])
                                         PW_shuff.append(tmp)
+                                        PW_shuff_rol.append(tmp2)
 
 
             X = np.vstack((X))
@@ -211,20 +238,27 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
 
             if animal == 'grom' and day_ix == 0:
                 ax_scatter.set_title(' r %.3f' %(rv), fontsize=10)
-            rv_shuff = []; er_shuff = []; 
+            rv_shuff = []; er_shuff = []; rv_shuff_rol = []; er_shuff_rol = []; 
+
             for i in range(nshuffs):
                 X_shuff[i] = np.vstack((X_shuff[i])) 
                 _,_,rv_shf,_,_ = scipy.stats.linregress(X_shuff[i][:, 0], X_shuff[i][:, 1])
                 rv_shuff.append(rv_shf)
                 er_shuff.append(np.mean(np.abs(X_shuff[i][:, 0] - X_shuff[i][:, 1])))
 
+                _,_,rv_shf_rol,_,_ = scipy.stats.linregress(X_shuff[i][:, 0], X_shuff[i][:, 2])
+                rv_shuff_rol.append(rv_shf_rol)
+                er_shuff_rol.append(np.mean(np.abs(X_shuff[i][:, 0] - X_shuff[i][:, 2])))
+
                 if animal == 'grom' and day_ix == 0 and i == 0: 
-                    ax_scatter_shuff.set_title('r shuff %.3f' %(rv_shf), fontsize=10)
+                    ax_scatter_shuff.set_title('r shuff %.3f, rol %.3f' %(rv_shf, rv_shf_rol), fontsize=10)
 
             util_fcns.draw_plot(10*i_a + day_ix, rv_shuff, 'k', np.array([1.,1., 1., 0.]), ax_cc)
+            util_fcns.draw_plot(10*i_a + day_ix, rv_shuff_rol, 'deeppink', np.array([1.,1., 1., 0.]), ax_cc)
             ax_cc.plot([10*i_a + day_ix, 10*i_a + day_ix], [np.mean(rv_shuff), rv], 'k-', linewidth=0.5)
 
             util_fcns.draw_plot(10*i_a + day_ix, er_shuff, 'k', np.array([1.,1., 1., 0.]), ax_er)
+            util_fcns.draw_plot(10*i_a + day_ix, er_shuff_rol, 'deeppink', np.array([1.,1., 1., 0.]), ax_er)
             ax_er.plot([10*i_a + day_ix, 10*i_a + day_ix], [np.mean(er_shuff), err], 'k-', linewidth=0.5)
             
 
@@ -255,7 +289,8 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     for ii, i_s in enumerate(ix_sort):
         ax_pw.plot(ii, PW_eg[i_s, 2], 'k.')
         ax_pw2.plot(ii, PW_eg[i_s, 3], '.', color='maroon')
-        util_fcns.draw_plot(ii, PW_shuff[i_s], 'gray', np.array([1., 1., 1., 0.]), ax_pw2)
+        util_fcns.draw_plot(ii, PW_shuff[i_s], 'k', np.array([1., 1., 1., 0.]), ax_pw2)
+        util_fcns.draw_plot(ii, PW_shuff_rol[i_s], 'deeppink', np.array([1.,1.,1.,0.]), ax_pw2)
 
         ax_pw.plot(ii, 0, '.', markersize=20, color=util_fcns.get_color(PW_eg[i_s, 0]))
         ax_pw.plot(ii, -0.1, '.', markersize=20, color=util_fcns.get_color(PW_eg[i_s, 1]))
@@ -267,9 +302,6 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     f_pw.tight_layout()
 
     util_fcns.savefig(f_pw, 'pw_plot_next_action')
-
-
-
 
 def plot_pw_next_action_eg(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     animal = 'grom', day_ix = 0, mag = 0, ang = 0):
@@ -284,3 +316,9 @@ def plot_pw_next_action_eg(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_s
 
     ### plot pairwise differences ###
 
+##### work out issues with the null roll ###
+def plot_test_roll(): 
+    
+    ### Load data ###
+    dataObj = DataExtract('grom', 0, model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', 
+        model_set_number = 6, nshuffs=0)

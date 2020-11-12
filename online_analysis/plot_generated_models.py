@@ -2194,6 +2194,130 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
                  
     return pred_Y
 
+def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, testing_mode = False):
+    """
+    New method to get shuffled predictions 
+    """
+    #### With intercept #####
+
+    t0 = time.time()
+    pref = analysis_config.config['shuff_fig_dir']
+           
+    #### Open the file #####
+    data_file = pickle.load(open(pref + '%s_%d_shuff_ix_null_roll.pkl' %(animal, day)))
+    full_push = data_file['Data']['push']
+    full_bin_num = data_file['Data']['bin_num']
+    temp_N = data_file['temp_n']
+
+    #### Test indices #####
+    test_ix = data_file['test_ix']
+    type_of_model = np.zeros((5, ))
+
+    #### Get # neurons #
+    nneur = data_file['Data']['spks'].shape[1]
+
+    ### 2 x N decoder 
+    KG = util_fcns.get_decoder(animal, day)
+
+    model_var_list, predict_key, include_action_lags, history_bins_max = generate_models_list.get_model_var_list(6)
+    models_to_include = [m[1] for m in model_var_list]
+
+    variables_list = generate_models.return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
+    pred_Y = np.zeros((temp_N, nneur, nshuffs))
+    true_Y = np.zeros((temp_N, nneur, nshuffs))
+
+    if testing_mode:
+        day_mat = analysis_config.data_params['%s_input_type'%animal] 
+        order_mat = analysis_config.data_params['%s_ordered_input_type'%animal] 
+        test_Data, test_Data_temp, test_Sub_spikes, test_Sub_spk_temp_all, test_Sub_push = generate_models_utils.get_spike_kinematics(animal, day_mat[day], 
+                    order_mat[day], 1, day_ix = day, nshuffs = 1)
+    t0 = time.time()
+    
+    #### Get teh spike indices ###
+    tm0ix, tm1ix = generate_models.get_temp_spks_ix(data_file['Data'])
+    assert(len(tm0ix) == len(tm1ix) == temp_N)
+
+    ### Shuffle indices: 
+    for shuffle in range(nshuffs):
+        if shuffle % 10 == 0:
+            print('Shuffle %d, %.5f' %(shuffle, time.time() - t0))
+        
+        shuff_ix = data_file[shuffle]
+
+        if testing_mode: 
+            shuff_ix = 0 # no roll 
+
+        #### get the spikes and previous spikes with roll applied ###
+        sub_spikes, sub_spikes_tm1, sub_push, _, _ = generate_models.get_temp_spks_null_pot_roll(data_file['Data'], shuff_ix)
+        
+        #### This is teh true data that is trying to be predicted
+        true_Y[:, :, shuffle] = sub_spikes
+
+        if testing_mode: 
+            assert(np.allclose(sub_spikes, test_Sub_spikes))
+            assert(np.allclose(sub_spikes_tm1, test_Sub_spk_temp_all[:, 0, :]))
+            assert(np.allclose(sub_push[:, [3, 5]], test_Sub_push))
+            
+        shuff_str = str(shuffle)
+        shuff_str = shuff_str.zfill(3)
+        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_%s_models.mat' %(animal, day, shuff_str, model_name, 'null_roll'))
+        
+        #### Build the data dictionary ####
+        data_temp_dict = {}
+        for i_n in range(nneur):
+            data_temp_dict['spk_tm1_n%d'%i_n] = sub_spikes_tm1[:, i_n]
+            data_temp_dict['spk_tm0_n%d'%i_n] = sub_spikes[:, i_n]
+        data_temp_dict['pshx_tm0'] = sub_push[:, 3]
+        data_temp_dict['pshy_tm0'] = sub_push[:, 5]
+
+        #### For each data fold #####
+        for i_fold in range(5): 
+            
+            coef = model_file[str((i_fold, 'coef_'))]
+            intc = model_file[str((i_fold, 'intc_'))]
+            assert(model_file['shuff_num'] == shuffle)
+            test_ix_fold = test_ix[i_fold]
+
+            if testing_mode:
+                coef[:,:] = np.eye(nneur)
+                intc[:] = 0.
+
+            #### Get W if conditinoing on action ####
+            if 'psh_2' in model_name: 
+                W = model_file[str((i_fold, 'W'))]
+
+                if testing_mode:
+                    ### No uncertainty/error in dynamics model 
+                    W[:,:] = 0.
+
+            for i_m, (model_nm, variables) in enumerate(zip(models_to_include, variables_list)):
+
+                if model_nm == model_name: 
+                    if 'psh_2' in model_name: 
+
+                        pred_wc = pred_w_cond(coef, intc, data_temp_dict,
+                            test_ix_fold, variables, nneur, w_ = W, KG = KG) 
+
+                        pred_Y[test_ix_fold, :, shuffle] = pred_wc.copy()
+
+                        if testing_mode:
+                            ### Set the "W" equal to zero so wont match actions 
+                            ### Want to test for equality to the previous action/spks
+                            pass
+                        else:
+                            #### Make sure the push actuall matches intended push: #### 
+                            assert(np.allclose(np.dot(KG, pred_wc.T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
+                            assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold, :, shuffle].T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
+
+                    else:
+                        pred_Y[test_ix_fold, :, shuffle] = pred_wo_cond(coef, intc, data_temp_dict,
+                            test_ix_fold, variables, nneur) 
+        ### After all folds, if in testing mode, pred_Y should be equal to sub_spikes_tm1; 
+        if testing_mode:
+            assert(np.allclose(sub_spikes_tm1, pred_Y[:, :, shuffle]))
+                 
+    return pred_Y, true_Y
+
 def pred_wo_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneur, **kwargs): 
     """
     Make predictions from saved data and saved Ridge models, NOT conditioned on action 
