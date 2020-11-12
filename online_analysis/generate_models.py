@@ -923,7 +923,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == None:
+            if animal == 'grom':
                 pass
             else:
                 print('##############################')
@@ -940,18 +940,20 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                 # Get spike data from data fcn
                 if shuff_type == 'beh_maint':
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = True,
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = True, 
                         day_ix = i_d, nshuffs = nshuffs)
 
                 elif shuff_type == 'mn_diff_maint':
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = True,
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = True, 
                         day_ix = i_d, nshuffs = nshuffs)
                     
                 elif shuff_type == 'null_roll': 
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
                         day_ix = i_d, nshuffs = nshuffs)
+
+                print('Animal %s, Day %d data extraction done' %(animal, i_d))
 
                 #### Save shuffle indices ####### 
                 if shuff_type == 'beh_maint':
@@ -992,7 +994,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                 for shuffle in range(nshuffs):
 
                     ##### Shuffles and get trial starts #####
-                    if shuff_type == 'potent_roll':
+                    if shuff_type == 'null_roll':
                         sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks_null_pot_roll(Data2, Shuff_ix[shuffle])
                     else:
                         sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks(Data2, Shuff_ix[shuffle])
@@ -1008,7 +1010,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                         assert(np.allclose(sub_push[:, [3, 5]], np.dot(KG, sub_spikes.T).T))
                     elif animal == 'jeev':
                         assert(generate_models_utils.quick_reg(  np.array(np.dot(KG, sub_spikes.T).T), 
-                            np.array(sub_push[:, [3, 5]])) > .99)
+                            np.array(sub_push[:, [3, 5]])) > .98)
 
                     ### Now make sure the discretized version are ok: 
                     assert(np.allclose(command_bins_disc, shuff_com_bins_disc))
@@ -1259,26 +1261,34 @@ def get_temp_spks_null_pot_roll(Data2, shuff_ix):
     spks_keep = np.intersect1d(spks_t1, spks_t2)
 
     #### We need to keep spks_keep and spks_keep -1 together: 
-    spks_tm0 = Data2['spks_null']
-    spks_tm1 = np.vstack(( np.zeros((1, spks_tm0.shape[1])) + np.nan, Data2['spks_null'][:-1, :] ))
-    assert(spks_tm0.shape == spks_tm1.shape)
+    spks_null_tm0 = Data2['spks_null'][spks_keep, :]
+    nN = spks_null_tm0.shape[1]
 
-    #### Roll the null activity ####
-    spks_null_tm0 = spks_tm0[shuff_ix, :]
-    spks_null_tm1 = spks_tm1[shuff_ix, :]
+    spks_null_tm1 = np.vstack(( np.zeros((1, nN)) + np.nan, Data2['spks_null'][:-1, :] ))[spks_keep, :]
+    assert(spks_null_tm0.shape == spks_null_tm1.shape)
+    assert(np.sum(np.isnan(spks_null_tm1)) == 0)
 
     #### Potent ####
-    spks_pot_tm0  = Data2['spks_pot']
-    spks_pot_tm1  = np.vstack(( np.zeros((1, 2)), Data2['spks_pot'][:-1, :] ))
+    spks_pot_tm0  = Data2['spks_pot'][spks_keep, :]
+    spks_pot_tm1  = np.vstack(( np.zeros((1, nN)) + np.nan, Data2['spks_pot'][:-1, :] ))[spks_keep, :]
+    assert(np.sum(np.isnan(spks_pot_tm1)) == 0)
 
-    #### Get this ###
-    spks_shuff_tm0 = spks_null_tm0 + spks_pot_tm0
-    spks_shuff_tm1 = spks_null_tm1 + spks_pot_tm1
-    assert(np.allclose(np.dot(Data2['KG'], spks_shuff_tm0.T).T, Data2['push']))
+    #### Now that these have been subselected,roll the null activiyt 
+    ix_roll = np.roll(np.arange(len(spks_keep)), shuff_ix)
+    spks_null_shuff_tm0 = spks_null_tm0[ix_roll]
+    spks_null_shuff_tm1 = spks_null_tm1[ix_roll]
 
-    push_shuff = Data2['push']
+    spks_shuff_tm0 = spks_null_shuff_tm0 + spks_pot_tm0
+    spks_shuff_tm1 = spks_null_shuff_tm1 + spks_pot_tm1
 
-    return spks_shuff_tm0[spks_keep], spks_shuff_tm1[spks_keep], push_shuff[spks_keep], spks_keep, spks_keep - 1
+    if nN > 21:
+        assert(np.allclose(np.dot(Data2['KG'], spks_shuff_tm0.T).T, Data2['push'][np.ix_(spks_keep, [3, 5])]))
+    else:
+        assert(generate_models_utils.quick_reg(np.array(np.dot(Data2['KG'], spks_shuff_tm0.T).T), Data2['push'][np.ix_(spks_keep, [3, 5])]) > .98)
+
+    push_shuff = Data2['push'][spks_keep, :]
+
+    return spks_shuff_tm0, spks_shuff_tm1, push_shuff, spks_keep, spks_keep - 1
 
 def decompose_null_pot(spks, push, KG, KG_null_proj, KG_potent_orth):
     '''
@@ -1290,9 +1300,16 @@ def decompose_null_pot(spks, push, KG, KG_null_proj, KG_potent_orth):
     null_spks = np.dot(KG_null_proj, spks.T).T
     pot_spks = np.dot(KG_potent_orth, spks.T).T
 
-    assert(np.all(null_spks + pot_spks == spks))
-    assert(np.allclose(np.dot(KG, null_spks.T).T == 0.))
-    assert(np.allclose(np.dot(KG, pot_spks.T).T == push))
+    assert(np.allclose(null_spks + pot_spks, spks))
+    assert(np.allclose(np.dot(KG, null_spks.T).T, np.zeros(( null_spks.shape[0], 2))))
+
+    nneur = pot_spks.shape[1]
+    if nneur <= 21:
+        ### Jeevs
+        assert(generate_models_utils.quick_reg(np.array(np.dot(KG, pot_spks.T).T), push[:, [3, 5]]) > .98)
+
+    else:
+        assert(np.allclose(np.dot(KG, pot_spks.T).T, push[:, [3, 5]]))
 
     return null_spks, pot_spks
 
