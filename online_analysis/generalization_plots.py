@@ -712,7 +712,8 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
 
 ######## Fit move group model #####
 def fit_predict_lomov_model(min_num_per_cat_lo = 15, 
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6, nshuffs=10):
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6, nshuffs=10,
+    min_commands = 15):
 
     """Summary
     
@@ -726,7 +727,7 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
     cat_dict['horz']     = dict(grom=[3., 7., 13.0, 13.1, 17.0, 17.1], jeev=[0.0, 4.0, 18.0, 18.1, 19.0, 19.1])
     cat_dict['diag_pos'] = dict(grom=[0., 4., 10.0, 10.1, 14.0, 14.1], jeev=[1.0, 5.0, 16.0, 16.1])
     cat_dict['diag_neg'] = dict(grom=[2., 6., 12.0, 12.1, 16.0, 16.1])
-    
+
     ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'] , 'max_alphas_ridge_model_set%d.pkl'%model_set_number), 'rb')); 
 
     for cat_ in cat_dict.keys(): 
@@ -734,6 +735,10 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
         animals = np.sort(cat_dict[cat_].keys())
         f, ax = plt.subplots(figsize=(3, 3))
         ax.set_title(cat_)
+
+        f_cc, ax_cc = plt.subplots(figsize=(2, 3))
+        f_err, ax_err = plt.subplots(figsize=(2, 3))
+
 
         ##### cycle through the animals for this ###
         for i_a, animal in enumerate(animals):
@@ -771,6 +776,8 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                     assert(np.allclose(sub_spk_temp_all[:, 1, n], data_temp['spk_tm0_n%d'%n]))
 
                 push_tm0 = np.vstack((data_temp['pshx_tm0'], data_temp['pshy_tm0'])).T
+                command_bins = util_fcns.commands2bins([push_tm0], mag_boundaries, animal, day_ix,
+                    vel_ix=[0, 1])[0]
 
                 # #### Add teh movement category ###
                 data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
@@ -811,6 +818,92 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                 ax.plot([i_a*10 + day_ix, i_a*10 + day_ix], [np.mean(r2_shuff), np.max([r2_lo, r2_std])],
                     'k-', linewidth=0.5)
 
+                ###### Also predict the pairwise issues; #####
+                ###### Go through each unique movement in test_ix and compare it to mov2 from pred_spks ####
+                unique_mov_lo = np.unique(data_temp['mov'][test_ix])
+                unique_mov = np.unique(data_temp['mov'])
+
+                ###### Look at differences #####
+                True_diffs = []
+                LO_pred_diffs = []
+                Pred_diffs = []
+                shuff_diff = {}
+                for i in range(nshuffs): shuff_diff[i] = []
+
+                #### Now for each command? 
+                for mag in range(4):
+
+                    for ang in range(8): 
+
+                        #### Get command indices ####
+                        ix_com_lo =  (command_bins[test_ix, 0] == mag) & (command_bins[test_ix, 1] == ang)
+                        ix_com_all = (command_bins[:, 0]       == mag) & (command_bins[:, 1]       == ang)
+
+                        #### Get movements 1 #####
+                        for i_m1, mov1 in enumerate(unique_mov_lo): 
+                            ix_mov1 = np.nonzero(data_temp['mov'][test_ix[ix_com_lo]] == mov1)[0]
+                            ix_mov1_pred = np.nonzero(data_temp['mov'][ix_com_all] == mov1)[0]
+
+                            ##### Get movements 2 ######
+                            for i_m2, mov2 in enumerate(unique_mov):
+
+                                if mov1 != mov2: 
+    
+                                    ix_mov2 = np.nonzero(data_temp['mov'][ix_com_all] == mov2)[0]
+
+                                    ##### Make sure these are greater than minimum commands #####
+                                    if len(ix_mov1) >= min_commands and len(ix_mov2) >= min_commands:
+                                
+                                        ##### Match the distributions ####
+                                        ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_tm0[test_ix[ix_com_lo[ix_mov1]], :],
+                                            push_tm1[ix_com_all[ix_mov2], :], psig=.05)
+
+                                        ##### If these match ###
+                                        if len(ix1_1) >= min_commands and len(ix2_2) >= min_commands:
+
+                                            #### Get these indices ####
+                                            mov1_ix_LO = ix_com_lo[ix_mov1[ix1_1]] ##### Keep the test_ix out, since that's already addumed in y_lo_pred
+                                            mov1_ix = ix_com_all[ix_mov1_pred[ix1_1]]
+                                            mov2_ix = ix_com_all[ix_mov2[ix2_2]]
+
+                                            assert(np.all(command_bins[test_ix[mov1_ix_LO], 0] == mag))
+                                            assert(np.all(command_bins[test_ix[mov1_ix_LO], 1] == ang))
+                                            assert(np.all(data_temp['mov'][test_ix[mov1_ix_LO]] == mov1))
+
+                                            assert(np.all(command_bins[mov1_ix, 0] == mag))
+                                            assert(np.all(command_bins[mov1_ix, 1] == ang))
+                                            assert(np.all(data_temp['mov'][mov1_ix] == mov1))
+
+                                            assert(np.all(command_bins[mov2_ix, 0] == mag))
+                                            assert(np.all(command_bins[mov2_ix, 1] == ang))
+                                            assert(np.all(data_temp['mov'][mov2_ix] == mov2))
+                                            
+                                            m1_left_out_mean = np.mean(y_lo_pred[mov1_ix_LO, :], axis=0)
+
+                                            m1_pred_mean = np.mean(pred_spks[mov1_ix, :], axis=0)
+                                            m2_pred_mean = np.mean(pred_spks[mov2_ix, :], axis=0)
+                                            
+                                            m1_true_mean = np.mean(data_temp['spks'][mov1_ix, :], axis=0)
+                                            m2_true_mean = np.mean(data_temp['spks'][mov2_ix, :], axis=0)
+
+                                            m1_shuff_pred_mean = np.mean(spks_pred_shuffle[mov1_ix, :, :], axis=0)
+                                            m2_shuff_pred_mean = np.mean(spks_pred_shuffle[mov2_ix, :, :], axis=0)
+
+
+                                            True_diffs.append(plot_pred_fr_diffs.nplanm(m1_true_mean, m2_true_mean))
+                                            Pred_diffs.append(plot_pred_fr_diffs.nplanm(m1_pred_mean, m2_pred_mean))
+                                            LO_pred_diffs.append(plot_pred_fr_diffs.nplanm(m1_left_out_mean, m2_true_mean))
+
+                                            for n in range(nshuffs):
+                                                shuff_diff[n].append(plot_pred_fr_diffs.nplanm(m1_shuff_pred_mean[:, n], m2_shuff_pred_mean[:, n]))
+
+                #### For each movement, comparison b/w LO commadn estimate for a given movement vs. predicted 
+                plot_LO_means(True_diffs, Pred_diffs, LO_pred_diffs, shuff_diff, ax_cc, ax_err, nshuffs, i_a*10 + day_ix,
+                    animal, day_ix, title_str=cat)
+
+            save_ax_cc_err(ax_cc, ax_err, f_cc, f_err, cat)
+
+        ##### Plotting #####
         ax.set_xlim([-1, 14])
         ax.set_xticks([])
         f.tight_layout()
@@ -1252,6 +1345,12 @@ def plot_pop_dist_corr_MOV_TSK(nshuffs=2, cat='mov', min_commands=15):
                     if cat == 'mov':
                         mag_ang_mov = np.array([m for m in mag_ang_mov if len(m) == 3 and m[2] == left_out])
                     
+                    elif cat == 'com_ang':
+                        mag_ang_mov = np.array([m for m in mag_ang_mov if len(m) == 3 and m[1] == left_out])
+                    
+                    elif cat == 'com_mag':
+                        mag_ang_mov = np.array([m for m in mag_ang_mov if len(m) == 3 and m[0] == left_out and left_out <4])
+
                     elif cat == 'tsk':
                         if left_out == 0:
                             mag_ang_mov = np.array([m for m in mag_ang_mov if len(m) == 3 and m[2] < 10 and m[2] >= 0.])
@@ -1268,6 +1367,7 @@ def plot_pop_dist_corr_MOV_TSK(nshuffs=2, cat='mov', min_commands=15):
 
                     ######## This list has common movements / tasks ########
                     for i_m, mam in enumerate(mag_ang_mov):
+
                         pred_est_LO = 10*np.mean(LOO_dict[left_out][tuple(mam)], axis=0)
                         mam_ix = LOO_dict[left_out][tuple(mag_ang_mov_ix[i_m])]
 
