@@ -908,14 +908,17 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
 
                             color_rgb = util_fcns.rgba2rgb(color)
                             print('mov %.2f, color w alpha %s, color wo alpha %s '%(k[2], color_rgb, color))
-                            axeff.plot(day_ix + 10*ia, float(varr['abs_diff_fr'][j]), '.', color=color_rgb, markersize=15)
+                            x_ = [day_ix + 10*ia - 1, day_ix + 10*ia - 0.5]
+                            y_ = [float(varr['abs_diff_fr'][j]), float(varr['abs_diff_fr'][j])]
+                            axeff.plot(x_, y_, '-', color=color_rgb)
 
                         if float(varr['glob_fr'][j]) >= min_fr_frac_neur_diff:
                             NCM_sig_frac_diff.append(float(varr['frac_diff_fr'][j]))
 
                             if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
-                                axeff2.plot(day_ix + 10*ia + 0.1*np.random.randn(), float(varr['frac_diff_fr'][j]), '.', 
-                                    color=color_rgb, markersize=15)
+                                x_ = [day_ix + 10*ia - 1, day_ix + 10*ia -0.5]
+                                y_ = [float(varr['frac_diff_fr'][j]), float(varr['frac_diff_fr'][j])]
+                                axeff2.plot(x_, y_, '-', color=color_rgb)
                             
 
                         assert(vi == varr['pv'][j])
@@ -1004,8 +1007,12 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                             color[-1] = 1.0
 
                         color_rgb = util_fcns.rgba2rgb(color)
-                        axveff.plot(ia*10 + day_ix + 0.2*np.random.randn(), float(varr['norm_diff_fr']), '.', color=color_rgb, markersize=15)
-                        axveff2.plot(ia*10 + day_ix + 0.2*np.random.randn(), float(varr['frac_norm_diff_fr']), '.', color=color_rgb, markersize=15)
+                        x_ = [ia*10 + day_ix - 1, ia*10 + day_ix -0.5]
+                        y_1 = [float(varr['norm_diff_fr']), float(varr['norm_diff_fr'])]
+                        y_2 = [float(varr['frac_norm_diff_fr']), float(varr['frac_norm_diff_fr'])]
+
+                        axveff.plot(x_, y_1,  '-', color=color_rgb)
+                        axveff2.plot(x_, y_2, '-', color=color_rgb)
                 else:
                     if plot_sig_mov_comm_grid:
                         axsig[k[0]].plot(k[2], k[1], '.', color='k')
@@ -1088,13 +1095,17 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     for ax_ in [axeff, axeff2, axveff, axveff2, axveff_bsig, axeff_bsig, axeff_bsig_frac]:
         ax_.set_xlim([-1, 14])
     axeff.set_ylim([0, 10.])
+    axeff.set_xlim([-1.5, 14.])
     axeff_bsig.set_ylim([0., 10.])
 
     axeff2.set_ylim([0, 3.0])
+    axeff2.set_xlim([-1.5, 14])
     axeff_bsig_frac.set_ylim([0., 3.])
 
     axveff.set_ylim([0, .8])
+    axveff.set_xlim([-1.5, 14])
     axveff2.set_ylim([0, .71])
+    axveff2.set_xlim([-1.5, 14])
     axveff_bsig.set_ylim([0, .8])
 
     axeff.set_ylabel('Activity Diff from Command  Act. Mean (Hz)')
@@ -1281,11 +1292,13 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
 
             if len(special_dots) > 0: 
                 for _, (d, col) in enumerate(special_dots):
-                    axe.plot(i_a*10 + day_ix + np.random.randn()*.1, d, '.', color=col, markersize=10)
+                    x_ = [i_a*10 + day_ix - 1., i_a*10 + day_ix - 0.5]
+                    axe.plot(x_, [d, d], '-', color=col)
             
             if len(special_dots_osa) > 0: 
                 for _, (d, col) in enumerate(special_dots_osa):
-                    axe_osa.plot(i_a*10 + day_ix + np.random.randn()*.1, d, '.', color=col, markersize=10)
+                    x_ = [i_a*10 + day_ix - 1., i_a*10 + day_ix -0.5]
+                    axe_osa.plot(x_, [d, d], '-', color=col)
 
         ### Plot the bar; 
         ax.bar(i_a, np.mean(perc_sig[animal]), width=.8, alpha=0.2, color='k')
@@ -1300,7 +1313,7 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
     ax_osa.set_ylabel('Frac. Move-Specific Commands \nwith Sig. Diff. Next Command')
 
     for axi in [axe, axe_osa]:
-        axi.set_xlim([-1, 14])
+        axi.set_xlim([-1.5, 14])
     axe.set_ylabel('Command Traj Diff for Sig.\nDiff. Move-Specific Commands', fontsize=4)
     axe.set_ylim([0, 8])
     axe_osa.set_ylabel('Next Command Diff for Sig. \nDiff. Move-Specific Commands', fontsize=4)
