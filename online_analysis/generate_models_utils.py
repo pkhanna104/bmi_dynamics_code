@@ -36,8 +36,34 @@ class Model_Table(tables.IsDescription):
 
 #### Methods to get data needed for spike models ####
 def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False, 
-    within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, shuffix = None, nshuffs = 1, **kwargs):
+    within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = False,
+    shuffix = None, nshuffs = 1, **kwargs):
 
+    if full_shuffle:
+        assert(within_bin_shuffle == False)
+        assert(mn_maint_within_bin_shuffle == False)
+        assert(roll_shuff == False)
+
+    elif within_bin_shuffle:
+        assert(full_shuffle == False)
+        assert(mn_maint_within_bin_shuffle == False)
+        assert(roll_shuff == False)
+
+    elif mn_maint_within_bin_shuffle:
+        assert(full_shuffle == False)
+        assert(within_bin_shuffle == False)
+        assert(roll_shuff == False)
+
+    elif roll_shuff:
+        assert(full_shuffle == False)
+        assert(within_bin_shuffle == False) 
+        assert(mn_maint_within_bin_shuffle == False)
+    else:
+        assert(full_shuffle == False)
+        assert(within_bin_shuffle == False) 
+        assert(mn_maint_within_bin_shuffle == False)
+        assert(roll_shuff == False)
+                
     """
     Create an xarray Dataset with all of the variables typically in the dictionary
     
@@ -369,12 +395,19 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         elif mn_maint_within_bin_shuffle:
             shuff_ix, KG = within_bin_shuffling_mean_main(spks, push[:, [3, 5]], animal, day_ix, tsk, target)
 
+        elif roll_shuff: 
+            shuff_ix = roll_shuffling(spks.shape[0])
         else:
             shuff_ix = np.arange(spks.shape[0])
 
-        assert(spks.shape[0] == push.shape[0] == len(shuff_ix))
+        if roll_shuff:
+            assert(spks.shape[0] == push.shape[0])
+            assert(type(shuff_ix) is int)
+            Shuffle_index[nsi] = shuff_ix
 
-        Shuffle_index[nsi] = shuff_ix.copy()
+        else:
+            assert(spks.shape[0] == push.shape[0] == len(shuff_ix))
+            Shuffle_index[nsi] = shuff_ix.copy()
 
     ### These are the things we want to save: 
     temp_tune = {}
@@ -1294,8 +1327,7 @@ def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, ta
     big_ix = []
 
     movements = tsk*10 + target
-    unique_mov = np.unique(movements)
-
+    
     for i_m in range(5):
         for i_a in range(8):
 
@@ -1308,6 +1340,7 @@ def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, ta
                     for i in ix: assert(i not in np.hstack((big_ix)))
 
                 ### For each command, generate a command to command mapping ####
+                unique_mov = np.unique(movements[ix])
                 mov_map = get_mov_map(unique_mov)
 
                 #### Now lets go through each mov_map pair ###
@@ -1343,8 +1376,8 @@ def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, ta
                         N = len(mov2_ix)
                         shuff_ix[ix[mov1_ix]] = ix[mov2_ix[np.random.permutation(N)]]
 
-                ### Which bins have been accounted for? 
-                big_ix.append(ix[mov1_ix].copy())
+                    ### Which bins have been accounted for? 
+                    big_ix.append(ix[mov1_ix].copy())
                 
                 ### Chekc that this map abides the move_map: 
                 chk_mov_map(i_m, i_a, ix, command_bins, shuff_ix, mov_map, movements)
@@ -1360,6 +1393,10 @@ def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, ta
     assert(np.all(command_bins == command_bins[shuff_ix, :]))
 
     return shuff_ix, KG
+
+def roll_shuffling(T):
+    roll_i = np.random.randint(0, T)
+    return roll_i
 
 ####### MODEL ADDING ########
 ######### Call from generate_models.sweep_ridge_alpha #########
