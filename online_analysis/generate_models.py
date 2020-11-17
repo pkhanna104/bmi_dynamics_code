@@ -863,8 +863,11 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
             -- have a movement transition matrix; 
             -- permute activity from movemnet to movement 
             -- if not enough commands --> resample 
-        "null_roll" --> shuffle form figure 5; roll null with respect to potent 
+        "null_roll" --> shuffle for figure 6; roll null with respect to potent 
             -- each shuffle is a random roll integer sampled from 0-? 
+        "null_roll_pot_beh_maint" --> shuffle for figure 6; roll null w.r.t potent 
+            -- each shuffle is random roll intenger samples from 100 - T
+            -- plus behavior maintaining potent shuffle; 
     Raises
     ------
     Exception
@@ -923,7 +926,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'grom':
+            if animal == 'non':
                 pass
             else:
                 print('##############################')
@@ -953,6 +956,21 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                         order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
                         day_ix = i_d, nshuffs = nshuffs)
 
+                elif shuff_type == 'null_roll_pot_beh_maint':
+                    ### Ge the rolling indices ######
+                    Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix_roll = generate_models_utils.get_spike_kinematics(animal, day, 
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
+                        day_ix = i_d, nshuffs = nshuffs)
+
+                    #### Get the behavior maintaining indices ####
+                    _, _, _, _, _, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = True, 
+                        day_ix = i_d, nshuffs = nshuffs)
+
+                    #### For each shuffle add teh shuff_ix_roll to the shuff_ix: 
+                    for nshuf in range(nshuffs):
+                        Shuff_ix[nshuf, 'null_roll'] = Shuff_ix_roll[nshuf]
+
                 print('Animal %s, Day %d data extraction done' %(animal, i_d))
 
                 #### Save shuffle indices ####### 
@@ -963,8 +981,12 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
                 ### Re make data to be smaller 
                 Data2 = dict(spks=Data['spks'], push=Data['push'], bin_num=Data['bin_num'], targ=Data['targ'], task=Data['tsk'])
+                Data2['animal'] = animal 
+                Data2['day_ix'] = i_d 
 
-                if shuff_type == 'null_roll':
+
+                #### Null rolling ####
+                if 'null_roll' in shuff_type:
 
                     #### Get null vs. potent spkes #### 
                     null, pot = decompose_null_pot(Data['spks'], Data['push'], KG, KG_null_proj, KG_potent_orth)
@@ -996,6 +1018,10 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                     ##### Shuffles and get trial starts #####
                     if shuff_type == 'null_roll':
                         sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks_null_pot_roll(Data2, Shuff_ix[shuffle])
+                    
+                    elif shuff_type == 'null_roll_pot_beh_maint':
+                        sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks_null_roll_pot_shuff(Data2, Shuff_ix[shuffle], Shuff_ix[shuffle, 'null_roll'])
+                    
                     else:
                         sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks(Data2, Shuff_ix[shuffle])
 
@@ -1220,6 +1246,75 @@ def get_temp_spks(Data2, shuff_ix):
     push_shuff = Data2['push'][shuff_ix, :]
 
     return spks_shuff[spks_keep], spks_shuff[spks_keep - 1], push_shuff[spks_keep], spks_keep, spks_keep - 1
+
+def get_temp_spks_null_roll_pot_shuff(Data2, shuff_ix, shuff_int_roll):
+    '''
+    method to get spikes with rolling the null, shuffling the potent 
+    
+    Parameters
+    ----------
+    Data2 : dict with all the data 
+    shuff_ix : np.array, behavior maintianing potetn shuffle --> needs to be applied to full data (not subselected)
+    shuff_int_roll : integer to roll null 
+    '''
+    ##### Shuffles and get trial starts #####
+    bin_num = np.hstack((Data2['bin_num']))
+
+    ### Get ones that are > first bin; 
+    spks_t1 = np.nonzero(bin_num > 0)[0]
+
+    ### Get the zero bins 
+    spks_not_t2 = np.nonzero(bin_num == 0)[0]
+
+    ### Remove the first trial 
+    spks_not_t2 = spks_not_t2[spks_not_t2 > 0]
+
+    ### Add teh last bine 
+    spks_not_t2 = np.hstack((spks_not_t2, len(bin_num)))
+
+    ### subtract by 1 to get the last bin
+    spks_not_t2 = spks_not_t2 - 1
+    assert(np.all(bin_num[spks_not_t2[:-1] + 1] == 0))
+    spks_t2 = np.array([i for i in range(len(bin_num)) if i not in spks_not_t2])
+
+    ##### Keep these guys --> anything that is NOT the first or the last bin in the trial 
+    spks_keep = np.intersect1d(spks_t1, spks_t2)
+
+    #### We need to keep spks_keep and spks_keep -1 together: 
+    spks_null_tm0 = Data2['spks_null'][spks_keep, :]
+    nN = spks_null_tm0.shape[1]
+
+    spks_null_tm1 = np.vstack(( np.zeros((1, nN)) + np.nan, Data2['spks_null'][:-1, :] ))[spks_keep, :]
+    assert(spks_null_tm0.shape == spks_null_tm1.shape)
+    assert(np.sum(np.isnan(spks_null_tm1)) == 0)
+
+    #### Potent ####
+    spks_pot_shuff = Data2['spks_pot'][shuff_ix, :]
+    spks_pot_shuff_tm0  = spks_pot_shuff[spks_keep, :]
+    spks_pot_shuff_tm1  = np.vstack(( np.zeros((1, nN)) + np.nan, spks_pot_shuff[:-1, :] ))[spks_keep, :]
+    assert(np.sum(np.isnan(spks_pot_shuff_tm1)) == 0)
+
+    #### Now that these have been subselected,roll the null activiyt 
+    ix_roll = np.roll(np.arange(len(spks_keep)), shuff_int_roll)
+    spks_null_shuff_tm0 = spks_null_tm0[ix_roll]
+    spks_null_shuff_tm1 = spks_null_tm1[ix_roll]
+
+    spks_shuff_tm0 = spks_null_shuff_tm0 + spks_pot_shuff_tm0
+    spks_shuff_tm1 = spks_null_shuff_tm1 + spks_pot_shuff_tm1
+
+    ### make sure the command bins match #####
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file'], 'rb'))
+    command_bins_unshuff = util_fcns.commands2bins([Data2['push'][spks_keep, :]], mag_boundaries, Data2['animal'], 
+        Data2['day_ix'], vel_ix = [3, 5], ndiv=8)[0]
+
+    command_bins_shuff = util_fcns.commands2bins([np.dot(Data2['KG'], spks_shuff_tm0.T).T], mag_boundaries, Data2['animal'], 
+        Data2['day_ix'], vel_ix = [0, 1], ndiv=8)[0]
+
+    assert(np.allclose(command_bins_unshuff, command_bins_shuff))
+    
+    push_shuff = Data2['push'][spks_keep, :]
+
+    return spks_shuff_tm0, spks_shuff_tm1, push_shuff, spks_keep, spks_keep - 1
 
 def get_temp_spks_null_pot_roll(Data2, shuff_ix):
     """
