@@ -926,7 +926,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'non':
+            if animal == 'grom':
                 pass
             else:
                 print('##############################')
@@ -1304,16 +1304,47 @@ def get_temp_spks_null_roll_pot_shuff(Data2, shuff_ix, shuff_int_roll):
 
     ### make sure the command bins match #####
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file'], 'rb'))
-    command_bins_unshuff = util_fcns.commands2bins([Data2['push'][spks_keep, :]], mag_boundaries, Data2['animal'], 
+
+    ### This is true push (for jeev ~= kg*spks_pot)
+    command_bins_push = util_fcns.commands2bins([Data2['push'][spks_keep, :]], mag_boundaries, Data2['animal'], 
         Data2['day_ix'], vel_ix = [3, 5], ndiv=8)[0]
 
-    command_bins_shuff = util_fcns.commands2bins([np.dot(Data2['KG'], spks_shuff_tm0.T).T], mag_boundaries, Data2['animal'], 
-        Data2['day_ix'], vel_ix = [0, 1], ndiv=8)[0]
-
-    assert(np.allclose(command_bins_unshuff, command_bins_shuff))
+    #### bins associated with estimated push ####
+    command_bins_kg_shuff_spks = util_fcns.commands2bins([np.dot(Data2['KG'], Data2['spks'][shuff_ix[spks_keep], :].T).T], 
+        mag_boundaries, Data2['animal'], Data2['day_ix'], vel_ix = [0, 1], ndiv=8)[0]
     
-    push_shuff = Data2['push'][spks_keep, :]
+    ### get 
+    push_shuff = Data2['push'][shuff_ix, :]
+    push_shuff = push_shuff[spks_keep, :]
 
+    #### This is estimated push given shuffels of potent activity ### 
+    command_bins_kg_shuff_spks2 = util_fcns.commands2bins([np.dot(Data2['KG'], spks_shuff_tm0.T).T], mag_boundaries, Data2['animal'], 
+        Data2['day_ix'], vel_ix = [0, 1], ndiv=8)[0]
+    
+    #### This is actual same shuffling applied to push #### 
+    command_bins_push_shuff = util_fcns.commands2bins([push_shuff], mag_boundaries, Data2['animal'], 
+        Data2['day_ix'], vel_ix = [3, 5], ndiv=8)[0]
+
+    if Data2['animal'] == 'grom':
+        ### This works here bc KG * spks = push exactly, so should match bins fo real push
+        assert(np.allclose(command_bins_push, command_bins_push_shuff))
+        assert(np.allclose(command_bins_push, command_bins_kg_shuff_spks2))
+        assert(np.allclose(command_bins_kg_shuff_spks, command_bins_kg_shuff_spks2))
+        assert(np.allclose(command_bins_kg_shuff_spks, command_bins_push_shuff))
+        assert(np.allclose(command_bins_kg_shuff_spks2, command_bins_push_shuff))
+    
+    elif Data2['animal'] == 'jeev':
+        ### Here want to say that actual push bisn == shuffled push bins; 
+        assert(np.allclose(command_bins_push, command_bins_push_shuff))
+
+        ### This may not be true; 
+        ### The shuffle is doen to maintain the push as is, so if KG*spks != push commadn bins 
+        ### Then this may not be true; 
+        diff_c = command_bins_kg_shuff_spks - command_bins_kg_shuff_spks2
+        ix,iy = np.nonzero(diff_c)
+        assert(len(iy)/float(diff_c.shape[0]) < .1)
+        #assert(np.allclose(command_bins_kg_shuff_spks, command_bins_kg_shuff_spks2))
+        
     return spks_shuff_tm0, spks_shuff_tm1, push_shuff, spks_keep, spks_keep - 1
 
 def get_temp_spks_null_pot_roll(Data2, shuff_ix):
