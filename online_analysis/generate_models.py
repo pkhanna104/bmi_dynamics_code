@@ -1281,7 +1281,7 @@ def get_temp_spks_null_pot_roll(Data2, shuff_ix):
     spks_shuff_tm0 = spks_null_shuff_tm0 + spks_pot_tm0
     spks_shuff_tm1 = spks_null_shuff_tm1 + spks_pot_tm1
 
-    if nN > 21:
+    if nN > 21: # Grom proxy 
         assert(np.allclose(np.dot(Data2['KG'], spks_shuff_tm0.T).T, Data2['push'][np.ix_(spks_keep, [3, 5])]))
     else:
         assert(generate_models_utils.quick_reg(np.array(np.dot(Data2['KG'], spks_shuff_tm0.T).T), Data2['push'][np.ix_(spks_keep, [3, 5])]) > .98)
@@ -2097,8 +2097,12 @@ def check_variables_order(variables, nneur):
     for spk in ['spk_tm0_n0', 'spk_tm1_n0', 'spk_tm2_n0', 'spk_tp1_n0', 'spk_tp2_n0']:
         if spk in variables:
             checked = True
+
+            ### Starting neuron ####
             ix = np.nonzero(variables == spk)[0]
             for n in range(nneur):
+
+                ### Make sure variables are ordeered correctly ###
                 assert(variables[ix+n] == spk[:-1] + '%d'%(n))
     if checked:
         pass

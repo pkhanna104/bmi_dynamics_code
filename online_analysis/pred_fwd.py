@@ -2,10 +2,11 @@
 from generalization_plots import DataExtract
 import analysis_config
 import util_fcns
-import plot_fr_diffs
+import plot_fr_diffs, generate_models, generalization_plots, generate_models_utils
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
+import pickle
 
 
 def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
@@ -58,9 +59,14 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
             ### Plot the r2 ###
             xpos = i_a*10 + day_ix
             ax.plot(xpos, r2_true, '.', markersize=15, color=col[plot_action])
-            
+            #print('r2 act %s %s %d = %.3f' %(str(plot_action), animal, day_ix, r2_true))
+
             util_fcns.draw_plot(xpos, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
             util_fcns.draw_plot(xpos, r2_null_roll, 'deeppink', np.array([1., 1., 1., 0.]), ax)
+            #print('pink shuffle mean r2 act %s %s %d = %.3f' %(str(plot_action), animal, day_ix, np.mean(r2_null_roll)))
+            ix = np.nonzero(np.hstack((r2_null_roll)) >= r2_true)[0]
+            pv = float(len(ix))/float(len(r2_null_roll))
+            print('%s, %d, pv = %.5f' %(animal, day_ix, pv))
             
             ax.plot([xpos, xpos], [np.mean(r2_shuff), r2_true], 'k-', linewidth=.5)
 
@@ -127,9 +133,6 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     f_cc, ax_cc = plt.subplots(figsize=(3, 3))
     f_er, ax_er = plt.subplots(figsize=(3, 3))
 
-    f_scat, ax_scatter = plt.subplots(figsize=(3, 3))
-    f_scat_shuff, ax_scatter_shuff = plt.subplots(figsize=(3, 3))
-    
     f_pw, ax_pw = plt.subplots(figsize=(5, 5))
     ax_pw2 = ax_pw.twinx()
     PW_eg = []; PW_shuff = []; PW_shuff_rol = []
@@ -137,6 +140,14 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
 
     for i_a, animal in enumerate(['grom', 'jeev']):
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+
+            if animal in ['grom', 'jeev'] and day_ix in range(10):
+                f_scat, ax_scatter = plt.subplots(figsize=(3, 3))
+                f_scat_shuff, ax_scatter_shuff = plt.subplots(figsize=(3, 3))
+                for axi in [ax_scatter, ax_scatter_shuff]:
+                    axi.set_ylabel('Subj %s Day %d' %(animal, day_ix))
+
 
             ### Load data ###
             dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
@@ -215,11 +226,11 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
                                     tmp.append(pred_pw_dist_shuff)
                                     tmp2.append(pred_pw_dist_shuff_rol)
 
-                                    if animal == 'grom' and day_ix == 0 and i == 0:
+                                    if animal in ['grom', 'jeev'] and day_ix in range(10) and i == 0:
                                         ax_scatter_shuff.plot(true_pw_dist, pred_pw_dist_shuff, 'k.', markersize=5.)
                                         ax_scatter_shuff.plot(true_pw_dist, pred_pw_dist_shuff_rol, '.', color='deeppink', markersize=5.)
 
-                                if animal == 'grom' and day_ix == 0:
+                                if animal in ['grom', 'jeev'] and day_ix in range(10):
                                     ax_scatter.plot(true_pw_dist, pred_pw_dist, 'k.', markersize=5.)
 
                                     if mag == mag_eg and ang == ang_eg:
@@ -236,7 +247,7 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
             err = np.mean(np.abs(X[:, 0] - X[:, 1]))
             ax_er.plot(10*i_a + day_ix, err, '.', color='maroon', markersize=15)
 
-            if animal == 'grom' and day_ix == 0:
+            if animal in ['grom', 'jeev'] and day_ix in range(10):
                 ax_scatter.set_title(' r %.3f' %(rv), fontsize=10)
             rv_shuff = []; er_shuff = []; rv_shuff_rol = []; er_shuff_rol = []; 
 
@@ -250,7 +261,7 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
                 rv_shuff_rol.append(rv_shf_rol)
                 er_shuff_rol.append(np.mean(np.abs(X_shuff[i][:, 0] - X_shuff[i][:, 2])))
 
-                if animal == 'grom' and day_ix == 0 and i == 0: 
+                if animal in ['grom', 'jeev'] and day_ix in range(10) and i == 0: 
                     ax_scatter_shuff.set_title('r shuff %.3f, rol %.3f' %(rv_shf, rv_shf_rol), fontsize=10)
 
             util_fcns.draw_plot(10*i_a + day_ix, rv_shuff, 'k', np.array([1.,1., 1., 0.]), ax_cc)
@@ -262,13 +273,13 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
             ax_er.plot([10*i_a + day_ix, 10*i_a + day_ix], [np.mean(er_shuff), err], 'k-', linewidth=0.5)
             
 
-    ax_scatter.set_xlim([0., 2.])
-    ax_scatter.set_ylim([0., 1.])
-    f_scat.tight_layout()
+            ax_scatter.set_xlim([0., 2.])
+            ax_scatter.set_ylim([0., 1.])
+            f_scat.tight_layout()
     
-    ax_scatter_shuff.set_xlim([0., 2.])
-    ax_scatter_shuff.set_ylim([0., 1.])
-    f_scat_shuff.tight_layout()
+            ax_scatter_shuff.set_xlim([0., 2.])
+            ax_scatter_shuff.set_ylim([0., 1.])
+            f_scat_shuff.tight_layout()
     
     ax_cc.set_xlim([-1, 14])
     ax_cc.set_xticks([])
@@ -278,8 +289,8 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     ax_er.set_xticks([])
     f_er.tight_layout()
 
-    util_fcns.savefig(f_scat, 'scatter_action_dist_grom_0')
-    util_fcns.savefig(f_scat_shuff, 'scatter_shuff_action_dist_grom_0')
+    #util_fcns.savefig(f_scat, 'scatter_action_dist_grom_0')
+    #util_fcns.savefig(f_scat_shuff, 'scatter_shuff_action_dist_grom_0')
     util_fcns.savefig(f_cc, 'true_v_pred_next_act_cc')
     util_fcns.savefig(f_er, 'true_v_pred_next_act_err')
 
@@ -322,3 +333,174 @@ def plot_test_roll():
     ### Load data ###
     dataObj = DataExtract('grom', 0, model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', 
         model_set_number = 6, nshuffs=0)
+
+
+def test_shuffles(model_nm='hist_1pos_0psh_0spksm_1_spksp_0'):
+    f, ax = plt.subplots()
+    f1, ax1 = plt.subplots()
+
+    alpha_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set6.pkl', 'rb'))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+    for i_a, animal in enumerate(['grom']):#, 'jeev']):
+        for day_ix in [2, 4]:#range(analysis_config.data_params['%s_ndays'%animal]):
+            
+            #### Alpha ####
+            alpha = alpha_dict[animal][0][day_ix, model_nm]
+            alpha = alpha/1000.
+            #### Get true data ####
+            dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
+                    model_set_number = 6, nshuffs=0)
+            dataObj.load()
+            
+            if animal == 'grom':
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_grom(day_ix)
+            
+            elif animal == 'jeev':
+                KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_jeev(day_ix)
+                
+            #### Decompose activity (tm0 and tm1) into null / potent 
+            #### maek sure spks and push are aligned? 
+            if animal == 'grom':
+                assert(np.allclose(np.dot(KG, 0.1*dataObj.spks.T).T, dataObj.push[:, [3, 5]]))
+            
+            elif animal == 'jeev': 
+                assert(generate_models_utils.quick_reg(np.array(np.dot(KG, 0.1*dataObj.spks.T).T), 
+                                dataObj.push[:, [3, 5]]) > .98)
+                
+                #### Make sure null proj is zero ###
+                assert(np.allclose(np.dot(KG, np.dot(KG_null_proj, 0.1*dataObj.spks.T)).T, 
+                                   0.))
+                
+                ### Make sure pot proj works: 
+                assert(np.allclose(np.array(np.dot(KG, 0.1*dataObj.spks.T).T), 
+                                np.dot(KG, np.dot(KG_potent_orth, 0.1*dataObj.spks.T)).T))
+            
+            ##### Get the null / potent activity ###
+            null, pot = generate_models.decompose_null_pot(0.1*dataObj.spks, dataObj.push, KG, KG_null_proj, KG_potent_orth)
+            null_tm1, pot_tm1 = generate_models.decompose_null_pot(0.1*dataObj.spks_tm1, dataObj.push_tm1, KG, 
+                                                                   KG_null_proj, KG_potent_orth)
+            
+            ### Push at time - 1; 
+            command_bins_tm1 = util_fcns.commands2bins([dataObj.push_tm1], mag_boundaries, animal, day_ix, vel_ix = [3, 5])[0]
+            
+            #### get command bins disk ####
+            assert(np.allclose(np.dot(KG, null.T).T, 0.))
+            assert(np.allclose(np.dot(KG, null_tm1.T).T, 0.))
+            
+            ## Dynamics R2 of null / pot / combined ####
+            T = dataObj.spks.shape[0]
+            spks_pred, _, _ = generalization_plots.train_and_pred(0.1*dataObj.spks_tm1, 0.1*dataObj.spks, 
+                                                                  dataObj.push[:, [3, 5]], 
+                                                                  np.arange(T), np.arange(T), alpha, KG, add_mean = None, 
+                                                                  skip_cond = True)
+            spks_r2 = util_fcns.get_R2(0.1*dataObj.spks, spks_pred)
+            ax.plot(day_ix + 10*i_a, spks_r2, 'k*')
+
+            act_r2 = util_fcns.get_R2(dataObj.push[:, [3, 5]], np.dot(KG, spks_pred.T).T)
+            ax1.plot(day_ix + 10*i_a, act_r2, 'k*')
+     
+            shuff = dict(); 
+            shuff_act = dict();
+            for i in range(2):
+                shuff[i] = []
+                shuff_act[i] = []
+                
+            #### Now do some rolling; 
+            for i in range(10): 
+                
+                if i == 0: 
+                    feg, axeg = plt.subplots(nrows = 2, ncols = 2)
+
+                ### Shuffle within bin ###
+                shuff_ix, _ = generate_models_utils.within_bin_shuffling(pot_tm1, dataObj.push_tm1[:, [3, 5]], 
+                                                                           animal, day_ix)
+                ######################################################################
+                ##################### Shuffled pot + null ############################
+                ######################################################################
+                #### Make srue the same command bins 
+                command_bins_tm1_shuff = util_fcns.commands2bins([dataObj.push_tm1[np.ix_(shuff_ix, [3, 5])]], 
+                                                                 mag_boundaries, animal, day_ix, 
+                                                                 vel_ix = [0, 1])[0]
+                assert(np.allclose(command_bins_tm1_shuff, command_bins_tm1))
+
+                ##### get the full activity shuffled ######
+                spks_tm1_shuff1 = 0.1*dataObj.spks_tm1[shuff_ix, :]
+                spks_0 = null + pot; 
+
+                spks_pred_i, _, _ = generalization_plots.train_and_pred(spks_tm1_shuff1, spks_0, 
+                                                          dataObj.push[:, [3, 5]], 
+                                                          np.arange(T), np.arange(T), alpha, KG, add_mean = None, 
+                                                          skip_cond = True)
+                shuff[0].append(util_fcns.get_R2(spks_0, spks_pred_i))
+                shuff_act[0].append(util_fcns.get_R2(dataObj.push[:, [3, 5]], np.dot(KG, spks_pred_i.T).T))
+
+                if i == 0:
+                    for ixy in range(2):
+                        axeg[ixy, 0].plot(dataObj.push[:, [3, 5]][:, ixy], np.dot(KG, spks_pred_i.T).T[:, ixy], 'k.',
+                            alpha=.5)
+                        slp,intc,rv,_,_ = scipy.stats.linregress(dataObj.push[:, [3, 5]][:, ixy], 
+                            np.dot(KG, spks_pred_i.T).T[:, ixy])
+                        r2i=util_fcns.get_R2(dataObj.push[:, [3, 5]][:, ixy], np.dot(KG, spks_pred_i.T).T[:, ixy])
+                        axeg[ixy, 0].set_title('slp %.2f, intc %.2f, rv %.2f, r2: %.3f' %(slp, intc, rv, r2i))
+                        axeg[ixy, 0].set_ylabel('pred dim %d, beh maint'%ixy)
+                        if day_ix == 2:
+                            axeg[ixy, 0].plot([-10, 10], [-10, 10], 'k--')
+                        elif day_ix == 4:
+                            axeg[ixy, 0].plot([-4, 4], [-4, 4], 'k--')
+                        
+                ######################################################################
+                ##################### Shuffled pot + rolled null #####################
+                ######################################################################
+
+                #### Roll this guy ; 
+                ix = np.arange(T)
+                roll_ix = np.roll(ix, np.random.randint(100, T))
+
+                ### Rolled null, un changed potent
+                spks_0 = null[roll_ix, :] + pot; 
+
+                if animal == 'grom':
+                    assert(np.allclose(np.dot(KG, spks_0.T).T, dataObj.push[:, [3, 5]]))
+                elif animal == 'jeev':
+                    assert(np.allclose(np.dot(KG, spks_0.T).T, np.dot(KG, 0.1*dataObj.spks.T).T))
+                
+                #### Shuffled null 
+                pot_tm1_shuff = pot_tm1[shuff_ix, :]
+                spks_tm1_shuff2 = null_tm1[roll_ix, :] + pot_tm1_shuff; 
+                spks_pred_i, _, _ = generalization_plots.train_and_pred(spks_tm1_shuff2, spks_0, 
+                                                          dataObj.push[:, [3, 5]], 
+                                                          np.arange(T), np.arange(T), alpha, KG, add_mean = None, 
+                                                          skip_cond = True)
+                
+                shuff[1].append(util_fcns.get_R2(spks_0, spks_pred_i))
+                shuff_act[1].append(util_fcns.get_R2(dataObj.push[:, [3, 5]], np.dot(KG, spks_pred_i.T).T))
+                if i == 0:
+                    for ixy in range(2):
+                        axeg[ixy, 1].plot(dataObj.push[:, [3, 5]][:, ixy], np.dot(KG, spks_pred_i.T).T[:, ixy], 'b.',
+                            alpha=.5)
+                        slp,intc,rv,_,_ = scipy.stats.linregress(dataObj.push[:, [3, 5]][:, ixy], 
+                            np.dot(KG, spks_pred_i.T).T[:, ixy])
+                        r2i=util_fcns.get_R2(dataObj.push[:, [3, 5]][:, ixy], np.dot(KG, spks_pred_i.T).T[:, ixy])
+                        axeg[ixy, 1].set_title('slp %.2f, intc %.2f, rv %.2f, r2: %.3f' %(slp, intc, rv, r2i))
+                        axeg[ixy, 1].set_ylabel('pred dim %d, null roll + beh maint'%ixy)
+                        if day_ix == 2:
+                            axeg[ixy, 1].plot([-10, 10], [-10, 10], 'k--')
+                        elif day_ix == 4:
+                            axeg[ixy, 1].plot([-4, 4], [-4, 4], 'k--')
+
+            cols = ['k','royalblue']
+            for i_s in range(2):
+                util_fcns.draw_plot(10*i_a + day_ix + i_s*.2, shuff[i_s], cols[i_s],     
+                    np.array([1.,1.,1.,0.]), ax)
+                
+                util_fcns.draw_plot(10*i_a + day_ix + i_s*.2, shuff_act[i_s], cols[i_s], 
+                    np.array([1.,1.,1.,0.]), ax1)
+                    
+    ax.set_xlim([-1, 14])
+    ax.set_ylabel('R2 of next activity')
+    f.tight_layout()
+
+    ax1.set_xlim([-1, 14])
+    ax1.set_ylabel('R2 of next command')
+    f1.tight_layout()

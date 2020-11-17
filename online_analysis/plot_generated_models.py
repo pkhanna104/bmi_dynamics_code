@@ -2223,8 +2223,8 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
     models_to_include = [m[1] for m in model_var_list]
 
     variables_list = generate_models.return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
-    pred_Y = np.zeros((temp_N, nneur, nshuffs))
-    true_Y = np.zeros((temp_N, nneur, nshuffs))
+    pred_Y = np.zeros((temp_N, nneur, nshuffs)) + np.nan
+    true_Y = np.zeros((temp_N, nneur, nshuffs)) + np.nan
 
     if testing_mode:
         day_mat = analysis_config.data_params['%s_input_type'%animal] 
@@ -2248,8 +2248,11 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
             shuff_ix = 0 # no roll 
 
         #### get the spikes and previous spikes with roll applied ###
-        sub_spikes, sub_spikes_tm1, sub_push, _, _ = generate_models.get_temp_spks_null_pot_roll(data_file['Data'], shuff_ix)
+        sub_spikes, sub_spikes_tm1, sub_push, tm0, tm1 = generate_models.get_temp_spks_null_pot_roll(data_file['Data'], shuff_ix)
         
+        ### Makes ure sub_push matches: 
+        assert(np.allclose(sub_push, full_push[tm0, :]))
+
         #### This is teh true data that is trying to be predicted
         true_Y[:, :, shuffle] = sub_spikes
 
@@ -2270,6 +2273,9 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
         data_temp_dict['pshx_tm0'] = sub_push[:, 3]
         data_temp_dict['pshy_tm0'] = sub_push[:, 5]
 
+        test_stack = np.hstack(([test_ix[i_fold] for i_fold in range(5)]))
+        assert(np.allclose(np.sort(test_stack), np.arange(temp_N)))
+
         #### For each data fold #####
         for i_fold in range(5): 
             
@@ -2277,6 +2283,9 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
             intc = model_file[str((i_fold, 'intc_'))]
             assert(model_file['shuff_num'] == shuffle)
             test_ix_fold = test_ix[i_fold]
+
+            ### Make sure the test Ix are in the right units ## 
+            assert(np.all(test_ix_fold < temp_N))
 
             if testing_mode:
                 coef[:,:] = np.eye(nneur)
@@ -2315,7 +2324,9 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
         ### After all folds, if in testing mode, pred_Y should be equal to sub_spikes_tm1; 
         if testing_mode:
             assert(np.allclose(sub_spikes_tm1, pred_Y[:, :, shuffle]))
-                 
+    
+    assert(np.sum(np.isnan(pred_Y)) == 0)
+    assert(np.sum(np.isnan(true_Y)) == 0)
     return pred_Y, true_Y
 
 def pred_wo_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneur, **kwargs): 
