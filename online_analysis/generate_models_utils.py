@@ -37,32 +37,39 @@ class Model_Table(tables.IsDescription):
 #### Methods to get data needed for spike models ####
 def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False, 
     within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = False,
-    shuffix = None, nshuffs = 1, **kwargs):
+    within_mov_bin_shuffle = False, shuffix = None, nshuffs = 1, **kwargs):
 
     if full_shuffle:
         assert(within_bin_shuffle == False)
         assert(mn_maint_within_bin_shuffle == False)
         assert(roll_shuff == False)
-
+        assert(within_mov_bin_shuffle == False)
     elif within_bin_shuffle:
         assert(full_shuffle == False)
         assert(mn_maint_within_bin_shuffle == False)
         assert(roll_shuff == False)
-
+        assert(within_mov_bin_shuffle == False)
     elif mn_maint_within_bin_shuffle:
         assert(full_shuffle == False)
         assert(within_bin_shuffle == False)
         assert(roll_shuff == False)
-
+        assert(within_mov_bin_shuffle == False)
     elif roll_shuff:
         assert(full_shuffle == False)
         assert(within_bin_shuffle == False) 
         assert(mn_maint_within_bin_shuffle == False)
+        assert(within_mov_bin_shuffle == False)
+    elif within_mov_bin_shuffle:
+        assert(full_shuffle == False)
+        assert(within_bin_shuffle == False) 
+        assert(mn_maint_within_bin_shuffle == False)
+        assert(roll_shuff == False)
     else:
         assert(full_shuffle == False)
         assert(within_bin_shuffle == False) 
         assert(mn_maint_within_bin_shuffle == False)
         assert(roll_shuff == False)
+        assert(within_mov_bin_shuffle == False)
                 
     """
     Create an xarray Dataset with all of the variables typically in the dictionary
@@ -94,9 +101,6 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         raise Exception('Need to include day ix to get mag boundaries for shuffling wihtin bin and figure out cw/ccw boundaries')
     else:
         day_ix = kwargs['day_ix']
-
-    if within_bin_shuffle and full_shuffle:
-        raise Exception('Cant have both shuffles! Choose one!')
 
     ### Lists used to append ####
     spks = []
@@ -394,6 +398,9 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
         elif mn_maint_within_bin_shuffle:
             shuff_ix, KG = within_bin_shuffling_mean_main(spks, push[:, [3, 5]], animal, day_ix, tsk, target)
+        
+        elif within_mov_bin_shuffle: 
+            shuff_ix, KG = within_mov_bin_shuffling(spks, push[:, [3, 5]], animal, day_ix, tsk, target)
 
         elif roll_shuff: 
             shuff_ix = roll_shuffling(spks.shape[0])
@@ -1243,6 +1250,7 @@ def full_shuffling(bin_spk, decoder_all, animal, day_ix):
 
     return shuff_ix.astype(int)
 
+
 def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
     '''
     update -- 6/12/20 -- also shuffled action with the neural activity; 
@@ -1300,7 +1308,12 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
 
     return shuff_ix, KG
 
-def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, target):
+def within_mov_bin_shuffling(bin_spk, decoder_all, animal, day_ix, tsk, target):
+    return within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, target,
+        within_move=True)
+
+def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, target,
+    within_move =False):
     
     ### Make sure enough push / spks / tsk / target
     assert(bin_spk.shape[0] == decoder_all.shape[0] == len(tsk) == len(target))
@@ -1341,7 +1354,7 @@ def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, ta
 
                 ### For each command, generate a command to command mapping ####
                 unique_mov = np.unique(movements[ix])
-                mov_map = get_mov_map(unique_mov)
+                mov_map = get_mov_map(unique_mov, within_move = within_move)
 
                 #### Now lets go through each mov_map pair ###
                 for m, (mov1, mov2) in enumerate(mov_map.items()): 
@@ -1353,10 +1366,10 @@ def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, ta
                     if len(mov1_ix) < len(mov2_ix): 
 
                         ### Randomly select mov2 to --> mov1 
-                        mov2_ix_sub = mov2_ix[np.random.permutation(len(mov1_ix))]
+                        mov2_ix_sub = mov2_ix[np.random.permutation(len(mov2_ix))][:len(mov1_ix)]
 
                         ### Makes sure mov 2 ix are jittered around ###
-                        shuff_ix[ix[mov1_ix]] = ix[mov2_ix_sub[np.random.permutation(len(mov1_ix))]]
+                        shuff_ix[ix[mov1_ix]] = ix[mov2_ix_sub]
 
                     elif len(mov2_ix) < len(mov1_ix): 
 
@@ -1403,7 +1416,7 @@ def roll_shuffling(T):
 # h5file, model_, _ = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=name, 
 #     test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key)
 
-def get_mov_map(unique_mov): 
+def get_mov_map(unique_mov, within_move = False): 
     
     ### Perumuted ####
     Nmov = len(unique_mov)
@@ -1414,8 +1427,11 @@ def get_mov_map(unique_mov):
     mapping = dict()
     for u, (m1, m2) in enumerate(zip(unique_mov, unique_mov_perm)): 
 
-        #### add #####
-        mapping[m1] = m2 
+        if within_move:
+            mapping[m1] = m1; 
+        else:
+            #### add #####
+            mapping[m1] = m2 
 
     return mapping
 
