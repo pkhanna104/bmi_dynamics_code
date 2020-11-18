@@ -2068,7 +2068,8 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
 
     return float(cnt_sig)/float(cnt_tot)
 
-def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = False):
+def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = False, 
+    mean_maint = False, within_mov = False):
     """
     New method to get shuffled predictions 
     """
@@ -2078,7 +2079,13 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
     pref = analysis_config.config['shuff_fig_dir']
            
     #### Open the file #####
-    data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day)))
+    if mean_maint: 
+        data_file = pickle.load(open(pref + '%s_%d_shuff_ix_mn_diff_maint.pkl' %(animal, day)))
+    elif within_mov:
+        data_file = pickle.load(open(pref + '%s_%d_shuff_ix_within_mov_shuff.pkl' %(animal, day)))
+    else:
+        data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day)))
+    
     full_spks = data_file['Data']['spks']
     full_push = data_file['Data']['push']
     full_bin_num = data_file['Data']['bin_num']
@@ -2136,7 +2143,13 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
             
         shuff_str = str(shuffle)
         shuff_str = shuff_str.zfill(3)
-        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, model_name))
+
+        if mean_maint:
+            model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_mn_diff_maint_models.mat' %(animal, day, shuff_str, model_name))
+        elif within_mov:
+            model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_within_mov_shuff_models.mat' %(animal, day, shuff_str, model_name))
+        else:
+            model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, model_name))
         
         #### Build the data dictionary ####
         data_temp_dict = {}
@@ -2199,7 +2212,6 @@ def get_shuffled_data_pred_null_roll_pot_shuff(animal, day, model_name, nshuffs 
 
     return get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs=nshuffs, testing_mode=testing_mode,
         pot_shuff = True)
-
 
 def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, testing_mode = False,
     pot_shuff = False):
@@ -2359,6 +2371,12 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
     assert(np.sum(np.isnan(pred_Y)) == 0)
     assert(np.sum(np.isnan(true_Y)) == 0)
     return pred_Y, true_Y
+
+def get_shuffled_mean_maint(animal, day, model_name, nshuffs = 10, testing_mode = False):
+    return get_shuffled_data_v2(animal, day, model_name, nshuffs = nshuffs, testing_mode = False, mean_maint = True)
+
+def get_shuffled_within_mov(animal, day, model_name, nshuffs = 10, testing_mode = False):
+    return get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = False, within_mov = True)
 
 def pred_wo_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneur, **kwargs): 
     """
@@ -2613,7 +2631,6 @@ def get_shuffled_data(animal, day, model_nm, get_model = False, with_intercept =
         
     else:
         return np.dstack((pred_Y))
-
 
 def get_perc(dist, value):
     ix = np.nonzero(dist >= value)[0]
