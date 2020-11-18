@@ -863,6 +863,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
             -- have a movement transition matrix; 
             -- permute activity from movemnet to movement 
             -- if not enough commands --> resample 
+        "within_mov_shuff" --> shuffle same command within movment 
         "null_roll" --> shuffle for figure 6; roll null with respect to potent 
             -- each shuffle is a random roll integer sampled from 0-? 
         "null_roll_pot_beh_maint" --> shuffle for figure 6; roll null w.r.t potent 
@@ -926,7 +927,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'grom':
+            if animal == 'none':
                 pass
             else:
                 print('##############################')
@@ -950,7 +951,13 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
                         order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = True, 
                         day_ix = i_d, nshuffs = nshuffs)
-                    
+                
+                elif shuff_type ==  'within_mov_shuff':
+                    Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
+                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False,
+                        within_mov_bin_shuffle = True, 
+                        day_ix = i_d, nshuffs = nshuffs)
+                
                 elif shuff_type == 'null_roll': 
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
                         order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
