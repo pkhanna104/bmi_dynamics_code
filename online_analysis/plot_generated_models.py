@@ -2191,10 +2191,18 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
         ### After all folds, if in testing mode, pred_Y should be equal to sub_spikes_tm1; 
         if testing_mode:
             assert(np.allclose(sub_spikes_tm1, pred_Y[:, :, shuffle]))
-                 
+    if np.all(pred_Y == 0):
+        import pdb; pdb.set_trace()
     return pred_Y
 
-def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, testing_mode = False):
+def get_shuffled_data_pred_null_roll_pot_shuff(animal, day, model_name, nshuffs = 10, testing_mode = False):
+
+    return get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs=nshuffs, testing_mode=testing_mode,
+        pot_shuff = True)
+
+
+def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, testing_mode = False,
+    pot_shuff = False):
     """
     New method to get shuffled predictions 
     """
@@ -2204,7 +2212,12 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
     pref = analysis_config.config['shuff_fig_dir']
            
     #### Open the file #####
-    data_file = pickle.load(open(pref + '%s_%d_shuff_ix_null_roll.pkl' %(animal, day)))
+    if pot_shuff:
+        data_file = pickle.load(open(pref + '%s_%d_shuff_ix_null_roll_pot_beh_maint.pkl' %(animal, day)))
+        mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+    else:
+        data_file = pickle.load(open(pref + '%s_%d_shuff_ix_null_roll.pkl' %(animal, day)))
+    
     full_push = data_file['Data']['push']
     full_bin_num = data_file['Data']['bin_num']
     temp_N = data_file['temp_n']
@@ -2214,7 +2227,7 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
     type_of_model = np.zeros((5, ))
 
     #### Get # neurons #
-    nneur = data_file['Data']['spks'].shape[1]
+    nT, nneur = data_file['Data']['spks'].shape
 
     ### 2 x N decoder 
     KG = util_fcns.get_decoder(animal, day)
@@ -2242,16 +2255,34 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
         if shuffle % 10 == 0:
             print('Shuffle %d, %.5f' %(shuffle, time.time() - t0))
         
-        shuff_ix = data_file[shuffle]
+        if pot_shuff:
+            null_shuff_ix = data_file[shuffle, 'null_roll']
+            pot_shuff_ix = data_file[shuffle]
+        else:
+            null_shuff_ix = data_file[shuffle]
 
         if testing_mode: 
-            shuff_ix = 0 # no roll 
+            null_shuff_ix = 0 # no roll 
+            pot_shuff_ix = np.arange(nT)
 
-        #### get the spikes and previous spikes with roll applied ###
-        sub_spikes, sub_spikes_tm1, sub_push, tm0, tm1 = generate_models.get_temp_spks_null_pot_roll(data_file['Data'], shuff_ix)
+        if pot_shuff:
+            sub_spikes, sub_spikes_tm1, sub_push, tm0, tm1 = generate_models.get_temp_spks_null_roll_pot_shuff(data_file['Data'], pot_shuff_ix, null_shuff_ix)
         
-        ### Makes ure sub_push matches: 
-        assert(np.allclose(sub_push, full_push[tm0, :]))
+            #### Split up #####
+            shuff_com_bins_disc = util_fcns.commands2bins([sub_push], mag_boundaries, animal, day, vel_ix = [3, 5], ndiv=8)[0]
+            unshuff_com_bins_disc = util_fcns.commands2bins([full_push[tm0, :]], mag_boundaries, animal, day, vel_ix = [3, 5], ndiv=8)[0]
+            
+            #### Check that these are linked still; 
+            assert(np.allclose(shuff_com_bins_disc, unshuff_com_bins_disc))
+            load_str = 'null_roll_pot_beh_maint'
+            
+        else:
+            #### get the spikes and previous spikes with roll applied ###
+            sub_spikes, sub_spikes_tm1, sub_push, tm0, tm1 = generate_models.get_temp_spks_null_pot_roll(data_file['Data'], null_shuff_ix)
+        
+            ### Makes ure sub_push matches: 
+            assert(np.allclose(sub_push, full_push[tm0, :]))
+            load_str = 'null_roll'
 
         #### This is teh true data that is trying to be predicted
         true_Y[:, :, shuffle] = sub_spikes
@@ -2263,7 +2294,7 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
             
         shuff_str = str(shuffle)
         shuff_str = shuff_str.zfill(3)
-        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_%s_models.mat' %(animal, day, shuff_str, model_name, 'null_roll'))
+        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_%s_models.mat' %(animal, day, shuff_str, model_name, load_str))
         
         #### Build the data dictionary ####
         data_temp_dict = {}
