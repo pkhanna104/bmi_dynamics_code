@@ -94,6 +94,12 @@ class DataExtract(object):
         self.null_roll_pred = 10*pred; 
         self.null_roll_true = 10*true
 
+    def load_null_roll_pot_shuff(self):
+        pred, true = plot_generated_models.get_shuffled_data_pred_null_roll_pot_shuff(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs,
+            testing_mode = False)
+        self.null_roll_pot_beh_pred = 10*pred; 
+        self.null_roll_pot_beh_true = 10*true
+
 ######### UTILS ##########
 def stack_dict(d):
     for k in d.keys():
@@ -536,6 +542,11 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
     leave_out_fields = cat_dict[cat][0]
     leave_out_cats = cat_dict[cat][1]
 
+    if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+        skip_cond = False
+    elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+        skip_cond = True
+
     ### get the right alphase for the model ####
     if tsk_spec_alphas:
         ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'tsk_spec_alphas.pkl'), 'rb')); 
@@ -668,7 +679,7 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
 
                         #### train the model and predict held-out data ###
                         y_pred_lo[test_fold, :], coef, intc = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
-                            train_fold_lo, test_fold, alpha_spec, KG, add_mean = add_spks)
+                            train_fold_lo, test_fold, alpha_spec, KG, add_mean = add_spks, skip_cond=skip_cond)
 
                         ### Train the model and predict held out data -- but subselect so that 
                         ### Add these predictions to test_fold: 
@@ -676,7 +687,7 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
                         ### same amount of training data; 
                         test_fold_nlo = np.sort(np.hstack((test_fold, ix_rm_rand)))
                         y_pred_nlo[test_fold_nlo, :], coef_nlo, intc_nlo = train_and_pred(spks_tm1, spks_tm0, push_tm0, 
-                            train_fold_nlo, test_fold_nlo, alpha_spec, KG, add_mean = add_spks)
+                            train_fold_nlo, test_fold_nlo, alpha_spec, KG, add_mean = add_spks, skip_cond=skip_cond)
                         
                         ### Save the matrices; 
                         LOO_dict[lo][i_fold, 'coef_lo'] = coef
@@ -718,8 +729,13 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
             else:
                 ext2 = ''
 
-            pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext1, ext2)), 'wb'))
-            pickle.dump(LOO_dict_ctrl, open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext1, ext2)), 'wb'))
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                ext3 = ''
+            elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                ext3 = '_nocond'
+
+            pickle.dump(LOO_dict, open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext1, ext2, ext3)), 'wb'))
+            pickle.dump(LOO_dict_ctrl, open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext1, ext2, ext3)), 'wb'))
 
 ######## Fit move group model #####
 def fit_predict_lomov_model(min_num_per_cat_lo = 15, 
@@ -1012,7 +1028,8 @@ def subsampPd(dat, ix_keep):
     return pandas.DataFrame(tmp_dict)
 
 def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False,
-    tsk_spec_alphas = False, yval='err', nshuffs = 100, n_folds = 5, plot_eig = False): 
+    tsk_spec_alphas = False, yval='r2', nshuffs = 100, n_folds = 5, plot_eig = False,
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'): 
     '''
     For each model type lets plot the held out data vs real data correlations 
     ''' 
@@ -1022,13 +1039,12 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
     elif yval == 'r2':
         yfcn = r2; 
 
-    model_set_number = 6
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'    
+    model_set_number = 6 
 
     f, ax = plt.subplots(figsize=(3, 3))
     f_spec, ax_spec = plt.subplots(ncols = 2); 
-    #flo, axlo = plt.subplots()
-    for i_a, animal in enumerate(['jeev']):#grom', 'jeev']):
+    
+    for i_a, animal in enumerate(['grom','jeev']):
 
         r2_stats = []
 
@@ -1050,10 +1066,17 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             else:
                 ext2 = ''
 
-            NLOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext, ext2)), 'rb'))
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                ext3 = ''
+            elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                ext3 = '_nocond'
+
+            NLOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext, ext2, ext3)), 'rb'))
 
             ### Load the category dictonary: 
-            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s.pkl'%(cat, animal, day_ix, ext, ext2)), 'rb'))
+            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext, ext2, ext3)), 'rb'))
+
+            KG = util_fcns.get_decoder(animal, day_ix)
 
             ### Load the true data ###
             spks_true, com_true, mov_true, push_true, com_true_tm1 = get_spks(animal, day_ix)
@@ -1104,38 +1127,46 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                     #### Check that these indices corresond to the left out thing; 
                     check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat)
                     
+                    if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                        lo_pred_all.append(lo_pred)
+                        lo_true_all.append(spks_true[lo_ix, :])
+                        nlo_pred_all.append(spks_pred[lo_ix, :])
+                        shuff_pred_all.append(pred_spks_shuffle[lo_ix, :, :])
 
-                    lo_pred_all.append(lo_pred)
-                    lo_true_all.append(spks_true[lo_ix, :])
-                    nlo_pred_all.append(spks_pred[lo_ix, :])
-                    shuff_pred_all.append(pred_spks_shuffle[lo_ix, :, :])
+                        #### r2 stats specific ####
+                        tmp,_=yfcn(spks_true[lo_ix, :], spks_pred[lo_ix, :])
+                        r2_stats_spec_nlo.append([left_out, tmp])
 
-                    #### r2 stats specific ####
-                    tmp,_=yfcn(spks_true[lo_ix, :], spks_pred[lo_ix, :])
-                    r2_stats_spec_nlo.append([left_out, tmp])
+                        tmp2,_=yfcn(spks_true[lo_ix, :], lo_pred)
+                        r2_stats_spec.append([left_out, tmp2])
+                    
+                        ###### PLot R2 by different categories; ######
+                        #### What fraction of the data is this left out data point ? #####
+                        #axlo[1].plot(left_out, float(len(lo_ix))/float(spks_pred.shape[0]), 'k.')
+                        tmp3 = float(len(lo_ix))/float(len(an_ind))
+                        print('Len lo_ix %d, len_overall %d = %.1f' %(len(lo_ix), len(an_ind), tmp3))
+                        axlo[1].plot(left_out, float(len(lo_ix))/float(len(an_ind)), 'k.')
+                        axlo[0].set_title('%s, %d' %(animal, day_ix))
+                        axlo[0].plot(left_out, tmp, '.', color=analysis_config.blue_rgb)
+                        axlo[0].plot(left_out, tmp2, '.', color='purple')
+                        tmp3 = []
+                        for i in range(nshuffs):
+                            t, _ = yfcn(spks_true[lo_ix, :], pred_spks_shuffle[lo_ix, :, i])
+                            tmp3.append(t)
+                        util_fcns.draw_plot(left_out, tmp3, 'k', np.array([1.,1.,1.,0.]), axlo[0])
+                        axlo[0].set_xlim([-1, np.max(left_outters)+1])
 
-                    tmp2,_=yfcn(spks_true[lo_ix, :], lo_pred)
-                    r2_stats_spec.append([left_out, tmp2])
-
-                    ###### PLot R2 by different categories; ######
-
-                    #### What fraction of the data is this left out data point ? #####
-                    #axlo[1].plot(left_out, float(len(lo_ix))/float(spks_pred.shape[0]), 'k.')
-                    tmp3 = float(len(lo_ix))/float(len(an_ind))
-                    print('Len lo_ix %d, len_overall %d = %.1f' %(len(lo_ix), len(an_ind), tmp3))
-                    axlo[1].plot(left_out, float(len(lo_ix))/float(len(an_ind)), 'k.')
-                    axlo[0].set_title('%s, %d' %(animal, day_ix))
-                    axlo[0].plot(left_out, tmp, '.', color=analysis_config.blue_rgb)
-                    axlo[0].plot(left_out, tmp2, '.', color='purple')
-                    tmp3 = []
-                    for i in range(nshuffs):
-                        t, _ = yfcn(spks_true[lo_ix, :], pred_spks_shuffle[lo_ix, :, i])
-                        tmp3.append(t)
-                    util_fcns.draw_plot(left_out, tmp3, 'k', np.array([1.,1.,1.,0.]), axlo[0])
-                    axlo[0].set_xlim([-1, np.max(left_outters)+1])
-
-                    #### relationship between how much data is left out and the drop in error 
-                    #axlo.plot(float(len(lo_ix))/float(spks_pred.shape[0]), tmp-tmp2, 'k.')
+                    elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0': 
+                        ### want to plot "next action" 
+                        ### Here theses are all predictions of tm0 | tm1, NOT conditioned on action 
+                        ### Lets see how accurate the action is; 
+                        lo_pred_all.append(np.dot(KG, 0.1*lo_pred.T).T)
+                        lo_true_all.append(push_true[np.ix_(lo_ix, [3, 5])])
+                        nlo_pred_all.append(np.dot(KG, 0.1*spks_pred[lo_ix, :].T).T)
+                        shuff_act = []
+                        for n in range(nshuffs):
+                            shuff_act.append(np.dot(KG, 0.1*pred_spks_shuffle[lo_ix, :, n].T).T)
+                        shuff_pred_all.append(np.dstack((shuff_act)))
 
                     if plot_eig:
                         for i_fold in range(n_folds):
@@ -1178,29 +1209,31 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             mx = np.max([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
             ax.plot([i_a*10 + day_ix, i_a*10 + day_ix], [mn, mx], 'k-', linewidth=0.5)
 
-            ### Animal specific plot 
-            r2_stats_spec = np.vstack((r2_stats_spec))
-            r2_stats_spec_nlo = np.vstack((r2_stats_spec_nlo))
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                ### Animal specific plot 
+                r2_stats_spec = np.vstack((r2_stats_spec))
+                r2_stats_spec_nlo = np.vstack((r2_stats_spec_nlo))
 
-            ax_spec[i_a].plot(r2_stats_spec[:, 0], r2_stats_spec[:, 1], '.', 
-                color=analysis_config.pref_colors[day_ix])
+                ax_spec[i_a].plot(r2_stats_spec[:, 0], r2_stats_spec[:, 1], '.', 
+                    color=analysis_config.pref_colors[day_ix])
 
-            ax_spec[i_a].plot(r2_stats_spec_nlo[:, 0]+.2, r2_stats_spec_nlo[:, 1], '^', 
-                color=analysis_config.pref_colors[day_ix])
+                ax_spec[i_a].plot(r2_stats_spec_nlo[:, 0]+.2, r2_stats_spec_nlo[:, 1], '^', 
+                    color=analysis_config.pref_colors[day_ix])
 
         ### Vstack r2_stats ####
-        r2_stats = np.vstack((r2_stats))
-#        assert(r2_stats.shape[0] == len(range(analysis_config.data_params['%s_ndays'%animal])))
-        assert(r2_stats.shape[1] == 2)
+        if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+            r2_stats = np.vstack((r2_stats))
+#           assert(r2_stats.shape[0] == len(range(analysis_config.data_params['%s_ndays'%animal])))
+            assert(r2_stats.shape[1] == 2)
 
-        r2_stats = np.mean(r2_stats, axis=0)
-        assert(len(r2_stats) == 2)
-        # ax.bar(3*i_a, r2_stats[0], width=0.8, color='k', alpha=.2)
-        # ax.bar((3*i_a)+1, r2_stats[1], width=0.8, color='k', alpha=.2)
+            r2_stats = np.mean(r2_stats, axis=0)
+            assert(len(r2_stats) == 2)
+            # ax.bar(3*i_a, r2_stats[0], width=0.8, color='k', alpha=.2)
+            # ax.bar((3*i_a)+1, r2_stats[1], width=0.8, color='k', alpha=.2)
 
-        #### Plot task-specific ####
-        ax_spec[i_a].set_ylabel(yval)
-        ax_spec[i_a].set_xlabel('Diff %s s'%(cat))
+            #### Plot task-specific ####
+            ax_spec[i_a].set_ylabel(yval)
+            ax_spec[i_a].set_xlabel('Diff %s s'%(cat))
 
 
     ax.set_title('Cat: %s' %cat)
@@ -1212,10 +1245,11 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
     f.tight_layout()
     f_spec.tight_layout()
 
-    util_fcns.savefig(f, 'held_out_cat%s'%cat)
+    util_fcns.savefig(f, 'held_out_cat%s_%s'%(cat, model_nm))
 
 ######## Plot whether the move-speicfic command activity has the right structure #####
 def plot_pop_dist_corr_COMMAND(nshuffs=10, min_commands = 15): 
+
     cat = 'com'
     model_set_number = 6
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'    
