@@ -84,6 +84,61 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
     f.tight_layout()
     util_fcns.savefig(f, 'fwd_pred_action%s'%(str(plot_action)))
 
+def plot_R2_model_fig4_mn_maint_shuff(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6,
+    nshuffs = 10):
+
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+    f, ax = plt.subplots(figsize=(3, 3))
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            ### Load data ###
+            dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
+                model_set_number = model_set_number, nshuffs=nshuffs)
+            dataObj.load()
+            dataObj.load_mn_maint()
+            dataObj.load_win_mov_shuff() #self.within_mov_shuff = 10*pred; load_win_mov_shuff
+
+            #import pdb; pdb.set_trace()
+            #self.mn_maint_shuff = 10*pred; load_mn_maint
+
+        
+            ### get predictions ###
+            r2_true = util_fcns.get_R2(dataObj.spks, dataObj.pred_spks)
+
+            r2_shuff = []
+            for n in range(nshuffs):
+                r2_shuff.append(util_fcns.get_R2(dataObj.spks, dataObj.pred_spks_shuffle[:, :, n]))
+
+            r2_mn_maint = []
+            for n in range(nshuffs):
+                r2_mn_maint.append(util_fcns.get_R2(dataObj.spks, dataObj.mn_maint_shuff[:, :, n]))
+
+            r2_within_mov = []
+            for n in range(nshuffs):
+                r2_within_mov.append(util_fcns.get_R2(dataObj.spks, dataObj.within_mov_shuff[:, :, n]))
+
+            ### Plot the r2 ###
+            xpos = i_a*10 + day_ix
+            ax.plot(xpos, r2_true, '.', markersize=15, color=analysis_config.blue_rgb)
+            
+            util_fcns.draw_plot(xpos, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+            util_fcns.draw_plot(xpos, r2_mn_maint, 'green', np.array([1., 1., 1., 0.]), ax)
+            util_fcns.draw_plot(xpos, r2_within_mov, 'purple', np.array([1., 1.,1., 0.]), ax)
+
+            ix = np.nonzero(np.hstack((r2_mn_maint)) >= r2_true)[0]
+            pv = float(len(ix))/float(len(r2_mn_maint))
+            print('%s, %d, pv = %.5f' %(animal, day_ix, pv))
+            ax.plot([xpos, xpos], [np.mean(r2_shuff), r2_true], 'k-', linewidth=.5)
+
+    ax.set_xlim([-1, 14])
+    f.tight_layout()
+    util_fcns.savefig(f, 'mean_maint_r2')
+
+
 def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 1000):
 
