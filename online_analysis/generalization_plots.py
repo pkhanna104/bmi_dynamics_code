@@ -100,6 +100,14 @@ class DataExtract(object):
         self.null_roll_pot_beh_pred = 10*pred; 
         self.null_roll_pot_beh_true = 10*true
 
+    def load_mn_maint(self):
+        pred = plot_generated_models.get_shuffled_mean_maint(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs, testing_mode = False)
+        self.mn_maint_shuff = 10*pred; 
+
+    def load_win_mov_shuff(self):
+        pred = plot_generated_models.get_shuffled_within_mov(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs, testing_mode = False)
+        self.within_mov_shuff = 10*pred; 
+        
 ######### UTILS ##########
 def stack_dict(d):
     for k in d.keys():
