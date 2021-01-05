@@ -1250,7 +1250,6 @@ def full_shuffling(bin_spk, decoder_all, animal, day_ix):
 
     return shuff_ix.astype(int)
 
-
 def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
     '''
     update -- 6/12/20 -- also shuffled action with the neural activity; 

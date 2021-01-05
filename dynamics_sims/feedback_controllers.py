@@ -26,7 +26,6 @@ class FeedbackController(object):
     def get(self, current_state, target_state, mode=None):
         raise NotImplementedError
 
-
 class LinearFeedbackController(FeedbackController):
     '''
     Generic linear state-feedback controller. Can be time-varying in general and not be related to a specific cost function
@@ -183,6 +182,7 @@ class LQRController(LinearFeedbackController):
                 K[t] = (R + B.T*P*B).I * B.T*P*A
                 P = Q + A.T*P*A -A.T*P*B*K[t]
             return dtype(K)
+        
         else: # Infinite horizon
             P = Q_f
             K = np.inf
