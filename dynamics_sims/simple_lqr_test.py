@@ -31,7 +31,7 @@ def simple_A(offs = [0, 0], alpha = .7, dt = .1):
 
     ### State feedback matrix, infinite horizon
     K = lqr.F
-
+    
     ### angles for different targets 
     ang = np.linspace(0, 2*np.pi, 9)[:-1]
     rad = 10.
