@@ -1130,8 +1130,16 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     for i_, (f_, l_) in enumerate(zip(F, lab)):
         util_fcns.savefig(f_, l_)
 
-def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, save=True):
+def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, save=True,
+    use_saved_move_command_sig = False):
     
+    if use_saved_move_command_sig:
+        move_command_sig_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'sig_move_comm.pkl', 'rb'))
+        plot_only_bars = True
+    else:
+        move_command_sig_dict = None
+        plot_only_bars = False
+
     move_command_sig = {}
 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
@@ -1151,6 +1159,8 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
     for i_a, animal in enumerate(['grom', 'jeev']):
 
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            print('Starting animal %s, Day %d' %(animal, day_ix))
 
             move_command_sig[animal, day_ix] = []
             move_command_sig[animal, day_ix, 'osa'] = []
@@ -1243,40 +1253,50 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
                                 Ncommand_mov = len(ix_mc_all)
                                 assert(Nglobal > Ncommand_mov)
                                 
-                                ### Get matching global distribution 
-                                beh_shuffle = []; beh_shuffle_osa = []; 
 
-                                for i_shuff in range(nshuffs):
-                                    ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
-                                    shuff_psth = get_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok[ix_sub], num_bins=5)
-                                    shuff_psth_osa = get_osa_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok[ix_sub])
+                                if plot_only_bars:
+                                    total_cm += 1
+                                    total_cm_osa += 1
+                                    if [mag, ang, mov] in move_command_sig_dict[animal, day_ix]:
+                                        total_sig_com += 1
+                                    if [mag, ang, mov] in move_command_sig_dict[animal, day_ix, 'osa']:
+                                        total_sig_cm_osa += 1
 
-                                    beh_shuffle.append(np.linalg.norm(shuff_psth - global_com_PSTH_mov))
-                                    beh_shuffle_osa.append(np.linalg.norm(shuff_psth_osa - glboal_osa_com_PSTH_mov))
+                                else:
+                                    ### Get matching global distribution 
+                                    beh_shuffle = []; beh_shuffle_osa = []; 
 
-                                #### Test for sig for full trajectory ####
-                                ix_tmp = np.nonzero(beh_shuffle >= dPSTH)[0]
-                                pv = float(len(ix_tmp)) / float(nshuffs)
-                                if pv < 0.05: 
-                                    total_sig_com += 1
-                                    traj_diff.append(dPSTH)
-                                    move_command_sig[animal, day_ix].append([mag, ang, mov])
+                                    for i_shuff in range(nshuffs):
+                                        ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
+                                        shuff_psth = get_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok[ix_sub], num_bins=5)
+                                        shuff_psth_osa = get_osa_PSTH(bin_num, rev_bin_num, push, ix_com_global_ok[ix_sub])
 
-                                    if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7: 
-                                        special_dots.append([dPSTH, util_fcns.get_color(mov)])
+                                        beh_shuffle.append(np.linalg.norm(shuff_psth - global_com_PSTH_mov))
+                                        beh_shuffle_osa.append(np.linalg.norm(shuff_psth_osa - glboal_osa_com_PSTH_mov))
 
-                                total_cm += 1
+                                    #### Test for sig for full trajectory ####
+                                    ix_tmp = np.nonzero(beh_shuffle >= dPSTH)[0]
+                                    pv = float(len(ix_tmp)) / float(nshuffs)
+                                    if pv < 0.05: 
+                                        total_sig_com += 1
+                                        traj_diff.append(dPSTH)
+                                        move_command_sig[animal, day_ix].append([mag, ang, mov])
 
-                                #### Test for sig for one-step-ahead (osa) ####
-                                ix_tmp_osa = np.nonzero(beh_shuffle_osa >= dPSTH_osa)[0]
-                                pv_osa = float(len(ix_tmp_osa)) / float(nshuffs)
-                                if pv_osa < 0.05: 
-                                    total_sig_cm_osa += 1
-                                    traj_diff_one_step.append(dPSTH_osa)
-                                    move_command_sig[animal, day_ix, 'osa'].append([mag, ang, mov])
-                                    if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7: 
-                                        special_dots_osa.append([dPSTH_osa, util_fcns.get_color(mov)])
-                                total_cm_osa += 1
+                                        if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7: 
+                                            special_dots.append([dPSTH, util_fcns.get_color(mov)])
+
+                                    total_cm += 1
+
+                                    #### Test for sig for one-step-ahead (osa) ####
+                                    ix_tmp_osa = np.nonzero(beh_shuffle_osa >= dPSTH_osa)[0]
+                                    pv_osa = float(len(ix_tmp_osa)) / float(nshuffs)
+                                    if pv_osa < 0.05: 
+                                        total_sig_cm_osa += 1
+                                        traj_diff_one_step.append(dPSTH_osa)
+                                        move_command_sig[animal, day_ix, 'osa'].append([mag, ang, mov])
+                                        if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7: 
+                                            special_dots_osa.append([dPSTH_osa, util_fcns.get_color(mov)])
+                                    total_cm_osa += 1
 
             ### Compute percent sig: 
             perc_sig[animal].append(float(total_sig_com)/float(total_cm))
@@ -1286,19 +1306,22 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
             perc_sig_one_step[animal].append(float(total_sig_cm_osa)/float(total_cm_osa))
             ax_osa.plot(i_a, float(total_sig_cm_osa)/float(total_cm_osa), 'k.')
         
-            #### Plot the distribution of signficiant differences 
-            util_fcns.draw_plot(i_a*10 + day_ix, traj_diff, 'k', np.array([1., 1., 1., 0.]), axe)
-            util_fcns.draw_plot(i_a*10 + day_ix, traj_diff_one_step, 'k', np.array([1., 1., 1., 0.]), axe_osa)
+            if plot_only_bars:
+                pass
+            else:
+                #### Plot the distribution of signficiant differences 
+                util_fcns.draw_plot(i_a*10 + day_ix, traj_diff, 'k', np.array([1., 1., 1., 0.]), axe)
+                util_fcns.draw_plot(i_a*10 + day_ix, traj_diff_one_step, 'k', np.array([1., 1., 1., 0.]), axe_osa)
 
-            if len(special_dots) > 0: 
-                for _, (d, col) in enumerate(special_dots):
-                    x_ = [i_a*10 + day_ix - 1., i_a*10 + day_ix - 0.5]
-                    axe.plot(x_, [d, d], '-', color=col)
-            
-            if len(special_dots_osa) > 0: 
-                for _, (d, col) in enumerate(special_dots_osa):
-                    x_ = [i_a*10 + day_ix - 1., i_a*10 + day_ix -0.5]
-                    axe_osa.plot(x_, [d, d], '-', color=col)
+                if len(special_dots) > 0: 
+                    for _, (d, col) in enumerate(special_dots):
+                        x_ = [i_a*10 + day_ix - 1., i_a*10 + day_ix - 0.5]
+                        axe.plot(x_, [d, d], '-', color=col)
+                
+                if len(special_dots_osa) > 0: 
+                    for _, (d, col) in enumerate(special_dots_osa):
+                        x_ = [i_a*10 + day_ix - 1., i_a*10 + day_ix -0.5]
+                        axe_osa.plot(x_, [d, d], '-', color=col)
 
         ### Plot the bar; 
         ax.bar(i_a, np.mean(perc_sig[animal]), width=.8, alpha=0.2, color='k')
@@ -1308,31 +1331,38 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
         axi.set_xticks([0, 1])
         axi.set_xticklabels(['G', 'J'])
         axi.set_ylim([0., 1.])
-    
-    ax.set_ylabel('Frac. Move-Specific Commands \nwith Sig. Diff. Traj')
-    ax_osa.set_ylabel('Frac. Move-Specific Commands \nwith Sig. Diff. Next Command')
+        axi.set_yticks([0., .2, .4, .6, .8, 1.0])
+        axi.set_yticklabels([0., .2, .4, .6, .8, 1.0])
 
-    for axi in [axe, axe_osa]:
-        axi.set_xlim([-1.5, 14])
-    axe.set_ylabel('Command Traj Diff for Sig.\nDiff. Move-Specific Commands', fontsize=4)
-    axe.set_ylim([0, 8])
-    axe_osa.set_ylabel('Next Command Diff for Sig. \nDiff. Move-Specific Commands', fontsize=4)
-    axe_osa.set_ylim([0, 2.2])
-
+    ax.set_ylabel('Frac. Move-Specific Commands \nwith Sig. Diff. Traj', fontsize=4)
+    ax_osa.set_ylabel('Frac. Move-Specific Commands \nwith Sig. Diff. Next Command', fontsize=4)
     f.tight_layout()
     f_osa.tight_layout()
-    fe.tight_layout()
-    fe_osa.tight_layout()
-
     if save:
         util_fcns.savefig(f, 'Beh_diff_perc_sig')
         util_fcns.savefig(f_osa, 'Beh_diff_perc_sig_one_step_ahead')
 
-        util_fcns.savefig(fe, 'Traj_diff_sig_cm')
-        util_fcns.savefig(fe_osa, 'Next_command_diff_sig_cm')
 
-    ### Save signifciant move/commands 
-    pickle.dump(move_command_sig, open(analysis_config.config['grom_pref'] + 'sig_move_comm.pkl', 'wb'))
+    if plot_only_bars:
+        pass
+    else:
+
+        for axi in [axe, axe_osa]:
+            axi.set_xlim([-1.5, 14])
+        axe.set_ylabel('Command Traj Diff for Sig.\nDiff. Move-Specific Commands', fontsize=4)
+        axe.set_ylim([0, 8])
+        axe_osa.set_ylabel('Next Command Diff for Sig. \nDiff. Move-Specific Commands', fontsize=4)
+        axe_osa.set_ylim([0, 2.2])
+
+        fe.tight_layout()
+        fe_osa.tight_layout()
+
+        if save:
+            util_fcns.savefig(fe, 'Traj_diff_sig_cm')
+            util_fcns.savefig(fe_osa, 'Next_command_diff_sig_cm')
+
+        ### Save signifciant move/commands 
+        pickle.dump(move_command_sig, open(analysis_config.config['grom_pref'] + 'sig_move_comm.pkl', 'wb'))
 
 def plot_distribution_of_nmov_per_command(): 
     """
