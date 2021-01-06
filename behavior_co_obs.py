@@ -1482,7 +1482,9 @@ def subsample_dataset_to_match_mean_target_dataset(match_var, d_ss, d_target, p_
     d_target: dataset to match to (the target dataset)
     each data set is an xarray
     xarray: num_var X num_observation
+    #dims should be: ['v', 'observation']
     this code will use the 'observation' label to choose the samples
+    this code will use 'v' label to choose the variables
 
     OUTPUT: 
     DataFrame:
@@ -2541,7 +2543,7 @@ def lqr_sim_nk_noise(state_noise_mean, state_noise_cov, A_list, B, K_list, state
 
     num_seg = len(horizon_list)
     state_list = []
-    state = copy.copy(state_init)
+    state = copy.copy(state_init) #initialized state
     state_list.append(state)    
 
     state_e_list = []
@@ -2615,7 +2617,8 @@ def lqr_sim_nk_noise(state_noise_mean, state_noise_cov, A_list, B, K_list, state
     return u_da, state_da, state_e_da, state_noise_da, move_len, sim_len
     # return u_list, state_list, state_e_list
 
-def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f, state_noise_mean, state_noise_cov, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed,\
+def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f,\
+    state_noise_mean, state_noise_cov, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed,\
     state_label, state_dim, input_label, num_neurons, hold_req=2, target_r=1.7):
     """
     (set move_horizon to be odd, so co and obs movements can be the same length)
