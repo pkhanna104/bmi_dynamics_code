@@ -486,11 +486,12 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             axdist.hlines(np.mean(spks[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
                 linewidth=1., linestyle='dashed')
 
-
             ### Single neuron --> sampling distribution 
-            util_fcns.draw_plot(x, mFR_shuffle[mov], 'gray', np.array([0., 0., 0., 0.]), ax)
-            ax.plot(x, mFR[mov], '.', color=colrgb, markersize=20)
-            ax.hlines(np.mean(spks[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
+            spk_mn = np.mean(spks[ix_com_global, neuron_ix])
+
+            util_fcns.draw_plot(x, np.abs(mFR_shuffle[mov] ), 'gray', np.array([0., 0., 0., 0.]), ax)
+            ax.plot(x, np.abs(mFR[mov] ), '.', color=colrgb, markersize=20)
+            ax.hlines(spk_mn, xlim[0], xlim[-1], color='gray',
                 linewidth=1., linestyle='dashed')
             
             ### Population centered by shuffle mean 
@@ -702,6 +703,8 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
     dtype_pop = [('pv', float), ('norm_diff_fr', float), ('frac_norm_diff_fr', float)]
 
     niter2match = {}
+
+    pooled_stats = {}
     
     for ia, animal in enumerate(['grom', 'jeev']):
         
@@ -712,6 +715,8 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
             perc_sig_vect[animal, day_ix] = {}
             niter2match[animal, day_ix] = {}
                         
+            pooled_stats[animal, day_ix] = []
+
             ### Pull data ### 
             spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
             spks = spks * 10
@@ -803,6 +808,8 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
                             dmFR_shuffle = np.vstack((dmFR_shuffle))
                             mFR_shuffle = np.vstack((mFR_shuffle))
                             
+                            pooled_stats[animal, day_ix].append([dmean_FR, dmFR_shuffle])
+
                             ### For each neuron go through and do the signficiance test ####
                             for i_neur in range(nneur):
 
@@ -826,8 +833,50 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
                             perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist/nneur, dist/np.linalg.norm(global_mean_FR)), dtype=dtype_pop)
 
                                 
-    return perc_sig, perc_sig_vect, niter2match
+    return perc_sig, perc_sig_vect, niter2match, pooled_stats
 
+def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        NCM = []
+        CM = []
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            nneur = float(len(pooled_stats[animal, day_ix][0][0]))
+
+            ncm_diff = np.mean([np.mean(d[0]) for d in pooled_stats[animal, day_ix]])
+            shuff_diffs = np.mean(np.vstack(([np.mean(d[1], axis=1) for d in pooled_stats[animal, day_ix]])), axis=0)
+            NCM.append([ncm_diff, shuff_diffs])
+
+            ix = np.nonzero(ncm_diff <= shuff_diffs)[0]
+            pv_ncm = float(len(ix)) / float(len(shuff_diffs))
+            print('pv_ncm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f' %(pv_ncm, ncm_diff, np.mean(shuff_diffs)))
+
+            ### Population level 
+            cm_diff = np.mean([np.linalg.norm(d[0])/nneur for d in pooled_stats[animal, day_ix]])
+            cm_shuff_diffs = np.vstack(([np.linalg.norm(d[1], axis=1)/nneur for d in pooled_stats[animal, day_ix]]))
+            assert(cm_shuff_diffs.shape[1] == nshuffs)
+            cm_shuff_diffs = np.mean(cm_shuff_diffs, axis=0)
+            CM.append([cm_diff, cm_shuff_diffs])
+            
+            cm_ix = np.nonzero(cm_diff <= cm_shuff_diffs)[0]
+            pv_cm = float(len(cm_ix)) / float(len(cm_shuff_diffs))
+            print('pv_cm = %.5f, mn_cm = %.3f, mn_shuff = %.3f' %(pv_cm, cm_diff, np.mean(cm_shuff_diffs)))
+
+        ### Pooled pooled; 
+        ncm_pool = np.mean([d[0] for d in NCM])
+        ncm_shuff_pool = np.vstack(([d[1] for d in NCM]))
+        assert(ncm_shuff_pool.shape[1] == nshuffs)
+        ix = np.nonzero(ncm_pool <= np.mean(ncm_shuff_pool, axis=0))[0]
+        print('POOL %s, pv_ncm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f' %(animal, float(len(ix))/1000., ncm_pool, np.mean(ncm_shuff_pool)))
+
+        ### Pooled pooled; 
+        cm_pool = np.mean([d[0] for d in CM])
+        cm_shuff_pool = np.vstack(([d[1] for d in CM]))
+        assert(cm_shuff_pool.shape[1] == 1000)
+        ix = np.nonzero(cm_pool <= np.mean(cm_shuff_pool, axis=0))[0]
+        print('POOL %s, pv_cm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f' %(animal, float(len(ix))/1000., cm_pool, np.mean(cm_shuff_pool)))
+        
 def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None, 
     plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5, neur_ix = 36):
 
@@ -1134,12 +1183,14 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
     use_saved_move_command_sig = False):
     
     if use_saved_move_command_sig:
-        move_command_sig_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'sig_move_comm.pkl', 'rb'))
+        move_command_sig_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'sig_move_comm_%dshuffs.pkl' %nshuffs, 'rb'))
         plot_only_bars = True
+        pooled_stats = move_command_sig_dict['pooled_stats']
     else:
         move_command_sig_dict = None
         plot_only_bars = False
-
+        pooled_stats = {}
+    pooled_stats_pool = {}
     move_command_sig = {}
 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
@@ -1158,12 +1209,19 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
     ############ Loop ##############
     for i_a, animal in enumerate(['grom', 'jeev']):
 
+        move_command_sig[animal] = []
+        move_command_sig[animal, 'osa'] = []
+        pooled_stats_pool[animal] = []
+        pooled_stats_pool[animal, 'osa'] = []
+
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             print('Starting animal %s, Day %d' %(animal, day_ix))
 
             move_command_sig[animal, day_ix] = []
             move_command_sig[animal, day_ix, 'osa'] = []
+            pooled_stats[animal, day_ix] = []
+            pooled_stats[animal, day_ix, 'osa'] = []
 
             ###### Extract data #######
             _, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
@@ -1286,6 +1344,7 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
                                             special_dots.append([dPSTH, util_fcns.get_color(mov)])
 
                                     total_cm += 1
+                                    pooled_stats[animal, day_ix].append([dPSTH, beh_shuffle])
 
                                     #### Test for sig for one-step-ahead (osa) ####
                                     ix_tmp_osa = np.nonzero(beh_shuffle_osa >= dPSTH_osa)[0]
@@ -1297,7 +1356,8 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
                                         if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7: 
                                             special_dots_osa.append([dPSTH_osa, util_fcns.get_color(mov)])
                                     total_cm_osa += 1
-
+                                    pooled_stats[animal, day_ix, 'osa'].append([dPSTH_osa, beh_shuffle_osa])
+            
             ### Compute percent sig: 
             perc_sig[animal].append(float(total_sig_com)/float(total_cm))
             ax.plot(i_a, float(total_sig_com)/float(total_cm), 'k.')
@@ -1323,10 +1383,26 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
                         x_ = [i_a*10 + day_ix - 1., i_a*10 + day_ix -0.5]
                         axe_osa.plot(x_, [d, d], '-', color=col)
 
+            #### Do the stats
+            pv_day, dpsth, shuff = print_pv_from_pooled_stats(pooled_stats[animal, day_ix])
+            print('Pv = %.5f, dpsth = %.3f, mnshuff = %.3f' %(pv_day, dpsth, np.mean(shuff)))
+            pooled_stats_pool[animal].append([dpsth, shuff])
+
+            pv_day, dpsth, shuff = print_pv_from_pooled_stats(pooled_stats[animal, day_ix, 'osa'])
+            print('Pv osa = %.5f, dpsth = %.3f, mnshuff = %.3f' %(pv_day, dpsth, np.mean(shuff)))
+            pooled_stats_pool[animal, 'osa'].append([dpsth, shuff])
+
         ### Plot the bar; 
         ax.bar(i_a, np.mean(perc_sig[animal]), width=.8, alpha=0.2, color='k')
         ax_osa.bar(i_a, np.mean(perc_sig_one_step[animal]), width=.8, alpha=0.2, color='k')
 
+        ### Pooled stats over days; 
+        pv_animal, dp, sh = print_pv_from_pooled_stats(pooled_stats_pool[animal])
+        print('PV %s: %.5f, dpsth = %.3f, mnshuff = %.3f' %(animal, pv_animal, dp, np.mean(sh)))
+
+        pv_animal_osa, dp, sh = print_pv_from_pooled_stats(pooled_stats_pool[animal, 'osa'])
+        print('PV OSA %s: %.5f, dpsth = %.3f, mnshuff = %.3f' %(animal, pv_animal_osa, dp, np.mean(sh)))
+        
     for axi in [ax, ax_osa]:
         axi.set_xticks([0, 1])
         axi.set_xticklabels(['G', 'J'])
@@ -1361,8 +1437,23 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
             util_fcns.savefig(fe, 'Traj_diff_sig_cm')
             util_fcns.savefig(fe_osa, 'Next_command_diff_sig_cm')
 
+        move_command_sig['pooled_stats'] = pooled_stats
+        move_command_sig['nshuffs'] = nshuffs
+
         ### Save signifciant move/commands 
-        pickle.dump(move_command_sig, open(analysis_config.config['grom_pref'] + 'sig_move_comm.pkl', 'wb'))
+        pickle.dump(move_command_sig, open(analysis_config.config['grom_pref'] + 'sig_move_comm_%dshuffs.pkl'%nshuffs, 'wb'))
+
+def print_pv_from_pooled_stats(stats):
+    nshuffs = len(stats[0][1])
+    dpsth = np.mean(np.array([d[0] for d in stats]))
+    shuff = np.vstack(([d[1] for d in stats]))
+    assert(shuff.shape[1] == nshuffs)
+    shuff = np.mean(shuff, axis=0)
+    assert(len(shuff) == nshuffs)
+    pv_day = float(len(np.nonzero(shuff >= dpsth)[0]))/float(len(shuff))
+    return pv_day, dpsth, shuff
+
+
 
 def plot_distribution_of_nmov_per_command(): 
     """
@@ -1428,7 +1519,7 @@ def plot_distribution_of_nmov_per_command():
 
 ######### Behavior vs. neural correlations #########
 def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, ncommands_psth = 5,
-    min_commands = 15): 
+    min_commands = 15, min_move_per_command = 5): 
 
     ### Open mag boundaries 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
@@ -1438,15 +1529,32 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
     fs, axs = plt.subplots(figsize = (4, 4))
     fsd, axsd = plt.subplots(figsize = (4, 4))
 
+    pooled_stats_all = {}
+    comm_sig = {}
 
     for ia, animal in enumerate(['grom']):#, 'jeev']):
         rv_agg = []
+
+        ### For each pw diff add: (norm diff behav, norm diff pop neur, day, ang, mag)
+        pooled_stats = []
+        pooled_dtype = np.dtype([('dB', 'f8'), ('dN', 'f8'), ('day_ix', np.int8), ('ang', np.int8), ('mag', np.int8)])
 
         for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
             
             ### Pull data ### 
             spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
             spks = spks * 10
+
+            ### Do this step just to match the predicted plots you get later ###
+            tm0, _ = generate_models.get_temp_spks_ix(dat['Data'])
+
+            ### Get subsampled 
+            spks = spks[tm0, :]
+            push = push[tm0, :]
+            move = move[tm0]
+            bin_num = bin_num[tm0]
+            rev_bin_num = rev_bin_num[tm0]
+
             nneur = spks.shape[1]
             command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
@@ -1460,11 +1568,15 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
             for i in range(nshuffs):
                 D_shuff[i] = []
 
+            comm_sig[animal, day_ix] = []
+
             pairs_analyzed = {}
             plt_top = []
 
             var_neur = []
             diff_beh = []
+
+            commands_sig = [0., 0.]
 
             ### For each command: ###
             for mag in range(4):
@@ -1482,6 +1594,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
                     global_comm_indices = {}
                     pairs_analyzed[mag, ang] = []
 
+                    mov_cnt = 0
                     #### Go through the movements ####
                     for mov in np.unique(move[ix_com]):
                         
@@ -1494,12 +1607,15 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
 
                             global_comm_indices[mov] = ix_mc_all
                             ix_com_global.append(ix_mc_all)
+                            mov_cnt += 1
 
-                    if len(ix_com_global) > 0:
+                    if len(ix_com_global) > 0 and mov_cnt >= min_move_per_command:
+
                         ix_com_global = np.hstack((ix_com_global))
                         relevant_movs = np.array(global_comm_indices.keys())
-
                         shuffle_mean_FR = {}
+
+                        dB_vs_dN_command = []
 
                         ##### Get the movements that count; 
                         for imov, mov in enumerate(relevant_movs): 
@@ -1539,8 +1655,8 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
                                     mov_mean_FR1 = np.mean(spks[ix_mc_all[ix_ok1], :], axis=0)
                                     mov_mean_FR2 = np.mean(spks[ix_mc_all2[ix_ok2], :], axis=0)
 
-                                    mov_PSTH1 = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all[ix_ok1], num_bins=ncommands_psth)
-                                    mov_PSTH2 = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all2[ix_ok2], num_bins=ncommands_psth)
+                                    mov_PSTH1 = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all[ix_ok1], num_bins=ncommands_psth, min_bin_set = 1)
+                                    mov_PSTH2 = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all2[ix_ok2], num_bins=ncommands_psth, min_bin_set = 1)
 
                                     assert(mov_PSTH1.shape[0] == 2*ncommands_psth + 1)
                                     assert(mov_PSTH1.shape[1] == 2)
@@ -1555,16 +1671,20 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
                                     if mag == 0 and ang == 7 and animal == 'grom':
                                         #### Pair 1 ### (1., 10.1), (10.1, 15.), 
                                         if mov == 1. and mov2 == 10.1:
-                                            plt_top.append([dB, dN, 'deeppink', 15])
+                                            plt_top.append([dB, dN, 'deeppink', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
                                         elif mov == 10.1 and mov2 == 15.:
-                                            plt_top.append([dB, dN, 'limegreen', 15])
+                                            plt_top.append([dB, dN, 'limegreen', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
                                         else: 
-                                            plt_top.append([dB, dN, 'darkblue', 10])
+                                            plt_top.append([dB, dN, 'darkblue', 10, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
                                     else:
                                         rgb = util_fcns.rgba2rgb(np.array([0., 0., 0., .5]))
-                                        ax.plot(dB, dN, '.', color=rgb, markersize=5)
+                                        #ax.plot(dB, dN, '.', color=rgb, markersize=5)
                                         #ax.plot(dB, dN, '.', color=analysis_config.pref_colors_rgb[int(mov)%10], markersize=10)
                                     D.append([dB, dN])
+                                    dB_vs_dN_command.append([dB, dN])
+
+                                    ### For each pw diff add: (norm diff behav, norm diff pop neur, day, ang, mag)
+                                    pooled_stats.append(np.array((dB, dN, day_ix, ang, mag), dtype=pooled_dtype))
 
                                     diff_beh.append([dB, mag])
                                     var_neur.append(np.trace(np.cov(spks[ix_com_global, :].T)))
@@ -1623,16 +1743,25 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
 
                                         #if ishuff == 0:
                                         #    ax.plot(dB, shuff_dN, 'r.')
-                            
+                        #### Get dB vs. dN --> regression 
+                        dB_vs_dN_command = np.vstack((dB_vs_dN_command))
+                        _, _, rv_command, pv, _ = scipy.stats.linregress(dB_vs_dN_command[:, 0], dB_vs_dN_command[:, 1])
+                        if pv < 0.05:
+                            commands_sig[0] += 1
+                            comm_sig[animal, day_ix].append(rv_command)
+                        commands_sig[1] += 1
+
             ### Plt_top
             if len(plt_top) > 0:
-                for _, (xi, yi, col, ms) in enumerate(plt_top):
+                for _, xtmp in enumerate(plt_top):
+                    xi, yi, col, ms, _, _, _, _, _, _ = xtmp
                     ax.plot(xi, yi, '.', color=col, markersize=20)
                     #ax.plot(xi, yi, '.', color=analysis_config.pref_colors_rgb[0],markersize=10)
                 plt_top = np.vstack((plt_top))
-                _,_,rv,_,_ = scipy.stats.linregress(np.array(plt_top[:, 0], dtype=float), np.array(plt_top[:, 1], dtype=float))
-                print('Example (pink) r = %.4f'%rv)
-
+                slp,intc,rv,pv,_ = scipy.stats.linregress(np.array(plt_top[:, 0], dtype=float), np.array(plt_top[:, 1], dtype=float))
+                print('Example r = %.4f, slp = %.2f, intc = %.2f, pv = %.5f, N = %d'%(rv, slp, intc, pv, plt_top.shape[0]))
+                ix_sort = np.argsort(np.vstack((plt_top))[:, 0])
+                print(np.vstack((plt_top))[ix_sort, :])
             ### Plot dB vs. neural var; 
             diff_beh = np.vstack((diff_beh))
             #ax2[0].plot(diff_beh[:, 1], diff_beh[:, 0], 'k.')
@@ -1697,6 +1826,9 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
             axsd.set_ylabel('slope - shuf mn')
         axr.bar(ia, np.mean(rv_REAL), width=.8,alpha=0.2, color='k')
 
+        #### Compute pooled stats ###
+        pooled_stats_all[animal] = pooled_stats
+
     fs.tight_layout()
     fsd.tight_layout()
 
@@ -1711,6 +1843,8 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
     
     fsd.tight_layout()
     util_fcns.savefig(fsd, 'neur_beh_corr_SLP_vs_shuffN%d_centbyshuff_mn'%(nshuffs))
+
+    return pooled_stats_all
 
 def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_command = 5, min_commands=15,
     ncommands_psth = 5):
@@ -1836,7 +1970,7 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
             ### corr over pooled ###
             pool_D = np.vstack((pool_D))
             _, _, rv, pv, _ = scipy.stats.linregress(pool_D[:, 0], pool_D[:, 1])
-            axcc.plot(10*ia + day_ix, rv, '.', color='gray', markersize=15)
+            #axcc.plot(10*ia + day_ix, rv, '.', color='gray', markersize=15)
 
             ### Plot the distribution of sig CCs ###
             util_fcns.draw_plot(10*ia + day_ix, sig_cc, 'k', np.array([1., 1., 1., 0.]), axcc)
