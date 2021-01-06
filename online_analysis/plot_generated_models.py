@@ -1342,7 +1342,7 @@ def plot_r2_bar_model_1(min_obs = 15,
 def plot_r2_bar_model_dynamics_only(min_obs = 15, 
     r2_pop = True, perc_increase = True, model_dicts = None, 
     cond_on_act = True, plot_act = False, skip_task_spec = False, 
-    skip_shuffle = False, fig4_opt = False, nshuffs = 20):
+    skip_shuffle = False, fig4_opt = False, nshuffs = 1000):
 
     '''
     inputs: min_obs -- number of obs need to count as worthy of comparison; 
@@ -1386,8 +1386,10 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
     fax_r2, ax_r2 = plt.subplots(figsize = (4, 4))
 
+    pooled_stats = {}
+
     for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
-        
+
         if fig4_opt:
             xlab = ['shuffled', 
                     'general\ndynamics', 
@@ -1467,6 +1469,8 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
         ####### Iterate through each day #########
         for i_d in range(ndays[animal]):
 
+            pooled_stats[animal, i_d] = []
+        
             ###### Get the decoders ###########
             KG = util_fcns.get_decoder(animal, i_d)
             
@@ -1515,8 +1519,11 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
             ###########################################################################
             ####### For each day plot fraction of significant neurons > shuffle #######
             ###########################################################################
-            frac_sig[animal].append(shuff_vs_gen_frac_sig(pred_Y, model_dict[i_d, 'spks'], i_d, animal, model_name, 
-                ax_frac_sig, ax_gte_shuff, ax_r2))
+            frac_dayi, r2_true_dayi, r2_shuff_dayi = shuff_vs_gen_frac_sig(pred_Y, model_dict[i_d, 'spks'], i_d, animal, model_name, 
+                ax_frac_sig, ax_gte_shuff, ax_r2)
+
+            pooled_stats[animal, i_d].append([r2_true_dayi, r2_shuff_dayi])
+            frac_sig[animal].append(frac_dayi)
 
 
             ######## Get zero order hold #########
@@ -1821,7 +1828,8 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
     fax_gte_shuff.tight_layout()
     fax_r2.tight_layout()
     util_fcns.savefig(fax_r2, 'ax_r2_dyn_cond_act_shuff_n%d.svg' %(nshuffs))
-
+    return pooled_stats
+    
 def cond_act_on_psh(animal, i_d, KG=None, dat=None):
     """
     estimate neural activity y_t | a_t "most likely" 
@@ -2056,6 +2064,7 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
     util_fcns.draw_plot(i_d_plt2 - .25, r2_shuff_pop, 'k', 'w', ax_r2)
     ax_r2.plot(i_d_plt2, r2_true_pop, '.', markersize = 20, color=np.array([39, 169, 225])/256.)
     ax_r2.plot(i_d_plt2 + .125, r2_true_cond, '^', color='gray')
+    ax_r2.vlines(i_d_plt2, r2_true_cond, r2_true_pop, 'gray', linewidth=.5)
 
     ######## Aesthetics ########
     ######## Set Ylabel 
@@ -2066,7 +2075,7 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
     else:
         ax_gte_shuff.set_ylabel('R2 > Shuf-Mn (sig neur)', fontsize=14)
 
-    return float(cnt_sig)/float(cnt_tot)
+    return float(cnt_sig)/float(cnt_tot), r2_true_pop, r2_shuff_pop
 
 def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = False, 
     mean_maint = False, within_mov = False):
