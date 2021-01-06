@@ -1456,10 +1456,11 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
                                         
                                         #### Pooled plot ###
                                         D_pool.append([dB, dN, dN_pred])
-                                        D_comm.append([dB, dN, dN_pred])
+                                        D_comm.append([dB, dN, dN_pred, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+
                                         if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
                                             axeg2.plot(dB, dN, '.', color='darkblue')
-                                            axeg22.plot(dB, dN_pred, '.', color=analysis_config.blue_rgb)
+                                            #axeg22.plot(dB, dN_pred, '.', color=analysis_config.blue_rgb)
                                                
                                     else:
                                         print('Skipping %s, %d, command %d %d mov %1.f mov2 %.1f -- psth fail :(' %(animal, day_ix,
@@ -1480,7 +1481,9 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
                         axeg2.plot(x_, y_true, '-', color='darkblue')
                         axeg22.plot(x_, y_pred, '-', color=analysis_config.blue_rgb)
 
-
+                        print('True slp %.3f, intc %.3f, rv %.3f, N = %d' %(slp1, int1, rv_true, D_comm.shape[0]))
+                        ix_sort = np.argsort(D_comm[:, 0])
+                        print(D_comm[np.ix_(ix_sort, [0, 1, 3, 4, 5, 6, 7, 8])])
                         util_fcns.savefig(feg2, 'grom0_eg_w_pred_dbeh_vs_dneur_corr')
 
                     ######### Tabulate the commands #########
