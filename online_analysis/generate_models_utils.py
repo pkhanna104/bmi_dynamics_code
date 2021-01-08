@@ -1110,11 +1110,10 @@ def lag_ix_2_var_nm(lag_ixs, var_name='vel', nneur=0, include_action_lags=False,
                 nms.append(var_name+'x_tm0')
                 nms.append(var_name+'y_tm0')   
         
-        elif 'psh_2' in model_nm:
-            print('Conditioning on push')
-        
-        else:
-            print('No push')
+        # elif 'psh_2' in model_nm:
+        #     print('Conditioning on push')
+        # else:
+        #     print('No push')
 
     elif var_name == 'neur':
         for nl in lag_ixs:
