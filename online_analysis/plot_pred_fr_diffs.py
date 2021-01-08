@@ -13,6 +13,80 @@ from sklearn.linear_model import Ridge
 import scipy.stats
 import statsmodels.api as sm
 
+import gc
+
+###### Fig 4C r2 plot ########
+def plot_fig4c_R2(model_dicts, cond_on_act = True, plot_act = False, nshuffs=10):
+    if cond_on_act:
+        model_name = 'hist_1pos_0psh_2spksm_1_spksp_0'
+    else:
+        model_name = 'hist_1pos_0psh_0spksm_1_spksp_0'
+    
+    if plot_act:
+        assert(cond_on_act == False)
+
+    def get_dyn(q, col=2):
+        if len(q.shape) == 3:
+            return q[:,:,col]
+        elif len(q.shape) == 2:
+            return q
+
+    fax_r2, ax_r2 = plt.subplots(figsize = (4, 4))
+    for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
+        
+        model_dict = model_dicts[animal]
+        pooled_shuff = []
+
+        for i_d in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            KG = util_fcns.get_decoder(animal, i_d)
+
+            spks = model_dict[i_d, 'spks']
+
+            ### Condition on push 
+            cond = plot_generated_models.cond_act_on_psh(animal, i_d)
+            r2_cond = util_fcns.get_R2(spks, cond)
+
+            #### get true dynamics 
+            pred = get_dyn(model_dict[i_d, model_name])
+
+            ### Both should be conditioned
+            if cond_on_act:
+                assert(np.allclose(np.dot(KG, cond.T).T, np.dot(KG, pred.T).T))
+
+            r2_pred = util_fcns.get_R2(spks, pred)
+
+            #### Get shuffled 
+            r2_shuff = []
+            for i in range(nshuffs):
+                shuffled = plot_generated_models.get_shuffled_data_v2(animal, i_d, model_name, nshuffs = None,
+                    shuff_num = i)
+                r2_shuff.append(util_fcns.get_R2(spks, shuffled[:, :, 0]))
+
+            ax_r2.plot(ia*10 + i_d, r2_pred, '.', color=analysis_config.blue_rgb, markersize=10)
+            ax_r2.plot(ia*10 + i_d+.125, r2_cond, '^', color='gray', markersize=10)
+            util_fcns.draw_plot(ia*10 + i_d - .25, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax_r2, width=1.)
+            ax_r2.vlines(ia*10 + i_d, r2_cond, r2_pred, 'gray', linewidth=.5)   
+
+            ix = np.nonzero(r2_pred <= r2_shuff)[0]
+            print('Animal %s, Day %d, pv %.5f, r2_pred %.3f, mn r2_shuff%.3f, 95th r2_shuff%.3f' %(animal, i_d, float(len(ix)) / float(nshuffs), 
+                r2_pred, np.mean(r2_shuff), np.percentile(r2_shuff, 95)))
+            pooled_shuff.append([r2_pred, r2_shuff])
+
+            gc.collect()
+
+        ### pooled stats
+        mn_r2 = np.mean([d[0] for d in pooled_shuff])
+        mn_shuff = np.mean(np.vstack(([d[1] for d in pooled_shuff])), axis=0)
+        assert(len(mn_shuff) == nshuffs)
+        ix = np.nonzero(mn_r2 <= mn_shuff)[0]
+        print('POOLED: Animal %s, Day %d, pv %5f, r2_pred %.3f, mn r2_shuff%.3f, 95th r2_shuff%.3f' %(animal, i_d, float(len(ix))/float(nshuffs),
+            mn_r2, np.mean(mn_shuff), np.percentile(mn_shuff, 95)))
+
+    ax_r2.set_ylabel('$R^2$')
+    ax_r2.set_xlim([-1, 14])
+    fax_r2.tight_layout()
+    util_fcns.savefig(fax_r2, 'ax_r2_dyn_cond_act_shuff_n%d.svg' %(nshuffs))
 
 ######## Figure 4 examples and fraction neurons well predicted etc. ###########
 def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, animal='grom', 
@@ -33,7 +107,8 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         save (bool, optional): save figures 
     """
     pref_colors = analysis_config.pref_colors
-    
+    pooled_stats = {}
+
     ################################
     ###### Extract real data #######
     ################################
@@ -385,13 +460,18 @@ def perc_sig_neuron_comm_predictions(nshuffs = 10, min_bin_indices = 0,
             vaf_dict[t, d] = []
 
     vaf_all_dict = dict()
+    err_all_dict = dict()
     for animal in ['grom', 'jeev']:
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
             vaf_all_dict[animal, day_ix] = {}
+            err_all_dict[animal, day_ix] = {}
             for t in ['su', 'pop']:
                 vaf_all_dict[animal, day_ix][t, 'true'] = []; 
+                err_all_dict[animal, day_ix][t, 'true'] = []; 
+                err_all_dict[animal, day_ix][t, 'shuff'] = []; 
                 for n in range(nshuffs):
                     vaf_all_dict[animal, day_ix][t, 'shuff', n] = [];
+                    
 
     for ia, animal in enumerate(['grom', 'jeev']):
 
@@ -498,6 +578,12 @@ def perc_sig_neuron_comm_predictions(nshuffs = 10, min_bin_indices = 0,
                             pred_mFR = np.mean(pred_spks[ix_mc_all, :], axis=0) # N x 1
                             shuff_mFR = np.mean(pred_spks_shuffle[ix_mc_all, :, :], axis=0) # N x nshuffs
 
+                            true_dist = np.linalg.norm(mFR - global_mFR)
+                            pred_dist = np.linalg.norm(pred_mFR - global_mFR)
+                            shuff_dist = np.linalg.norm(shuff_mFR - global_mFR[:, np.newaxis], axis=0)
+                            assert(len(shuff_dist) == nshuffs)
+
+
                             ### Plot VAF ####
                             if animal == 'grom' and day_ix == 0: 
                                 if mag == 0 and ang == 7: 
@@ -511,12 +597,20 @@ def perc_sig_neuron_comm_predictions(nshuffs = 10, min_bin_indices = 0,
                             if len(global_comm_indices.keys()) > 1:
                                 vaf_all_dict[animal, day_ix] = vaf_compute(mFR, pred_mFR, shuff_mFR, global_mFR, vaf_all_dict[animal, day_ix])
 
-                            ##### Singl neurons 
+
+                            ##### Single neurons 
                             for i_n in range(nneur):
                                 ix = np.nonzero(shuff_mFR[i_n, :] - mFR[i_n]  <= pred_mFR[i_n] - mFR[i_n])[0]
                                 if float(len(ix))/float(nshuffs) < 0.05: 
                                     nneur_mov_com_sig += 1
                                 nneur_mov_com += 1
+
+                                ### Get estimated error: 
+                                err_all_dict[animal, day_ix]['su', 'true'].append( np.abs(mFR[i_n] - pred_mFR[i_n]))
+                                err_all_dict[animal, day_ix]['su', 'shuff'].append(np.abs(mFR[i_n] - shuff_mFR[i_n, :]))
+                            
+                            err_all_dict[animal, day_ix]['pop', 'true'].append(np.linalg.norm(mFR - pred_mFR))
+                            err_all_dict[animal, day_ix]['pop', 'shuff'].append(np.linalg.norm(mFR[:, np.newaxis] - shuff_mFR, axis=0))
 
                             ##### Vectors; 
                             dN = np.linalg.norm(mFR - pred_mFR); 
@@ -599,7 +693,9 @@ def perc_sig_neuron_comm_predictions(nshuffs = 10, min_bin_indices = 0,
         f.tight_layout()
         util_fcns.savefig(f, 'fig4'+nms[i_f])
     
-def pw_comparison(nshuffs=10, min_bin_indices = 0, 
+    return err_all_dict
+
+def pw_comparison(nshuffs=1, min_bin_indices = 0, 
     model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'):
     
     #### Pairwise comparison scatter plots ###
@@ -612,7 +708,14 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
     fax_n_err, ax_n_err = plt.subplots(figsize=(3, 3))
     fax_p_err, ax_p_err = plt.subplots(figsize=(3, 3))
 
+    fax_n_cc, ax_n_cc = plt.subplots(figsize=(2, 3))
+    fax_p_cc, ax_p_cc = plt.subplots(figsize=(2, 3))
+
+
     for ia, animal in enumerate(['grom', 'jeev']):
+        
+        animal_data = dict(su=[], pop=[], su_r = [], pop_r = [])
+
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             ####### Save the data ##########
@@ -721,18 +824,19 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
                     ######## Example plots ##############
                     if mag == 0 and ang == 7 and animal == 'grom' and day_ix == 0:
                         special_dots = pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global, 
-                            global_comm_indices)
+                            global_comm_indices, pred_cond = spks_est_cond_sub)
             
             if animal == 'grom' and day_ix == 0:             
                 ######## Pairwise Plot Examples  ########
                 ax_ = [axpwsu, axpwpop]
                 dot_colors = [np.array([82, 184, 72])/255., np.array([237, 42, 145])/255.]
                 
-                for i_t, t in enumerate(['true', 'shuff']):
+                for i_t, t in enumerate(['true']):#, 'shuff']):
                     for i_n, n in enumerate(['su', 'pop']): 
 
                         axi = ax_[i_n][i_t]
                         dat = np.vstack((pw_dict[n, t]))
+
                         axi.plot(dat[:, 0], dat[:, 1], 'k.', markersize=2.)
                         
                         print('Day %d, Animal %s, len(data) %s, %s = %d'%(day_ix, animal, t, n, len(dat)))
@@ -757,22 +861,22 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
 
                         for i_d, d in enumerate(dt): 
                             if t == 'true':
-                                axi.plot(d[0], d[1], '.', color=dot_colors[i_d], markersize=15)
+                                axi.plot(d[0], d[1], '.', color=d[3], markersize=15)
                             elif t == 'shuff':
-                                axi.plot(d[0], d[2], '.', color=dot_colors[i_d], markersize=15)
+                                axi.plot(d[0], d[2], '.', color=d[3], markersize=15)
 
                 for axi in axpwsu:
-                    axi.set_xlim([-30, 30])
-                    axi.set_ylim([-20, 20])
+                    axi.set_xlim([-0, 25])
+                    axi.set_ylim([-0, 10])
                 
                 for axi in axpwpop:
-                    axi.set_xlim([0, 1])
-                    axi.set_ylim([0, .5])
+                    axi.set_xlim([0, 1.2])
+                    axi.set_ylim([0, .6])
 
                 faxpwsu.tight_layout()
                 faxpwpop.tight_layout()
 
-                util_fcns.savefig(faxpwsu, 'neur_pw_scatter', png=True)
+                util_fcns.savefig(faxpwsu, 'neur_pw_scatter', png=False)
                 util_fcns.savefig(faxpwpop, 'pop_pw_scatter')
 
             ###### Plot the CCs for single neurons adn for population ####
@@ -784,11 +888,23 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
                 axi = ax_[i_n]
                 axi2 = ax_[i_n + 2]
 
-                for i_t, t in enumerate(['true', 'shuff', 'cond']):
+                for i_t, t in enumerate(['true', 'cond']): ### removed 'shuff'
                     
                     if t in ['true', 'cond']:
                         dat = np.vstack((pw_dict_all[n, t]))
-                        _,_,rv,_,_ = scipy.stats.linregress(dat[:, 0], dat[:, 1])
+                        slp,intc,rv,pv,err = scipy.stats.linregress(dat[:, 0], dat[:, 1])
+                        
+                        if t == 'true':
+                            print('Animal %s, Day %d, %s:%s, slp=%.3f, intc=%.3f, rv=%.3f, pv=%.5f' %(
+                                animal, day_ix, t, n, slp, intc, rv, pv))
+                            animal_data[n].append(dat)
+
+                            if n == 'su':
+                                ax_n_cc.plot(ia, rv, 'k.')
+                                animal_data['su_r'].append(rv)
+                            elif n == 'pop':
+                                ax_p_cc.plot(ia, rv, 'k.')
+                                animal_data['pop_r'].append(rv)
 
                         if i_t == 0: 
                             mn[0] = rv; 
@@ -809,11 +925,11 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
                             mx[1] = mer; 
                             
                         elif t == 'cond':
-                            axi.plot(ia*10+day_ix+.1, rv, '^', color='gray', markersize=8)
+                            axi.plot(ia*10+day_ix, rv, '^', color='gray', markersize=8)
 
                             #### true / pred ####
                             mer = mnerr(dat[:, 0], dat[:, 1])
-                            axi2.plot(ia*10 + day_ix+.1, mer, '^', color='gray', markersize=8)
+                            axi2.plot(ia*10 + day_ix, mer, '^', color='gray', markersize=8)
                             mn[1] = np.min([mn[1], mer])
                             mx[1] = np.max([mx[1], mer])
                     
@@ -840,7 +956,19 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
                 #### draw the line; 
                 axi.plot([ia*10+day_ix, ia*10+day_ix], [mn[0], mx[0]], 'k-', linewidth=0.5)
                 axi2.plot([ia*10+day_ix, ia*10+day_ix], [mn[1], mx[1]], 'k-', linewidth=0.5)
-                
+    
+
+        #### animal data ###
+        for n in ['su', 'pop']:
+            dat = np.vstack(( animal_data[n] ))
+            slp,intc,rv,pv,err = scipy.stats.linregress(dat[:, 0], dat[:, 1])
+        
+            print('Animal POOLED %s, %s, slp=%.3f, intc=%.3f, rv=%.3f, pv=%.5f' %(
+                animal, n, slp, intc, rv, pv))
+
+            ax_n_cc.bar(ia, np.mean(animal_data['su_r']), color='k', alpha=.2)
+            ax_p_cc.bar(ia, np.mean(animal_data['pop_r']), color='k', alpha=.2)
+
     ax_ = [ax_n, ax_p, ax_n_err, ax_p_err]
     for axi in ax_:
         axi.set_xlim([-1, 14])
@@ -850,6 +978,11 @@ def pw_comparison(nshuffs=10, min_bin_indices = 0,
     ax_p.set_ylabel('Corr. Coeff., Pop. Dist.', fontsize=10)
     ax_n_err.set_ylabel('Avg. Err. Neuron Dist.', fontsize=10)
     ax_p_err.set_ylabel('Avg. Err. Pop. Dist.', fontsize=10)
+
+    fax_n_cc.tight_layout()
+    fax_p_cc.tight_layout()
+    util_fcns.savefig(fax_n_cc, 'cc_bar_plt_n')
+    util_fcns.savefig(fax_p_cc, 'cc_bar_plt_p')
 
     fax_n.tight_layout()
     fax_p.tight_layout()
@@ -997,10 +1130,10 @@ def vaf_compute(mFR, pred_mFR, shuff_mFR, global_mFR, vaf_all_dict):
     nshuffs = shuff_mFR.shape[1]
     distTrue, distPred = distGlobal_dirTrue(mFR, global_mFR, pred_mFR)
     vaf_all_dict['pop', 'true'].append(nby2arr(distTrue/nneur, distPred/nneur))
-    vaf_all_dict['su', 'true'].append(nby2arr(mFR - global_mFR, pred_mFR - global_mFR))
+    vaf_all_dict['su', 'true'].append(nby2arr(np.abs(mFR - global_mFR), np.abs(pred_mFR - global_mFR)))
 
     for i_n2 in range(nshuffs):
-        vaf_all_dict['su', 'shuff', i_n2].append(nby2arr(mFR - global_mFR, shuff_mFR[:, i_n2] - global_mFR))
+        vaf_all_dict['su', 'shuff', i_n2].append(nby2arr(np.abs(mFR - global_mFR), np.abs(shuff_mFR[:, i_n2] - global_mFR)))
         #vaf_all_dict['pop', 'shuff', i_n2].append(nby2arr(np.linalg.norm(mFR - global_mFR)/nneur, np.linalg.norm(shuff_mFR[:, i_n2] - global_mFR)/nneur))
         distTrue, distPredShuff = distGlobal_dirTrue(mFR, global_mFR, shuff_mFR[:, i_n2])
         vaf_all_dict['pop', 'shuff', i_n2].append(nby2arr(distTrue/nneur, distPredShuff/nneur))
@@ -1076,11 +1209,11 @@ def pw_eg_scatter(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_globa
                 pred_mFR2 = np.mean(pred_spks[ix_mov2, :], axis=0)
                 shuff_mFR2 = np.mean(pred_spks_shuffle[ix_mov2, :, shuff_ix], axis=0)
 
-                # pw_dict['su', 'true'].append(nby2arr(mFR[neuron_ix] - mFR2[neuron_ix], pred_mFR[neuron_ix] - pred_mFR2[neuron_ix]))
-                # pw_dict['su', 'shuff'].append(nby2arr(mFR[neuron_ix] - mFR2[neuron_ix], shuff_mFR[neuron_ix] - shuff_mFR2[neuron_ix]))
+                pw_dict['su', 'true'].append(nby2arr(np.abs(mFR[neuron_ix] - mFR2[neuron_ix]), np.abs(pred_mFR[neuron_ix] - pred_mFR2[neuron_ix])))
+                pw_dict['su', 'shuff'].append(nby2arr(np.abs(mFR[neuron_ix] - mFR2[neuron_ix]),np.abs(shuff_mFR[neuron_ix] - shuff_mFR2[neuron_ix])))
 
-                pw_dict['su', 'true'].append(nby2arr(mFR - mFR2, pred_mFR - pred_mFR2))
-                pw_dict['su', 'shuff'].append(nby2arr(mFR - mFR2, shuff_mFR - shuff_mFR2))
+#                pw_dict['su', 'true'].append(nby2arr(np.abs(mFR - mFR2), np.abs(pred_mFR - pred_mFR2)))
+#                pw_dict['su', 'shuff'].append(nby2arr(np.abs(mFR - mFR2), np.abs(shuff_mFR - shuff_mFR2)))
 
                 pw_dict['pop', 'true'].append(nby2arr(nplanm(mFR, mFR2), nplanm(pred_mFR, pred_mFR2)))
                 pw_dict['pop', 'shuff'].append(nby2arr(nplanm(mFR, mFR2), nplanm(shuff_mFR, shuff_mFR2)))
@@ -1119,25 +1252,25 @@ def pw_calc(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
                 pred_mFR2 = np.mean(pred_spks[ix_mov2, :], axis=0)
                 shuff_mFR2 = np.mean(pred_spks_shuffle[ix_mov2, :, :], axis=0)
 
-                pw_dict['su', 'true'].append(nby2arr(mFR - mFR2, pred_mFR - pred_mFR2))
+                pw_dict['su', 'true'].append(nby2arr(np.abs(mFR - mFR2), np.abs(pred_mFR - pred_mFR2)))
                 pw_dict['pop', 'true'].append(nby2arr(nplanm(mFR, mFR2), nplanm(pred_mFR, pred_mFR2)))
                 
                 if pred_cond is not None:
                     cond_mFR = np.mean(pred_cond[ix_mov, :], axis=0)      
                     cond_mFR2 = np.mean(pred_cond[ix_mov2, :], axis=0)
-                    pw_dict['su', 'cond'].append(nby2arr(mFR-mFR2, cond_mFR-cond_mFR2))
+                    pw_dict['su', 'cond'].append(nby2arr(np.abs(mFR-mFR2), np.abs(cond_mFR-cond_mFR2)))
                     pw_dict['pop', 'cond'].append(nby2arr(nplanm(mFR, mFR2), nplanm(cond_mFR, cond_mFR2)))
                         
                 for shuffix in range(nshuffs):
-                    pw_dict['su', 'shuff', shuffix].append(nby2arr(mFR - mFR2, shuff_mFR[:, shuffix] - shuff_mFR2[:, shuffix]))
+                    pw_dict['su', 'shuff', shuffix].append(nby2arr(np.abs(mFR - mFR2), np.abs(shuff_mFR[:, shuffix] - shuff_mFR2[:, shuffix])))
                     pw_dict['pop', 'shuff', shuffix].append(nby2arr(nplanm(mFR, mFR2), nplanm(shuff_mFR[:, shuffix], shuff_mFR2[:, shuffix])))
 
     return pw_dict
 
 def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global, 
-                            global_comm_indices, neuron_ix = 36): 
+                            global_comm_indices, neuron_ix = 36, pred_cond = None): 
     '''
-    Exampel plot for PW diffs 
+    Example plot for PW diffs 
     '''
     movements = np.hstack((global_comm_indices.keys()))
 
@@ -1145,6 +1278,7 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
 
     Y_val = []
     Y_pred = []
+    Y_cond = []
     Y_shuff = [] 
     nneur = spks_sub.shape[1]
 
@@ -1169,54 +1303,82 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
 
                 mFR = np.mean(spks_sub[ix_mov, :], axis=0)
                 pred_mFR = np.mean(pred_spks[ix_mov, :], axis=0)
+                cond_mFR = np.mean(pred_cond[ix_mov, :], axis=0)
                 shuff_mFR = np.mean(pred_spks_shuffle[ix_mov, :, :], axis=0)       
 
                 mFR2 = np.mean(spks_sub[ix_mov2, :], axis=0)
                 pred_mFR2 = np.mean(pred_spks[ix_mov2, :], axis=0)
+                cond_mFR2 = np.mean(pred_cond[ix_mov2, :], axis=0)
                 shuff_mFR2 = np.mean(pred_spks_shuffle[ix_mov2, :, :], axis=0)
 
                 X_lab.append([mov, mov2])
-                Y_val.append([mFR[neuron_ix] - mFR2[neuron_ix], nplanm(mFR, mFR2)])
-                Y_pred.append([pred_mFR[neuron_ix] - pred_mFR2[neuron_ix], nplanm(pred_mFR, pred_mFR2)])
-                Y_shuff.append([shuff_mFR[neuron_ix, :] - shuff_mFR2[neuron_ix, :], 
+                Y_val.append([np.abs(mFR[neuron_ix] - mFR2[neuron_ix]), nplanm(mFR, mFR2)])
+                Y_cond.append([np.abs(cond_mFR[neuron_ix] - cond_mFR2[neuron_ix]), nplanm(cond_mFR, cond_mFR2)])
+                Y_pred.append([np.abs(pred_mFR[neuron_ix] - pred_mFR2[neuron_ix]), nplanm(pred_mFR, pred_mFR2)])
+                Y_shuff.append([np.abs(shuff_mFR[neuron_ix, :] - shuff_mFR2[neuron_ix, :]), 
                     np.linalg.norm(shuff_mFR - shuff_mFR2, axis=0)/float(nneur)])
 
     ################ Sort movement comparisons ################
-    Y_val = np.vstack((Y_val))
-    ix_sort_neur = np.argsort(Y_val[:, 0])[::-1]
-    ix_sort_pop = np.argsort(Y_val[:, 1])[::-1]
+    Y_val = np.vstack((Y_val)) # number of pw comparisons x [neuron diff and pop diff]
+    ix_sort_neur = np.argsort(Y_val[:, 0])[::-1] ## High to low 
+    ix_sort_pop = np.argsort(Y_val[:, 1])[::-1] ## High to low 
 
     ################ Pairwise examples ########################
-    fn_eg, axn_eg = plt.subplots(figsize =(5, 5))
-    fpop_eg, axpop_eg = plt.subplots(figsize =(5, 5))
+    fn_eg, axn_eg = plt.subplots(figsize =(5, 7))
+    fpop_eg, axpop_eg = plt.subplots(figsize =(5, 7))
+    axn_eg.tick_params(axis='y', labelcolor='darkblue')
+    axpop_eg.tick_params(axis='y', labelcolor='darkblue')
 
     for iv, (vl_n, vl_p) in enumerate(zip(ix_sort_neur, ix_sort_pop)):
         axn_eg.plot(iv, Y_val[vl_n, 0], '.', color='darkblue')
         
         if iv == 0:
             axn_eg2 = axn_eg.twinx()
-            axn_eg2.yaxis.label.set_color(np.array([.7, .7, .7]))
+            axn_eg2.tick_params(axis='y', labelcolor=analysis_config.blue_rgb)
 
         axn_eg2.plot(iv, Y_pred[vl_n][0], '*', color=analysis_config.blue_rgb)
-        util_fcns.draw_plot(iv, Y_shuff[vl_n][0], 'k', np.array([1., 1., 1., 0]), axn_eg2)
-        axn_eg.plot(iv, -20, '.', color=get_color(X_lab[vl_n][0]), markersize=15)
-        axn_eg.plot(iv, -21.5, '.', color=get_color(X_lab[vl_n][1]), markersize=15)
+        axn_eg2.plot(iv, Y_cond[vl_n][0], '^', color='gray')
+        #util_fcns.draw_plot(iv, Y_shuff[vl_n][0], 'k', np.array([1., 1., 1., 0]), axn_eg2)
+        axn_eg.plot(iv, -1, '.', color=get_color(X_lab[vl_n][0]), markersize=15)
+        axn_eg.plot(iv, -1.5, '.', color=get_color(X_lab[vl_n][1]), markersize=15)
 
         axpop_eg.plot(iv, Y_val[vl_p, 1], '.', color='darkblue')
         if iv == 0:
             axpop_eg2 = axpop_eg.twinx()
-            axpop_eg2.yaxis.label.set_color(np.array([.7, .7, .7]))
+            axpop_eg2.tick_params(axis='y', labelcolor=analysis_config.blue_rgb)
         
         axpop_eg2.plot(iv, Y_pred[vl_p][1], '*', color=analysis_config.blue_rgb)
-        util_fcns.draw_plot(iv, Y_shuff[vl_p][1], 'k', np.array([1., 1., 1., 0]), axpop_eg2)
-        axpop_eg.plot(iv, 0., '.', color=get_color(X_lab[vl_p][0]), markersize=15)
-        axpop_eg.plot(iv, -.03, '.', color=get_color(X_lab[vl_p][1]), markersize=15)
+        #util_fcns.draw_plot(iv, Y_shuff[vl_p][1], 'k', np.array([1., 1., 1., 0]), axpop_eg2)
+        axpop_eg2.plot(iv, Y_cond[vl_p][1], '^', color='gray')
+        axpop_eg.plot(iv, -.03, '.', color=get_color(X_lab[vl_p][0]), markersize=15)
+        axpop_eg.plot(iv, -.06, '.', color=get_color(X_lab[vl_p][1]), markersize=15)
         
-        if iv == 0 or iv == len(ix_sort_neur) - 1:
-            special_dots['n'].append([Y_val[vl_n, 0], Y_pred[vl_n][0], Y_shuff[vl_n][0][0]])
-            special_dots['p'].append([Y_val[vl_p, 1], Y_pred[vl_p][1], Y_shuff[vl_p][1][0]])
+        add = None
+        # if X_lab[iv][0] == 1. and X_lab[iv][1] == 10.1:
+        #     add = 'deeppink'
+        # elif  X_lab[iv][0] == 10.1 and X_lab[iv][1] == 15.:
+        #     add = 'limegreen'
+        if X_lab[vl_n][0] == 1. and X_lab[vl_n][1] == 3.0:
+            add = 'deeppink'
+        elif  X_lab[vl_n][0] == 1. and X_lab[vl_n][1] == 10.1:
+            add = 'limegreen'
+        if add is None:
+            pass
+        else:
+            special_dots['n'].append([Y_val[vl_n, 0], Y_pred[vl_n][0], X_lab[vl_n], add])
+            axn_eg.plot(iv, 0, 19., color=add)
 
-    
+        add = None
+        if X_lab[vl_p][0] == 1. and X_lab[vl_p][1] == 3.0:
+            add = 'deeppink'
+        elif  X_lab[vl_p][0] == 1. and X_lab[vl_p][1] == 10.1:
+            add = 'limegreen'
+        if add is None:
+            pass
+        else:
+            special_dots['p'].append([Y_val[vl_p, 1], Y_pred[vl_p][1], X_lab[vl_p], add])
+            axpop_eg.plot(iv, 0, .88, color=add)
+            
     axn_eg.set_xlim([-1, len(X_lab)])
     axpop_eg.set_xlim([-1, len(X_lab)])
 
@@ -1227,13 +1389,24 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
 
     axn_eg.set_xticks([]) #
     axpop_eg.set_xticks([]) #
-    axpop_eg2.set_ylim([-.05, .4])
-    axn_eg2.set_ylim([-8, 8])
 
-    axn_eg.set_ylabel('Pairwise Neuron Diff. (Hz)')
+    axn_eg.set_ylim([-3, 20.])
+    axn_eg2.set_ylim([-1, 8])
+
+    axpop_eg2.set_ylim([-.05, .4])
+    axpop_eg.set_ylim([-.1, .9])
+
+    axn_eg.set_ylabel('Pairwise Neuron Diff. (Hz)', color='darkblue')
+    axn_eg2.set_ylabel('Pred. Pairwise Neuron Diff. (Hz)', rotation=90, color=analysis_config.blue_rgb)
     axn_eg.set_xlabel('Movement Pairs')
-    axpop_eg.set_ylabel('Pairwise Pop. Activity Diff. (Hz)')
+    
+    axpop_eg.set_ylabel('Pairwise Pop. Dist. (Hz)', color='darkblue')
+    axpop_eg2.set_ylabel('Pred. Pairwise Pop. Dist. (Hz)', rotation=90, color=analysis_config.blue_rgb)
     axpop_eg.set_xlabel('Movement Pairs')
+
+    for axi in [axn_eg, axn_eg2, axpop_eg, axpop_eg2]:
+        yl = axi.get_yticks()
+        axi.set_yticklabels(np.round(yl, 1), rotation=90)
 
     fn_eg.tight_layout()
     fpop_eg.tight_layout()
