@@ -11,7 +11,7 @@ import pandas as pd
 
 import pickle
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.25, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.4, style='white')
 
 import statsmodels.api as sm
 
@@ -1670,10 +1670,15 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
 
                                     if mag == 0 and ang == 7 and animal == 'grom':
                                         #### Pair 1 ### (1., 10.1), (10.1, 15.), 
+                                        # if mov == 1. and mov2 == 10.1:
+                                        #     plt_top.append([dB, dN, 'deeppink', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+                                        # elif mov == 10.1 and mov2 == 15.:
+                                        #     plt_top.append([dB, dN, 'limegreen', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
                                         if mov == 1. and mov2 == 10.1:
                                             plt_top.append([dB, dN, 'deeppink', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
-                                        elif mov == 10.1 and mov2 == 15.:
+                                        elif mov == 1. and mov2 == 3.:
                                             plt_top.append([dB, dN, 'limegreen', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+                                        
                                         else: 
                                             plt_top.append([dB, dN, 'darkblue', 10, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
                                     else:
