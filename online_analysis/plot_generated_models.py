@@ -2082,8 +2082,111 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
 
     return float(cnt_sig)/float(cnt_tot), r2_true_pop, r2_shuff_pop
 
+def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm0, spks_tm1, push_tm0, tm0ix, temp_N, test_ix, shuffle_num,
+    KG, former_shuff_ix, now_shuff_ix):
+    """Summary
+    
+    Parameters
+    ----------
+    animal : string
+        'grom' or 'jeev'
+    day : int
+        session index 
+    spks_tm0 : np.array
+        full_spks[tm0, :] from non-streamlined fcn
+    spks_tm1 : np.array
+        full_spks[tm1, :] from non-streamlined fcn
+    push_tm0 : np.array
+        full_push[tm0, :] from non-streamlined fcn
+    tm0ix : np.array
+        the actual tm0 indices used to figure otu the right train/test data 
+    temp_N : int
+        the length of tm0 
+    test_ix : list with 5 entries, each an np.array of the original test indices 
+    shuffle_num : shuffle number -- used to indicate which weights to open 
+    KG : KalmanGain for this day 
+    former_shuff_ix : shuffle indices that were used to make train/test data 
+    now_shuff_ix : np.arange(temp_N)
+    
+    Returns
+    -------
+    TYPE
+        Description
+    
+    Deleted Parameters
+    ------------------
+    data_temp_dict
+        Description
+    """
+    ### Get model variables 
+    #### setup pred_Y to be accurate 
+    nneur = KG.shape[1]
+    pred_Y = np.zeros((temp_N, nneur))
+
+    #### Load the coefficients 
+    pref = analysis_config.config['shuff_fig_dir']
+    shuff_str = str(shuffle_num)
+    shuff_str = shuff_str.zfill(3)
+    model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, model_name))
+
+    ##### Deal with the shuffling indices ###
+    shuff_x = []
+    current_inds = list(tm0ix.copy())
+
+    #### For each data fold #####
+    for i_fold in range(5): 
+        
+        ### Test indices AFTER shuff_ix[tm0ix]
+        test_ix_fold = test_ix[i_fold]
+        actual_test_ix_fold = now_shuff_ix[former_shuff_ix[tm0ix[test_ix_fold]]]
+
+        test_ix_fold_current = np.array([current_inds.index(atif) for atif in actual_test_ix_fold])
+        
+        if i_fold < 4:
+            shuff_x.append(test_ix_fold_current)
+
+        elif i_fold == 4:
+            tot = np.hstack((shuff_x))
+            tot = np.hstack((tot, test_ix_fold_current))
+            remaining = np.array([i for i,j in enumerate(current_inds) if i not in tot])
+            test_ix_fold_current = np.hstack((remaining, test_ix_fold_current))
+            shuff_x.append(test_ix_fold_current)
+
+            assert(len(np.hstack((shuff_x))) == len(tm0ix))
+            assert(len(np.unique(np.hstack((shuff_x)))) == len(tm0ix))
+
+    for i_fold in range(5):
+        coef = model_file[str((i_fold, 'coef_'))]
+        intc = model_file[str((i_fold, 'intc_'))]
+        assert(int(model_file['shuff_num']) == shuffle)
+
+        #### Get the updated shuffle indices ####
+        test_ix_fold_current = shuff_x[i_fold]
+
+        #### Get W ###
+        W = model_file[str((i_fold, 'W'))]
+
+        ### Pre-assemble these to avoid the stupid re-assembly in pred_w_cond ####
+        kwargs = dict(A_preassembled = push_tm0[test_ix_fold_current, [3, 5]], 
+                      X_preassembled = spks_tm1[test_ix_fold_current, :])
+
+        ### Make the predictions 
+        pred_wc = pred_w_cond(coef, intc, None,
+            None, None, nneur, w_ = W, KG = KG, 
+            **kwargs) 
+
+        pred_Y[test_ix_fold_current, :] = pred_wc.copy()
+
+        #### Make sure the push actuall matches intended push: #### 
+        assert(np.allclose(np.dot(KG, pred_wc.T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
+        assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold_current, :, ishuff].T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
+
+    if np.all(pred_Y == 0):
+        import pdb; pdb.set_trace()
+    return pred_Y
+
 def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None, testing_mode = False, 
-    mean_maint = False, within_mov = False):
+    mean_maint = False, within_mov = False, test_streamlined = False):
     """
     New method to get shuffled predictions 
 
@@ -2164,6 +2267,9 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None
         
         #sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = generate_models.get_temp_spks(data_file['Data'], shuff_ix)
         #print('Time to shuffles and subselect %.5f '%(time.time() - t0))
+        if test_streamlined:
+            pred_y_streamlined = get_shuffled_data_v2_streamlined_wc(animal, day, sub_spikes, sub_spikes_tm1, sub_push, 
+                tm0ix, len(tm0ix), test_ix, shuffle, KG, former_shuff_ix, now_shuff_ix)
 
         if testing_mode: 
             assert(np.allclose(sub_spikes, test_Sub_spikes))
@@ -2262,6 +2368,10 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None
             assert(np.allclose(sub_spikes_tm1, pred_Y[:, :, ishuff]))
     if np.all(pred_Y == 0):
         import pdb; pdb.set_trace()
+
+    if test_streamlined:
+        assert(np.allclose(pred_y_streamlined, pred_Y[:, :, ishuff]))
+
     return pred_Y
 
 def get_shuffled_data_pred_null_roll_pot_shuff(animal, day, model_name, nshuffs = 10, testing_mode = False):
@@ -2512,22 +2622,30 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
     model.W = np.squeeze(w_.copy())
 
     ##### check that variables iare in the right order ####
-    generate_models.check_variables_order(variable_names, nneur)
-    
+
     ### Get variables #### 
-    x_test = [] 
-    for vr in variable_names:
-        x_test.append(data_temp_dict[vr][test_ix_fold, np.newaxis])
-        X = np.mat(np.hstack((x_test)))
+    if 'X_preassembled' in kwargs.keys():
+        X = kwargs['X_preassembled']
+
+    else:
+        generate_models.check_variables_order(variable_names, nneur)
+        x_test = [] 
+        for vr in variable_names:
+            x_test.append(data_temp_dict[vr][test_ix_fold, np.newaxis])
+            X = np.mat(np.hstack((x_test)))
 
     #### Make non-action conditioned prediction ###
     pred = np.mat(model.predict(X))
 
     ### Get action ###
-    A = []
-    for v in ['pshx_tm0', 'pshy_tm0']: 
-        A.append(data_temp_dict[v][test_ix_fold, np.newaxis])
-    A = np.hstack((A))
+    if 'A_preassembled' in kwargs.keys():
+        A = kwargs['A_preassembled']
+    else:
+        A = []
+        for v in ['pshx_tm0', 'pshy_tm0']: 
+            A.append(data_temp_dict[v][test_ix_fold, np.newaxis])
+        A = np.hstack((A))
+
     assert(A.shape[0] == X.shape[0])
 
     ### Condition on action! 
@@ -2548,7 +2666,6 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
         print('Should only be in testing mode --> W is singular')
         cov22I = np.zeros_like(cov22)
         testing_mode = True
-
 
     #### Ge prediction: T x N 
     mu2_i = np.dot(KG, pred.T).T                
