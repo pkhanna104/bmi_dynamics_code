@@ -1453,6 +1453,7 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
         if model_dicts is None:
             model_dict = pickle.load(open(analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set%d_task_spec_pls_gen_match_tsk_N.pkl'%model_set_number, 'rb'))
         else:
+            print('Using model dicts input')
             model_dict = model_dicts[animal]
         ##### Data holder for either mean of individual neurons or population R2 ####
         ### Will be normalized by baseline if that setting is selected ######
@@ -1527,7 +1528,10 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
 
             ######## Get zero order hold #########
-            pred_Y['identity_dyn'] = get_dyn(model_dict[i_d, 'identity_dyn'])
+            try:
+                pred_Y['identity_dyn'] = get_dyn(model_dict[i_d, 'identity_dyn'])
+            except:
+                pass
 
             ######## PLotting #########
             for i_mod, (mod, xl) in enumerate(zip(xkeys, xlab)):
@@ -1819,8 +1823,8 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
 
 
     ax_gte_shuff.set_xlim([-1, 14])
-    ax_r2.set_xlim([-1, 14])
     ax_r2.set_ylabel('$R^2$')
+    ax_r2.set_xlim([-1, 14])
 
     fax_frac_sig.tight_layout()
     util_fcns.savefig(fax_frac_sig, 'frac_neur_sig_gt_shuff_n%d.svg' %(nshuffs))
@@ -1829,7 +1833,7 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
     fax_r2.tight_layout()
     util_fcns.savefig(fax_r2, 'ax_r2_dyn_cond_act_shuff_n%d.svg' %(nshuffs))
     return pooled_stats
-    
+
 def cond_act_on_psh(animal, i_d, KG=None, dat=None):
     """
     estimate neural activity y_t | a_t "most likely" 
@@ -2044,6 +2048,7 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
         assert(np.allclose(np.dot(KG, pred_Y['cond'].T).T, np.dot(KG, true_Y.T).T))
     elif animal == 'jeev':
         assert(generate_models_utils.quick_reg(np.dot(KG, pred_Y['cond'].T).T, np.dot(KG, true_Y.T).T) > .99) 
+    
     r2_true_pop = util_fcns.get_R2(true_Y, pred_Y['dyn_gen'])
     r2_true_cond = util_fcns.get_R2(true_Y, pred_Y['cond'])
 
@@ -2077,16 +2082,28 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
 
     return float(cnt_sig)/float(cnt_tot), r2_true_pop, r2_shuff_pop
 
-def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = False, 
+def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None, testing_mode = False, 
     mean_maint = False, within_mov = False):
     """
     New method to get shuffled predictions 
+
+    updates --> Jan 8th 2021: now making sure we predict data using the real y_tm1
+        -- previously was using shuffle, saving that, training /testing were based on shuffled indices
+        -- here, making sure that the actual data is used at each time point: E(y_t | y_{t-1}, A_shuff, b_shuff)
+        -- NOT E(y_t | y_shuff_{t-1}, A_shuff, b_shuff)
     """
     #### With intercept #####
 
     t0 = time.time()
     pref = analysis_config.config['shuff_fig_dir']
            
+    if nshuffs is None:
+        assert(shuff_num is not None)
+        nshuffs = 1
+        shuffle_id = [shuff_num]
+    else:
+        shuffle_id = range(nshuffs)
+
     #### Open the file #####
     if mean_maint: 
         data_file = pickle.load(open(pref + '%s_%d_shuff_ix_mn_diff_maint.pkl' %(animal, day)))
@@ -2126,18 +2143,21 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
     tm0ix, tm1ix = generate_models.get_temp_spks_ix(data_file['Data'])
 
     ### Shuffle indices: 
-    for shuffle in range(nshuffs):
-        if shuffle % 10 == 0:
+    for ishuff, shuffle in enumerate(shuffle_id):
+        if shuffle % 100 == 0:
             print('Shuffle %d, %.5f' %(shuffle, time.time() - t0))
         
-        shuff_ix = data_file[shuffle]
+        ##### Shuffle used to scramble data before fitting the weights
+        former_shuff_ix = data_file[shuffle]
 
-        if testing_mode: 
-            shuff_ix = np.arange(full_spks.shape[0])
+        #if testing_mode: 
+        ### Keep data in the correct order; 
+        ### The effect of the shuffle should be the fitting of the dynamics model 
+        now_shuff_ix = np.arange(full_spks.shape[0])
 
         #### shuffled + subselected ####
-        sub_spikes = data_file['Data']['spks'][shuff_ix[tm0ix]]
-        sub_spikes_tm1 = data_file['Data']['spks'][shuff_ix[tm1ix]]
+        sub_spikes = data_file['Data']['spks'][now_shuff_ix[tm0ix]]
+        sub_spikes_tm1 = data_file['Data']['spks'][now_shuff_ix[tm1ix]]
 
         ### DO NOT shuffle the pushes; 
         sub_push = data_file['Data']['push'][tm0ix]
@@ -2168,14 +2188,41 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
         data_temp_dict['pshx_tm0'] = sub_push[:, 3]
         data_temp_dict['pshy_tm0'] = sub_push[:, 5]
 
+        shuff_x = []
+        current_inds = now_shuff_ix[tm0ix]
         #### For each data fold #####
         for i_fold in range(5): 
             
+            ### Test indices AFTER shuff_ix[tm0ix]
+            test_ix_fold = test_ix[i_fold]
+            actual_test_ix_fold = now_shuff_ix[former_shuff_ix[tm0ix[test_ix_fold]]]
+
+            test_ix_fold_current = [np.where(current_inds==atif)[0] for atif in actual_test_ix_fold]
+            test_ix_fold_current = np.hstack((test_ix_fold_current))
+            
+            if i_fold < 4:
+                shuff_x.append(test_ix_fold_current)
+
+            elif i_fold == 4:
+                tot = np.hstack((shuff_x))
+                tot = np.hstack((tot, test_ix_fold_current))
+
+                remaining = np.array([i for i,j in enumerate(current_inds) if i not in tot])
+                test_ix_fold_current = np.hstack((remaining, test_ix_fold_current))
+                shuff_x.append(test_ix_fold_current)
+
+                assert(len(np.hstack((shuff_x))) == len(tm0ix))
+                assert(len(np.unique(np.hstack((shuff_x)))) == len(tm0ix))
+
+        for i_fold in range(5):
             coef = model_file[str((i_fold, 'coef_'))]
             intc = model_file[str((i_fold, 'intc_'))]
-            assert(model_file['shuff_num'] == shuffle)
-            test_ix_fold = test_ix[i_fold]
+            assert(int(model_file['shuff_num']) == shuffle)
 
+            test_ix_fold_current = shuff_x[i_fold]
+
+            ### Re-do this now that you're not shuffling; 
+            ### Test ix is supposed to apply to data AFTER former_shuff_ix was applied
             if testing_mode:
                 coef[:,:] = np.eye(nneur)
                 intc[:] = 0.
@@ -2194,9 +2241,9 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
                     if 'psh_2' in model_name: 
 
                         pred_wc = pred_w_cond(coef, intc, data_temp_dict,
-                            test_ix_fold, variables, nneur, w_ = W, KG = KG) 
+                            test_ix_fold_current, variables, nneur, w_ = W, KG = KG) 
 
-                        pred_Y[test_ix_fold, :, shuffle] = pred_wc.copy()
+                        pred_Y[test_ix_fold_current, :, ishuff] = pred_wc.copy()
 
                         if testing_mode:
                             ### Set the "W" equal to zero so wont match actions 
@@ -2204,15 +2251,15 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, testing_mode = F
                             pass
                         else:
                             #### Make sure the push actuall matches intended push: #### 
-                            assert(np.allclose(np.dot(KG, pred_wc.T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
-                            assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold, :, shuffle].T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
+                            assert(np.allclose(np.dot(KG, pred_wc.T).T, sub_push[np.ix_(test_ix_fold_current, [3, 5])]))
+                            assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold_current, :, ishuff].T).T, sub_push[np.ix_(test_ix_fold_current, [3, 5])]))
 
                     else:
-                        pred_Y[test_ix_fold, :, shuffle] = pred_wo_cond(coef, intc, data_temp_dict,
-                            test_ix_fold, variables, nneur) 
+                        pred_Y[test_ix_fold_current, :, ishuff] = pred_wo_cond(coef, intc, data_temp_dict,
+                            test_ix_fold_current, variables, nneur) 
         ### After all folds, if in testing mode, pred_Y should be equal to sub_spikes_tm1; 
         if testing_mode:
-            assert(np.allclose(sub_spikes_tm1, pred_Y[:, :, shuffle]))
+            assert(np.allclose(sub_spikes_tm1, pred_Y[:, :, ishuff]))
     if np.all(pred_Y == 0):
         import pdb; pdb.set_trace()
     return pred_Y
@@ -2238,7 +2285,7 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
         mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     else:
         data_file = pickle.load(open(pref + '%s_%d_shuff_ix_null_roll.pkl' %(animal, day)))
-    
+        
     full_push = data_file['Data']['push']
     full_bin_num = data_file['Data']['bin_num']
     temp_N = data_file['temp_n']
