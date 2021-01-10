@@ -2618,7 +2618,7 @@ def lqr_sim_nk_noise(state_noise_mean, state_noise_cov, A_list, B, K_list, state
     # return u_list, state_list, state_e_list
 
 def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f,\
-    state_noise_mean, state_noise_cov, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed,\
+    noise_dic, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed,\
     state_label, state_dim, input_label, num_neurons, hold_req=2, target_r=1.7):
     """
     (set move_horizon to be odd, so co and obs movements can be the same length)
@@ -2641,6 +2641,8 @@ def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f
     state_init = np.mat(state_init).T
 
     for m in model_list:
+        state_noise_mean = noise_dic[m, 'state_noise_mean']
+        state_noise_cov = noise_dic[m, 'state_noise_cov']
         for target in target_list:
             T_pos = np.squeeze(target_pos[target,:])
             T_theta = np.angle(T_pos[0]-center[0] + 1j*(T_pos[1]-center[1]))
