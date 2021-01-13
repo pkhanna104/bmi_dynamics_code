@@ -24,9 +24,15 @@ config['lqr_sim_saved_dyn'] = '/Users/preeyakhanna/bmi_dynamics_code/dynamics_si
 #### Monkey G, datafiles (task entries from BMI 3D) #####
 #### Ordered by [CO, OBS] for each day
 data_params = dict();
-data_params['grom_input_type'] = [[[4377], [4378, 4382]], [[4395], [4394]], [[4411], [4412, 4415]], [[4499], 
-[4497, 4498, 4504]], [[4510], [4509, 4514]], [[4523, 4525], [4520, 4522]], [[4536], 
-[4532, 4533]], [[4553], [4549]], [[4558], [4560]]]
+data_params['grom_input_type'] = [[[4377], [4378, 4382]], # co -- 4375 used to train the decoder 
+								 [[4395], [4394]], # co -- 4387
+								 [[4411], [4412, 4415]], # co -- 
+								 [[4499], [4497, 4498, 4504]], # obs
+								 [[4510], [4509, 4514]],  # obs
+								 [[4523, 4525], [4520, 4522]], # obs
+								 [[4536], [4532, 4533]], # obs
+								 [[4553], [4549]], # obs
+								 [[4558], [4560]]] # co
 
 data_params['grom_ordered_input_type'] = [[[0], [1, 2]], [[1], [0]], [[0], [1, 2]], [[2], [0, 1, 3]], [[1],
     [0, 2]], [[2, 3], [0, 1]], [[2], [0, 1]], [[1], [0]], [[0], [1]]]
