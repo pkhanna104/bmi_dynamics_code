@@ -7,6 +7,7 @@ import matplotlib.transforms as transforms
 
 import analysis_config
 from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs
+#from online_analysis import generalization_plots
 from util_fcns import get_color
 
 from sklearn.linear_model import Ridge
@@ -17,7 +18,7 @@ import pandas as pd
 import gc
 
 ###### Fig 4C r2 plot ########
-def plot_fig4c_R2(model_dicts, cond_on_act = True, plot_act = False, nshuffs=10):
+def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
     if cond_on_act:
         model_name = 'hist_1pos_0psh_2spksm_1_spksp_0'
     else:
@@ -26,30 +27,30 @@ def plot_fig4c_R2(model_dicts, cond_on_act = True, plot_act = False, nshuffs=10)
     if plot_act:
         assert(cond_on_act == False)
 
-    def get_dyn(q, col=2):
-        if len(q.shape) == 3:
-            return q[:,:,col]
-        elif len(q.shape) == 2:
-            return q
-
     fax_r2, ax_r2 = plt.subplots(figsize = (4, 4))
     for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
         
-        model_dict = model_dicts[animal]
         pooled_shuff = []
 
         for i_d in range(analysis_config.data_params['%s_ndays'%animal]):
-
-            KG = util_fcns.get_decoder(animal, i_d)
-
-            spks = model_dict[i_d, 'spks']
+            
+            ### Load data ###
+            dataObj = generalization_plots.DataExtract(animal, i_d, model_nm = model_name, 
+                model_set_number = 6, nshuffs=nshuffs)
+            dataObj.load()
+            print('starting %s, day %d' %(animal, i_d))
+            
+            spks = dataObj.spks
+            nT = spks.shape[0]
 
             ### Condition on push 
-            cond = plot_generated_models.cond_act_on_psh(animal, i_d)
+            cond = 10*plot_generated_models.cond_act_on_psh(animal, i_d)
             r2_cond = util_fcns.get_R2(spks, cond)
 
-            #### get true dynamics 
-            pred = get_dyn(model_dict[i_d, model_name])
+            pred = dataObj.pred_spks 
+            assert(pred.shape == spks.shape)
+
+            KG = util_fcns.get_decoder(animal, i_d)
 
             ### Both should be conditioned
             if cond_on_act:
@@ -60,9 +61,23 @@ def plot_fig4c_R2(model_dicts, cond_on_act = True, plot_act = False, nshuffs=10)
             #### Get shuffled 
             r2_shuff = []
             for i in range(nshuffs):
-                shuffled = plot_generated_models.get_shuffled_data_v2(animal, i_d, model_name, nshuffs = None,
-                    shuff_num = i)
-                r2_shuff.append(util_fcns.get_R2(spks, shuffled[:, :, 0]))
+                if np.mod(i, 200)==0:
+                    print('shuff %d' %i)
+                # shuffled = plot_generated_models.get_shuffled_data_v2(animal, i_d, model_name, nshuffs = None,
+                #     shuff_num = i)
+
+                ### This has been multiplied by 10 
+                #shuffi = plot_generated_models.get_shuffled_data_v2_super_stream(animal, i_d, i)
+                #shuff = shuffi[:nT, :]
+                #assert(np.all(shuffi[nT:, :] == 0.))
+                
+                # try:
+                #     assert(np.allclose(10*shuffled[:, :, 0], shuff))
+                # except:
+                #     import pdb; pdb.set_trace()
+
+                shuffled = dataObj.pred_spks_shuffle[:, :, i]
+                r2_shuff.append(util_fcns.get_R2(spks, shuffled))
 
             ax_r2.plot(ia*10 + i_d, r2_pred, '.', color=analysis_config.blue_rgb, markersize=10)
             ax_r2.plot(ia*10 + i_d+.125, r2_cond, '^', color='gray', markersize=10)
