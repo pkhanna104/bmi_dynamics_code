@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pickle 
 import os, copy
 import pandas
-import gc
+import gc, time
 from online_analysis import util_fcns, generate_models, generate_models_list, generate_models_utils
 from online_analysis import plot_generated_models, plot_pred_fr_diffs, plot_fr_diffs
 import analysis_config
@@ -16,13 +16,120 @@ from matplotlib import colors as mpl_colors
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 
+import scipy.io as sio
+
 #### Load mag_boundaries ####
 mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+def predict_shuffles_v2_with_cond(nshuffs=1000):
+    """
+    Method to run the shuffles once and for all 
+    then can use the methdo plot_generated_models.get_shuffled_data_v2_super_stream
+        to get data 
+    
+    Parameters
+    ----------
+    nshuffs : int, optional
+        Description
+    """
+    model_set_number = 6 
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        for day_ix in range(1, analysis_config.data_params['%s_ndays'%animal]):
+
+            print('Starting %s, Day = %d' %(animal, day_ix))
+            KG = util_fcns.get_decoder(animal, day_ix)
+
+            ### Load the true data ###
+            spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
+                day_ix, return_tm0=True)
+
+            #### gearing up for shuffles #####
+            now_shuff_ix = np.arange(tempN)
+            pref = analysis_config.config['shuff_fig_dir']
+            shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
+            test_ix = shuffle_data_file['test_ix']
+            t0 = time.time()
+
+            for i in range(nshuffs):
+                former_shuff_ix = shuffle_data_file[i]
+
+                if np.mod(i, 100) == 0:
+                    print('Shuff %d, tm = %.3f' %(i, time.time() - t0))
+
+                ### offset was meant for 
+                pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_wc(animal, 
+                    day_ix, spks_sub_tm1*.1, push_true, 
+                    tm0ix, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0)
+                pred_spks_shuffle = pred_spks_shuffle*10
+                
+                assert(pred_spks_shuffle.shape[0] == tempN)
+                assert(pred_spks_shuffle.shape[1] == spks_true.shape[1])
+
+                #x = sio.loadmat(os.path.join(pref, '%s_%s_predY_wc_shuff%d.mat'%(animal, day_ix, i)))
+                #assert(np.allclose(pred_spks_shuffle, x['pred'][:len(tm0ix), :]))
+
+                #### Save this 
+                sio.savemat(os.path.join(pref, '%s_%s_predY_wc_shuff%d.mat'%(animal, day_ix, i)), dict(pred=pred_spks_shuffle))
+
+                if np.mod(i, 100) == 0:
+                    print("done w/ shuff %d, %.1f" %(i, time.time() - t0))
+
+def predict_shuffles_v2_no_cond(nshuffs=1000):
+    """
+    Method to run the shuffles once and for all 
+    then can use the methdo plot_generated_models.get_shuffled_data_v2_super_stream
+        to get data 
+    
+    Parameters
+    ----------
+    nshuffs : int, optional
+        Description
+    """
+    model_set_number = 6 
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            print('Starting %s, Day = %d' %(animal, day_ix))
+            KG = util_fcns.get_decoder(animal, day_ix)
+
+            ### Load the true data ###
+            spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
+                day_ix, return_tm0=True)
+
+            #### gearing up for shuffles #####
+            now_shuff_ix = np.arange(tempN)
+            pref = analysis_config.config['shuff_fig_dir']
+            shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
+            test_ix = shuffle_data_file['test_ix']
+            t0 = time.time()
+
+            for i in range(nshuffs):
+                former_shuff_ix = shuffle_data_file[i]
+
+                if np.mod(i, 100) == 0:
+                    print('Shuff %d, tm = %.3f' %(i, time.time() - t0))
+
+                ### offset was meant for 
+                pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_no_cond(animal, 
+                    day_ix, spks_sub_tm1*.1, 
+                    tm0ix, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0)
+                pred_spks_shuffle = pred_spks_shuffle*10
+                
+                assert(pred_spks_shuffle.shape[0] == len(tm0ix))
+                assert(pred_spks_shuffle.shape[1] == spks_true.shape[1])
+
+                #### Save this 
+                sio.savemat(os.path.join(pref, '%s_%s_predY_no_cond_shuff%d.mat'%(animal, day_ix, i)), 
+                    dict(pred=pred_spks_shuffle))
+
+                if np.mod(i, 100) == 0:
+                    print("done w/ shuff %d, %.1f" %(i, time.time() - t0))
 
 class DataExtract(object):
 
     def __init__(self, animal, day_ix, model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0',
-        nshuffs = 1000):
+        nshuffs = 1000, nshuffs_roll=None):
 
         ### Make sure the model_nm is in the model set number 
         model_var_list, _, _, _ = generate_models_list.get_model_var_list(model_set_number)
@@ -34,10 +141,16 @@ class DataExtract(object):
         self.model_nm = model_nm
         self.model_set_number = model_set_number
         self.nshuffs = nshuffs
+        if nshuffs_roll is None:
+            self.nshuffs_roll = nshuffs
+        else:
+            self.nshuffs_roll = nshuffs_roll
+
         self.loaded = False
 
     def load(self): 
-        spks0, push0, tsk0, trg0, bin_num0, rev_bin_num0, move0, dat = util_fcns.get_data_from_shuff(self.animal, self.day_ix)
+        spks0, push0, tsk0, trg0, bin_num0, rev_bin_num0, move0, dat = util_fcns.get_data_from_shuff(self.animal, 
+            self.day_ix)
         spks0 = 10*spks0; 
 
         #### Get subsampled
@@ -86,9 +199,27 @@ class DataExtract(object):
         ###### Get shuffled prediction of  spikes  ####
         ###############################################
         if self.nshuffs > 0:
-            pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs, 
-                testing_mode = False)
-            self.pred_spks_shuffle = 10*pred_spks_shuffle; 
+            if self.model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                pred_spks_shuffle = []; 
+                nT = self.spks.shape[0]
+                for i in range(self.nshuffs):
+                    shuffi = plot_generated_models.get_shuffled_data_v2_super_stream(self.animal,
+                        self.day_ix, i)
+                    assert(np.all(shuffi[nT:, :] == 0))
+                    pred_spks_shuffle.append(shuffi[:nT, :])
+                pred_spks_shuffle = np.dstack((pred_spks_shuffle))
+
+            elif self.model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                pred_spks_shuffle = []; 
+                nT = self.spks.shape[0]
+                for i in range(self.nshuffs):
+                    shuffi = plot_generated_models.get_shuffled_data_v2_super_stream_nocond(self.animal,
+                        self.day_ix, i)
+                    pred_spks_shuffle.append(shuffi)
+                pred_spks_shuffle = np.dstack((pred_spks_shuffle))
+
+            ### This has already been multiplied by 10
+            self.pred_spks_shuffle = pred_spks_shuffle; 
         
         self.loaded = True
 
@@ -99,7 +230,7 @@ class DataExtract(object):
         self.null_roll_true = 10*true
 
     def load_null_roll_pot_shuff(self):
-        pred, true = plot_generated_models.get_shuffled_data_pred_null_roll_pot_shuff(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs,
+        pred, true = plot_generated_models.get_shuffled_data_pred_null_roll_pot_shuff(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs_roll,
             testing_mode = False)
         self.null_roll_pot_beh_pred = 10*pred; 
         self.null_roll_pot_beh_true = 10*true
@@ -142,7 +273,7 @@ def cc(x, y):
     _,_,rv,_,_ = scipy.stats.linregress(x, y)
     return rv
 
-def get_spks(animal, day_ix):
+def get_spks(animal, day_ix, return_tm0 = False):
     spks0, push, _, _, _, _, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
     spks0 = 10*spks0; 
 
@@ -151,6 +282,7 @@ def get_spks(animal, day_ix):
 
     ### Get subsampled 
     spks_sub = spks0[tm0, :]
+    spks_sub_tm1 = spks0[tm1, :]
     push_sub = push[tm0, :]
     push_sub_tm1 = push[tm1, :]
     move_sub = move[tm0]
@@ -161,7 +293,10 @@ def get_spks(animal, day_ix):
     command_bins_tm1 = util_fcns.commands2bins([push_sub_tm1], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
 
-    return spks_sub, command_bins, move_sub, push_sub, command_bins_tm1
+    if return_tm0:
+        return spks_sub, command_bins, move_sub, push_sub, command_bins_tm1, tm0, spks_sub_tm1, spks0.shape[0]
+    else:
+        return spks_sub, command_bins, move_sub, push_sub, command_bins_tm1
 
 def lo_in_key(lo_key, lo_val, cat):
         """check where the left out value (lo_val)
@@ -197,22 +332,113 @@ def lo_in_key(lo_key, lo_val, cat):
 
         return in_key
 
-def check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat):
+def check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat, 
+    return_lo_cm = False, return_trans_from_lo = False):
     
+    # if np.any(com_true[lo_ix, 0] == 4):
+    #     import pdb; pdb.set_trace()
+
     if cat == 'tsk':
         if left_out == 0.:  
             assert(np.all(mov_true[lo_ix] < 10))
         elif left_out == 1.:
             assert(np.all(mov_true[lo_ix] >= 10.))
-    
+        
     elif cat == 'mov':
         assert(np.all(mov_true[lo_ix] == left_out))
-    
+        ix = np.nonzero(mov_true[lo_ix] == left_out)[0]
+        assert(len(ix) == len(lo_ix))
+
+        vl0_ix = np.nonzero(mov_true[lo_ix] == left_out)[0]
+
     elif cat == 'com':
         vl0 = com_true[lo_ix, 0]*8+com_true[lo_ix,1]==left_out
         vl1 = com_true_tm1[lo_ix, 0]*8+com_true_tm1[lo_ix,1]==left_out
         vl2 = np.logical_or(vl0, vl1)
         assert(np.all(vl2))
+
+        ix1 = np.nonzero(com_true[lo_ix, 0]*8+com_true[lo_ix,1]==left_out)[0]
+        ix2 = np.nonzero(com_true_tm1[lo_ix, 0]*8+com_true_tm1[lo_ix,1]==left_out)[0]
+        assert(len(np.unique(np.hstack((ix1, ix2)))) == len(lo_ix))
+        
+        vl0_ix = np.nonzero(com_true[lo_ix, 0]*8 + com_true[lo_ix, 1] == left_out)[0]
+    
+        if return_trans_from_lo: 
+            vl0_ix = np.nonzero(com_true_tm1[lo_ix, 0]*8 + com_true_tm1[lo_ix, 1] == left_out)[0]
+        else:
+            vl0_ix = np.nonzero(com_true[lo_ix, 0]*8 + com_true[lo_ix, 1] == left_out)[0]
+    
+    elif cat == 'com_ang':
+        vl0 = com_true[lo_ix,1]==left_out
+        vl1 = com_true_tm1[lo_ix,1]==left_out
+        vl2 = np.logical_or(vl0, vl1)
+        assert(np.all(vl2))
+        ix1 = np.nonzero(com_true[lo_ix,1]==left_out)[0]
+        ix2 = np.nonzero(com_true_tm1[lo_ix,1]==left_out)[0]
+        assert(len(np.unique(np.hstack((ix1, ix2)))) == len(lo_ix))
+        
+        vl0_ix = np.nonzero(com_true[lo_ix, 1] == left_out)[0]
+    
+        if return_trans_from_lo:
+            vl0_ix = np.nonzero(com_true_tm1[lo_ix, 1] == left_out)[0]
+        else:
+            vl0_ix = np.nonzero(com_true[lo_ix, 1] == left_out)[0]
+    
+
+    elif cat == 'com_mag':
+        vl0 = com_true[lo_ix,0]==left_out
+        vl1 = com_true_tm1[lo_ix,0]==left_out
+        vl2 = np.logical_or(vl0, vl1)
+        assert(np.all(vl2))
+        ix1 = np.nonzero(com_true[lo_ix,0]==left_out)[0]
+        ix2 = np.nonzero(com_true_tm1[lo_ix,0]==left_out)[0]
+        assert(len(np.unique(np.hstack((ix1, ix2)))) == len(lo_ix))
+
+        if return_trans_from_lo:
+            vl0_ix = np.nonzero(com_true_tm1[lo_ix, 0] == left_out)[0]
+        else:
+            vl0_ix = np.nonzero(com_true[lo_ix, 0] == left_out)[0]
+    
+    ### Remove mag command 4
+    vl0_ix3 = np.nonzero(com_true_tm1[lo_ix[vl0_ix], 0] == 4)[0]
+    vl0_ix4 = np.nonzero(com_true[lo_ix[vl0_ix], 0] == 4)[0]
+    avoid = np.unique(np.hstack((vl0_ix3, vl0_ix4)))
+    vl0_ix2 = np.array([i for i in range(len(vl0_ix)) if i not in avoid])
+    vl0_ix = vl0_ix[vl0_ix2]
+
+    if return_lo_cm:
+
+        #### Only return the ones where the CURRENT command 
+        #### is the correct one 
+
+        #### Make sure no redundancy here ####
+        assert(len(vl0_ix) == len(np.unique(vl0_ix)))
+
+        com_lo  = com_true[lo_ix[vl0_ix], :]
+        move_lo = mov_true[lo_ix[vl0_ix]]
+
+        assert(len(com_lo) == len(move_lo))
+
+        ### Dont' include mag = 4
+        mag_lo = np.unique(com_lo[:, 0])
+        mag_lo = mag_lo[mag_lo < 4]
+
+        ang_lo = np.unique(com_lo[:, 1])
+        mov_lo = np.unique(move_lo)
+
+        mag_ang_mov = {}
+        for m in mag_lo:
+            for a in ang_lo:
+                for mv in mov_lo: 
+
+                    ix = np.where((move_lo == mv) & (com_lo[:, 1] == a) & (com_lo[:, 0] == m))[0]
+                    if len(ix) > 0: 
+                        mag_ang_mov[m, a, mv] = ix.copy()
+
+        return mag_ang_mov, vl0_ix
+
+    else:
+        return vl0_ix
 
 ########## model fitting utls ###########
 def train_and_pred(spks_tm1, spks, push, train, test, alpha, KG,
@@ -750,9 +976,9 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
             pickle.dump(LOO_dict_ctrl, open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext1, ext2, ext3)), 'wb'))
 
 ######## Fit movement model group model #####
-def fit_predict_lomov_model(min_num_per_cat_lo = 15, 
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6, nshuffs=10,
-    min_commands = 15):
+def fit_predict_lomov_model(
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6, nshuffs=1000,
+    min_commands = 15, plot_pw = False):
 
     """Summary
     
@@ -767,19 +993,26 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
     cat_dict['diag_pos'] = dict(grom=[0., 4., 10.0, 10.1, 14.0, 14.1], jeev=[1.0, 5.0, 16.0, 16.1])
     cat_dict['diag_neg'] = dict(grom=[2., 6., 12.0, 12.1, 16.0, 16.1])
 
+    marker = dict(vert='.', horz='s', diag_pos='^', diag_neg='d')
+    markersize = dict(vert=20, horz=10, diag_pos=10, diag_neg=10)
+
     ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'] , 'max_alphas_ridge_model_set%d.pkl'%model_set_number), 'rb')); 
-
-    for cat_ in cat_dict.keys(): 
-
+    
+    f, ax = plt.subplots(figsize=(5, 3))
+    
+    for ic, cat_ in enumerate(['vert', 'horz', 'diag_pos', 'diag_neg']): 
+        print('############ starting %s ##############' %(cat_))
         animals = np.sort(cat_dict[cat_].keys())
-        f, ax = plt.subplots(figsize=(3, 3))
-        ax.set_title(cat_)
+        # f, ax = plt.subplots(figsize=(3, 3))
+        # ax.set_title(cat_)
 
         f_cc, ax_cc = plt.subplots(figsize=(2, 3))
         f_err, ax_err = plt.subplots(figsize=(2, 3))
 
         ##### cycle through the animals for this ###
         for i_a, animal in enumerate(animals):
+
+            pooled_stats = dict(r2 = [], r2_shuff = [])
 
             input_type = analysis_config.data_params['%s_input_type'%animal]
             ord_input_type = analysis_config.data_params['%s_ordered_input_type'%animal]
@@ -804,8 +1037,20 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
                 ### Load predicted data freom the model 
                 sub_spikes = 10*sub_spikes
                 spks_pred = 10*model_dict[day_ix, model_nm]
-                spks_pred_shuffle = 10*plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
-                    testing_mode = False)
+                nT = sub_spikes.shape[0]
+
+                spks_pred_shuff = []
+                for i in range(nshuffs):
+                    shuffi = plot_generated_models.get_shuffled_data_v2_super_stream(animal, day_ix, i)
+                    shuff_ = shuffi[:nT, :]
+                    
+                    assert(np.all(shuffi[nT:, :] == 0))
+                    spks_pred_shuff.append(shuff_)
+
+                spks_pred_shuffle = np.dstack((spks_pred_shuff))
+
+                # spks_pred_shuffle = 10*plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
+                #     testing_mode = False)
 
                 # ############## Data checking ##############
                 nneur = sub_spikes.shape[1]
@@ -848,111 +1093,132 @@ def fit_predict_lomov_model(min_num_per_cat_lo = 15,
 
                 r2_lo = util_fcns.get_R2(0.1*spks_tm0[test_ix, :], y_lo_pred)
                 r2_std = util_fcns.get_R2(0.1*spks_tm0[test_ix, :], 0.1*y_std_pred)
-                ax.plot(i_a*10 + day_ix - 0.1, r2_lo, '.', color='purple')
-                ax.plot(i_a*10 + day_ix + 0.1, r2_std, '.', color=analysis_config.blue_rgb)
+
+                #ax.plot(i_a*10 + day_ix + 0.2*ic, r2_std, marker[cat_], color=analysis_config.blue_rgb,
+                #    markersize=markersize[cat_])
                 
                 r2_shuff = []
                 for i in range(nshuffs):
                     y_shuf = spks_pred_shuffle[test_ix, :, i]
                     r2_shuff.append(util_fcns.get_R2(0.1*spks_tm0[test_ix, :], 0.1*y_shuf))
-                util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
-                ax.plot([i_a*10 + day_ix, i_a*10 + day_ix], [np.mean(r2_shuff), np.max([r2_lo, r2_std])],
-                    'k-', linewidth=0.5)
+                
+                util_fcns.draw_plot(i_a*10 + day_ix + 0.15*ic, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+                
+                ax.plot([i_a*10 + day_ix + 0.15*ic, i_a*10 + day_ix+ 0.15*ic], 
+                        [np.mean(r2_shuff), r2_lo],'k-', linewidth=0.5)
 
-                ###### Also predict the pairwise issues; #####
-                ###### Go through each unique movement in test_ix and compare it to mov2 from pred_spks ####
-                unique_mov_lo = np.unique(data_temp['mov'][test_ix])
-                unique_mov = np.unique(data_temp['mov'])
+                ### Make sure dots are on top of the liens 
+                ax.plot(i_a*10 + day_ix + 0.15*ic, r2_lo, marker[cat_], mec='purple',
+                    mfc='white', mew=1., markersize=markersize[cat_]*.5)
 
-                ###### Look at differences #####
-                True_diffs = []
-                LO_pred_diffs = []
-                Pred_diffs = []
-                shuff_diff = {}
-                for i in range(nshuffs): shuff_diff[i] = []
+                pooled_stats['r2'].append(r2_lo)
+                pooled_stats['r2_shuff'].append(r2_shuff)
+                pv = float(len(np.nonzero(np.array(r2_shuff) >= r2_lo)[0])) / float(len(r2_shuff))
+                print('%s, %d: r2 %.3f, shuff = [%.3f, %.3f], pv = %.5f' %(animal, day_ix, r2_lo, np.mean(r2_shuff),
+                    np.percentile(r2_shuff, 95), pv))
 
-                #### Now for each command? 
-                for mag in range(4):
+                if plot_pw:
+                    ###### Also predict the pairwise issues; #####
+                    ###### Go through each unique movement in test_ix and compare it to mov2 from pred_spks ####
+                    unique_mov_lo = np.unique(data_temp['mov'][test_ix])
+                    unique_mov = np.unique(data_temp['mov'])
 
-                    for ang in range(8): 
+                    ###### Look at differences #####
+                    True_diffs = []
+                    LO_pred_diffs = []
+                    Pred_diffs = []
+                    shuff_diff = {}
+                    for i in range(nshuffs): shuff_diff[i] = []
 
-                        #### Get command indices ####
-                        ix_com_lo =  (command_bins[test_ix, 0] == mag) & (command_bins[test_ix, 1] == ang)
-                        ix_com_lo = np.nonzero(ix_com_lo)[0]
+                    #### Now for each command? 
+                    for mag in range(4):
 
-                        ix_com_all = (command_bins[:, 0]       == mag) & (command_bins[:, 1]       == ang)
-                        ix_com_all = np.nonzero(ix_com_all)[0]
+                        for ang in range(8): 
 
-                        #### Get movements 1 #####
-                        for i_m1, mov1 in enumerate(unique_mov_lo): 
-                            ix_mov1 = np.nonzero(data_temp['mov'][test_ix[ix_com_lo]] == mov1)[0]
-                            ix_mov1_pred = np.nonzero(data_temp['mov'][ix_com_all] == mov1)[0]
+                            #### Get command indices ####
+                            ix_com_lo =  (command_bins[test_ix, 0] == mag) & (command_bins[test_ix, 1] == ang)
+                            ix_com_lo = np.nonzero(ix_com_lo)[0]
 
-                            ##### Get movements 2 ######
-                            for i_m2, mov2 in enumerate(unique_mov):
+                            ix_com_all = (command_bins[:, 0]       == mag) & (command_bins[:, 1]       == ang)
+                            ix_com_all = np.nonzero(ix_com_all)[0]
 
-                                if mov1 != mov2: 
-    
-                                    ix_mov2 = np.nonzero(data_temp['mov'][ix_com_all] == mov2)[0]
+                            #### Get movements 1 #####
+                            for i_m1, mov1 in enumerate(unique_mov_lo): 
+                                ix_mov1 = np.nonzero(data_temp['mov'][test_ix[ix_com_lo]] == mov1)[0]
+                                ix_mov1_pred = np.nonzero(data_temp['mov'][ix_com_all] == mov1)[0]
 
-                                    ##### Make sure these are greater than minimum commands #####
-                                    if len(ix_mov1) >= min_commands and len(ix_mov2) >= min_commands:
-                                
-                                        ##### Match the distributions ####
-                                        ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_tm0[test_ix[ix_com_lo[ix_mov1]], :],
-                                            push_tm0[ix_com_all[ix_mov2], :], psig=.05)
+                                ##### Get movements 2 ######
+                                for i_m2, mov2 in enumerate(unique_mov):
 
-                                        ##### If these match ###
-                                        if len(ix1_1) >= min_commands and len(ix2_2) >= min_commands:
+                                    if mov1 != mov2: 
+        
+                                        ix_mov2 = np.nonzero(data_temp['mov'][ix_com_all] == mov2)[0]
 
-                                            #### Get these indices ####
-                                            mov1_ix_LO = ix_com_lo[ix_mov1[ix1_1]] ##### Keep the test_ix out, since that's already addumed in y_lo_pred
-                                            mov1_ix = ix_com_all[ix_mov1_pred[ix1_1]]
-                                            mov2_ix = ix_com_all[ix_mov2[ix2_2]]
+                                        ##### Make sure these are greater than minimum commands #####
+                                        if len(ix_mov1) >= min_commands and len(ix_mov2) >= min_commands:
+                                    
+                                            ##### Match the distributions ####
+                                            ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_tm0[test_ix[ix_com_lo[ix_mov1]], :],
+                                                push_tm0[ix_com_all[ix_mov2], :], psig=.05)
 
-                                            assert(np.all(command_bins[test_ix[mov1_ix_LO], 0] == mag))
-                                            assert(np.all(command_bins[test_ix[mov1_ix_LO], 1] == ang))
-                                            assert(np.all(data_temp['mov'][test_ix[mov1_ix_LO]] == mov1))
+                                            ##### If these match ###
+                                            if len(ix1_1) >= min_commands and len(ix2_2) >= min_commands:
 
-                                            assert(np.all(command_bins[mov1_ix, 0] == mag))
-                                            assert(np.all(command_bins[mov1_ix, 1] == ang))
-                                            assert(np.all(data_temp['mov'][mov1_ix] == mov1))
+                                                #### Get these indices ####
+                                                mov1_ix_LO = ix_com_lo[ix_mov1[ix1_1]] ##### Keep the test_ix out, since that's already addumed in y_lo_pred
+                                                mov1_ix = ix_com_all[ix_mov1_pred[ix1_1]]
+                                                mov2_ix = ix_com_all[ix_mov2[ix2_2]]
 
-                                            assert(np.all(command_bins[mov2_ix, 0] == mag))
-                                            assert(np.all(command_bins[mov2_ix, 1] == ang))
-                                            assert(np.all(data_temp['mov'][mov2_ix] == mov2))
-                                            
-                                            m1_left_out_mean = np.mean(y_lo_pred_10[mov1_ix_LO, :], axis=0)
+                                                assert(np.all(command_bins[test_ix[mov1_ix_LO], 0] == mag))
+                                                assert(np.all(command_bins[test_ix[mov1_ix_LO], 1] == ang))
+                                                assert(np.all(data_temp['mov'][test_ix[mov1_ix_LO]] == mov1))
 
-                                            m1_pred_mean = np.mean(spks_pred[mov1_ix, :], axis=0)
-                                            m2_pred_mean = np.mean(spks_pred[mov2_ix, :], axis=0)
-                                            
-                                            m1_true_mean = np.mean(sub_spikes[mov1_ix, :], axis=0)
-                                            m2_true_mean = np.mean(sub_spikes[mov2_ix, :], axis=0)
+                                                assert(np.all(command_bins[mov1_ix, 0] == mag))
+                                                assert(np.all(command_bins[mov1_ix, 1] == ang))
+                                                assert(np.all(data_temp['mov'][mov1_ix] == mov1))
 
-                                            m1_shuff_pred_mean = np.mean(spks_pred_shuffle[mov1_ix, :, :], axis=0)
-                                            m2_shuff_pred_mean = np.mean(spks_pred_shuffle[mov2_ix, :, :], axis=0)
+                                                assert(np.all(command_bins[mov2_ix, 0] == mag))
+                                                assert(np.all(command_bins[mov2_ix, 1] == ang))
+                                                assert(np.all(data_temp['mov'][mov2_ix] == mov2))
+                                                
+                                                m1_left_out_mean = np.mean(y_lo_pred_10[mov1_ix_LO, :], axis=0)
+
+                                                m1_pred_mean = np.mean(spks_pred[mov1_ix, :], axis=0)
+                                                m2_pred_mean = np.mean(spks_pred[mov2_ix, :], axis=0)
+                                                
+                                                m1_true_mean = np.mean(sub_spikes[mov1_ix, :], axis=0)
+                                                m2_true_mean = np.mean(sub_spikes[mov2_ix, :], axis=0)
+
+                                                m1_shuff_pred_mean = np.mean(spks_pred_shuffle[mov1_ix, :, :], axis=0)
+                                                m2_shuff_pred_mean = np.mean(spks_pred_shuffle[mov2_ix, :, :], axis=0)
 
 
-                                            True_diffs.append(plot_pred_fr_diffs.nplanm(m1_true_mean, m2_true_mean))
-                                            Pred_diffs.append(plot_pred_fr_diffs.nplanm(m1_pred_mean, m2_pred_mean))
-                                            LO_pred_diffs.append(plot_pred_fr_diffs.nplanm(m1_left_out_mean, m2_true_mean))
+                                                True_diffs.append(plot_pred_fr_diffs.nplanm(m1_true_mean, m2_true_mean))
+                                                Pred_diffs.append(plot_pred_fr_diffs.nplanm(m1_pred_mean, m2_pred_mean))
+                                                LO_pred_diffs.append(plot_pred_fr_diffs.nplanm(m1_left_out_mean, m2_true_mean))
 
-                                            for n in range(nshuffs):
-                                                shuff_diff[n].append(plot_pred_fr_diffs.nplanm(m1_shuff_pred_mean[:, n], m2_shuff_pred_mean[:, n]))
+                                                for n in range(nshuffs):
+                                                    shuff_diff[n].append(plot_pred_fr_diffs.nplanm(m1_shuff_pred_mean[:, n], m2_shuff_pred_mean[:, n]))
 
-                #### For each movement, comparison b/w LO commadn estimate for a given movement vs. predicted 
-                plot_LO_means(True_diffs, Pred_diffs, LO_pred_diffs, shuff_diff, ax_cc, ax_err, nshuffs, i_a*10 + day_ix,
-                    animal, day_ix, title_str='move_dir_loo_%s'%cat_)
+                    #### For each movement, comparison b/w LO commadn estimate for a given movement vs. predicted 
+                    plot_LO_means(True_diffs, Pred_diffs, LO_pred_diffs, shuff_diff, ax_cc, ax_err, nshuffs, i_a*10 + day_ix,
+                        animal, day_ix, title_str='move_dir_loo_%s'%cat_)
+            
+            mn_r2 = np.mean(pooled_stats['r2'])
+            shuff = np.mean(np.vstack((pooled_stats['r2_shuff'])), axis=0)
+            pv = float(len(np.nonzero(shuff >= mn_r2)[0])) / float(len(shuff))
+            print('POOLED %s, r2 %.3f, shuff = [%.3f, %.3f], pv = %.5f' %(animal, mn_r2,
+                np.mean(shuff), np.percentile(shuff, 95), pv))
 
-            save_ax_cc_err(ax_cc, ax_err, f_cc, f_err, 'move_dir_loo_%s'%cat_)
+            if plot_pw:
+                save_ax_cc_err(ax_cc, ax_err, f_cc, f_err, 'move_dir_loo_%s'%cat_)
 
-        ##### Plotting #####
-        ax.set_xlim([-1, 14])
-        ax.set_xticks([])
-        f.tight_layout()
-        util_fcns.savefig(f, 'mov_grp_train_%s'%cat_)
-      
+    ##### Plotting #####
+    ax.set_xlim([-1, 14])
+    ax.set_xticks([])
+    f.tight_layout()
+    util_fcns.savefig(f, 'mov_grp_train_all_nshuffs%d' %nshuffs)
+  
 def get_tsk_spec_alpha(n_folds=5):
     alphas = [np.arange(10, 100, 10), np.arange(100, 1000, 100), np.arange(1000, 10000, 1000)]; 
     # for i in range(-4, 7):
@@ -1039,6 +1305,9 @@ def subsampPd(dat, ix_keep):
     return pandas.DataFrame(tmp_dict)
 
 def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
+
+    com_mag = 0
+    com_ang = 7
     
     animal = 'grom'
     day_ix = 0; 
@@ -1046,7 +1315,7 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
     ext = ext2 = ext3 = ''
 
     ### Load the leave one out dictionaries 
-    NLOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext, ext2, ext3)), 'rb'))
+    #NLOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext, ext2, ext3)), 'rb'))
     LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext, ext2, ext3)), 'rb'))
 
     ### Get the true spks ### Get spks already multiplies by 10 
@@ -1058,23 +1327,27 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
 
     #### Shuffle spks 
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'
-    pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
-        testing_mode = False)
-    pred_spks_shuffle = 10*pred_spks_shuffle; 
+    
+    pred_spks_shuffle = []
+    nT = spks_true.shape[0]
+    for n in range(nshuffs):
+        tmp = plot_generated_models.get_shuffled_data_v2_super_stream(animal, day_ix,n)
+        assert(np.all(tmp[nT:, :] == 0))
+        pred_spks_shuffle.append(tmp[:nT, :])
+    
+    pred_spks_shuffle = np.dstack((pred_spks_shuffle))
 
     #### LOO indices 
     an_ind = np.arange(len(spks_true))
-    left_out = 0*8 + 7
+
+    if cat == 'com':
+        left_out = [com_mag*8 + com_ang]
+    
+    elif cat == 'mov':
+        left_out = np.unique([11.1, 15., 13.1, 10.1, 14.1, 3., 12.1, 14.1, 1., 3., 2.])
 
     ### Not left out (normal dynamics) spikes ###
-    y_pred_nlo = 10*NLOO_dict[left_out]['y_pred_nlo']
-    
-    #### Left out 
-    y_pred_lo = 10*LOO_dict[left_out][-1, -1, -1]
-
-    #### Make sure all the same size; 
-    assert(spks_true.shape[0] == y_pred_nlo.shape[0] == pred_spks_shuffle.shape[0] == cond_spks.shape[0])
-
+    #y_pred_nlo = 10*NLOO_dict[left_out]['y_pred_nlo']
     ### Movements for unit [0, 7]
     plot_movs = np.unique(np.array([11.1, 15., 13.1, 10.1, 14.1, 3., 12.1, 14.1, 1., 3., 2.]))
     ix_sort = np.argsort(np.mod(plot_movs, 10))
@@ -1087,18 +1360,42 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
     fsu, axsu = plt.subplots(figsize=(6, 3), ncols = 2) ### single unit plot diff; 
     faxpca, axpca = plt.subplots(figsize = (6, 3), ncols = 2)
 
-
-    LO_ix = LOO_dict[left_out][-1, -1, -1, 'ix']
+    x_ix = 0
     pop_mns = []
-    for mov in plot_movs:
-        LO_ix_mov = np.where((mov_true == mov) & (command_bins[:, 0] == 0) & (command_bins[:, 1] == 7))[0]
+    LO_ix_list = {}
 
-        ### Make sure these were all left out ### 
-        assert(np.all([i in LO_ix for i in LO_ix_mov]))
+    for i_lo, lo in enumerate(left_out):
 
-        pop_mns.append(np.mean(spks_true[LO_ix_mov, :], axis=0))
+        #### Make sure all the same size; 
+        assert(spks_true.shape[0] == pred_spks_shuffle.shape[0] == cond_spks.shape[0])
 
+        LO_ix_og = LOO_dict[lo][-1, -1, -1, 'ix']
+        LO_ix = np.unique(LO_ix_og)
+        tmp = list(LO_ix_og)
+        LO_ix_sub = np.array([tmp.index(l) for l in LO_ix])
+        assert(np.allclose(LO_ix, LO_ix_og[LO_ix_sub]))
+        
+        if cat == 'com':
+            for mov in plot_movs:
+                ix_sub =    np.where((mov_true[LO_ix] == mov) & (command_bins[LO_ix, 0] == com_mag) & (command_bins[LO_ix, 1] == com_ang))[0]
+                
+                ### Make sure these were all left out ### 
+                pop_mns.append(np.mean(spks_true[LO_ix[ix_sub], :], axis=0))
+
+                ### Save both these indices ### 
+                LO_ix_list[lo, mov] = [LO_ix[ix_sub], LO_ix_sub[ix_sub]]
+                print('mov %.1f, len %d' %(mov, len(ix_sub)))
+                
+        elif cat == 'mov':
+            if lo in plot_movs:
+                ix_sub = np.where((mov_true[LO_ix] == lo) & (command_bins[LO_ix, 0] == com_mag) & (command_bins[LO_ix, 1] == com_ang))[0]
+                pop_mns.append(np.mean(spks_true[LO_ix[ix_sub], :], axis=0))
+                LO_ix_list[lo] = [LO_ix[ix_sub], LO_ix_sub[ix_sub]]
+                print('mov %.1f, len %d' %(lo, len(ix_sub)))
+    
     pop_mns = np.vstack((pop_mns))
+    print('pop_mns -- %s' %(str(pop_mns.shape)))
+    print(np.mean(pop_mns, axis=0))
     _, pc_model, _ = util_fcns.PCA(pop_mns, 2, mean_subtract = True, skip_dim_assertion=True)
 
     ### Practice projecting: 
@@ -1107,10 +1404,20 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
         yaxis_mult = -1
     else:
         yaxis_mult = 1.
-
-
+    
     #### Sort correctly #####
     for x, mov in enumerate(plot_movs):
+
+        if cat == 'mov':
+            y_pred_lo = 10*LOO_dict[mov][-1, -1, -1]
+            ky = mov
+        elif cat == 'com':
+            #### Left out 
+            y_pred_lo = 10*LOO_dict[com_mag*8 + com_ang][-1, -1, -1]
+            ky = tuple((com_mag*8 + com_ang, mov))
+        
+        ### Indices for this guy 
+        lo_ix, lo_ix_sub = LO_ix_list[ky]
 
         ### Draw shuffle ###
         colnm = pref_colors[int(mov)%10]
@@ -1130,20 +1437,20 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
         colrgb_dim = util_fcns.rgba2rgb(colrgba_dim)
 
         #### LOO indices ####
-        LO_ix_mov = np.where((mov_true == mov) & (command_bins[:, 0] == 0) & (command_bins[:, 1] == 7))[0]
-        assert(np.all([i in LO_ix for i in LO_ix_mov]))
-
-        #### move specific commands: 
-        LO_ix_sub = np.array([i for i, j in enumerate(LO_ix) if mov_true[j] == mov])
-
         ###### LO / NLO pred ###
-        true_mc = np.mean(spks_true[LO_ix_mov, :], axis=0)
-        loo_pred = np.mean(y_pred_lo[LO_ix_sub, :], axis=0) ### Note the different indices here 
-        nlo_pred = np.mean(y_pred_nlo[LO_ix_mov, :], axis=0)
+
+        assert(np.all(command_bins[lo_ix, 0] == com_mag))
+        assert(np.all(command_bins[lo_ix, 1] == com_ang))
+        assert(np.all(mov_true[lo_ix] == mov))
+
+
+        true_mc = np.mean(spks_true[lo_ix, :], axis=0)
+        loo_pred = np.mean(y_pred_lo[lo_ix_sub, :], axis=0) ### Note the different indices here 
+        #nlo_pred = np.mean(y_pred_nlo[LO_ix_mov, :], axis=0)
 
         ##### cond / shuffle 
-        cond_pred = np.mean(cond_spks[LO_ix_mov, :], axis=0)
-        shuf_pred = np.mean(pred_spks_shuffle[LO_ix_mov, :, :], axis=0)
+        cond_pred = np.mean(cond_spks[lo_ix, :], axis=0)
+        shuf_pred = np.mean(pred_spks_shuffle[lo_ix, :, :], axis=0)
 
         ###########################################
         ########## PLOT TRUE DATA #################
@@ -1151,7 +1458,7 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
         ### Single neuron --> sampling distribution 
         util_fcns.draw_plot(x, shuf_pred[neurix, :], 'k', np.array([1., 1., 1., 0]), axsu[1])
         axsu[0].plot(x, true_mc[neurix], '.', color=colrgb, markersize=20)
-        axsu[1].plot(x, nlo_pred[neurix], '*', mec=colrgb_dim, mew = .5, mfc='white', markersize=20, )
+        #axsu[1].plot(x, nlo_pred[neurix], '*', mec=colrgb_dim, mew = .5, mfc='white', markersize=20, )
         axsu[1].plot(x, loo_pred[neurix], '*', color=colrgb, markersize=20)
         axsu[1].plot(x, cond_pred[neurix], '^', color='gray')
 
@@ -1163,8 +1470,8 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
         trans_pred = util_fcns.dat2PC(loo_pred[np.newaxis, :], pc_model)
         axpca[1].plot(trans_pred[0, 0], yaxis_mult*trans_pred[0, 1], '*', color=colrgb, markersize=20)
 
-        trans_pred = util_fcns.dat2PC(nlo_pred[np.newaxis, :], pc_model)
-        axpca[1].plot(trans_pred[0, 0], yaxis_mult*trans_pred[0, 1], '*', mec=colrgb, mew = .5, mfc = 'white', markersize=20)
+        #trans_pred = util_fcns.dat2PC(nlo_pred[np.newaxis, :], pc_model)
+        #axpca[1].plot(trans_pred[0, 0], yaxis_mult*trans_pred[0, 1], '*', mec=colrgb, mew = .5, mfc = 'white', markersize=20)
 
         ### PLot the shuffled: Shuffles x 2 
         ### Population distance from movement-command FR
@@ -1189,10 +1496,258 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
 
     util_fcns.savefig(fsu, 'loo_%s_pred_n36' %(cat))
     util_fcns.savefig(faxpca, 'loo_%s_pred_pop' %(cat))
+
+#### Fraction of commands-move-neurons signifcnat #####
+def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', save=False): 
+    '''
+    For each model type lets plot the held out data vs real data correlations 
+    ''' 
+    model_set_number = 6 
+
+    fsu, axsu = plt.subplots(figsize=(4, 4))
+    fpop, axpop = plt.subplots(figsize=(4, 4))
+    
+    track_cm_analyzed = {}
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        frac_dict = {}
+        frac_dict['su_frac'] = []
+        frac_dict['pop_frac'] = []
+
+        stats_dict = {}
+        stats_dict['avg_su_err'] = []
+        stats_dict['avg_su_shuff_err'] = []
+        stats_dict['avg_pop_err'] = []
+        stats_dict['avg_pop_shuff_err'] = []
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            track_cm_analyzed[animal, day_ix] = []
+            track_cm_analyzed[animal, day_ix, 'lo_ix'] = []
+
+            ext = ''
+            ext2 = ''
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                ext3 = ''
+            elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                ext3 = '_nocond'
+
+            ###### Load the relevant dictionaries #####
+            #NLOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_ctrl_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext, ext2, ext3)), 'rb'))
+
+            ### Load the category dictonary: 
+            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, ext, ext2, ext3)), 'rb'))
+
+            ##### Decoder #######
+            KG = util_fcns.get_decoder(animal, day_ix)
+
+            ### Load the true data ###
+            spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
+                day_ix, return_tm0=True)
+
+            ##### relic of 2020 #####
+            an_ind = np.arange(len(spks_true))
+            spks_true = spks_true[an_ind, :]
+            nT = spks_true.shape[0]
+            com_true = com_true[an_ind, :]
+            com_true_tm1 = com_true_tm1[an_ind]
+            mov_true = mov_true[an_ind]
+
+            nneur = spks_true.shape[1]
+
+            print('Spks shape: %d, %d' %(spks_true.shape[0], spks_true.shape[1]))
+
+
+            ### Load shuffled dynamics --> same as shuffled, not with left out shuffled #####
+            ### Go through the items that have been held out: 
+            left_outters = LOO_dict.keys()
+
+            MC_dict = dict(true = [], lo_pred = [], nlo_pred = [], shuff_pred = [], ix = [])
+            
+            for left_out in left_outters: 
+
+                if len(LOO_dict[left_out].keys()) == 0:
+                    pass
+                else:
+
+                    #### Get the thing that was left out ###
+                    lo_pred = 10*LOO_dict[left_out][-1, -1, -1]
+                    lo_ix_og = LOO_dict[left_out][-1, -1, -1, 'ix']
+
+                    ##### Crucial get the unique lo_ix #### 
+                    #### Can get repeats if you have t = t-1 in the same category: 
+                    lo_ix = np.unique(lo_ix_og)
+
+                    #### CRUCIAL : make sure this is np.unique(lo_ix)
+                    tmp_lo_ix = list(lo_ix_og)
+                    lo_keep_ix = np.array([tmp_lo_ix.index(l) for l in lo_ix])
+                    assert(np.allclose(lo_ix, lo_ix_og[lo_keep_ix]))
+
+                    #### Check that these indices corresond to the left out thing; 
+                    mag_ang_mov, sub_lo_ix = check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat,
+                        return_lo_cm = True, return_trans_from_lo = return_trans_from_lo)
+
+                    lo_ix = lo_ix[sub_lo_ix]
+                    lo_keep_ix = lo_keep_ix[sub_lo_ix]
+                    
+                    for i_mc, (mag_ang_mov, mam_ix) in enumerate(mag_ang_mov.items()):
+
+                        if len(mam_ix) >= 15:
+                        
+                            mgi, angi, movi = mag_ang_mov
+
+                            assert(np.all(mov_true[lo_ix[mam_ix]] == movi))
+                            assert(np.all(com_true[lo_ix[mam_ix], 0] == mgi))
+                            assert(np.all(com_true[lo_ix[mam_ix], 1] == angi))
+
+                            MC_dict['true'].append(np.mean(spks_true[lo_ix[mam_ix], :], axis=0))
+                            MC_dict['lo_pred'].append(np.mean(lo_pred[lo_keep_ix[mam_ix], :], axis=0))
+                            #MC_dict['nlo_pred'].append(np.mean(spks_pred[lo_ix[mam_ix], :], axis=0))
+                            MC_dict['ix'].append(lo_ix[mam_ix])
+
+                            mag_ang_mov = list(mag_ang_mov)
+                            mag_ang_mov.append(left_out)
+                            track_cm_analyzed[animal, day_ix, 'lo_ix'].append(lo_ix[mam_ix])
+                            track_cm_analyzed[animal, day_ix].append(mag_ang_mov)
+
+            track_cm_analyzed[animal, day_ix, 'lo'] = left_outters
+
+            #### gearing up for shuffles #####
+            # now_shuff_ix = np.arange(tempN)
+            # pref = analysis_config.config['shuff_fig_dir']
+            # shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
+            # test_ix = shuffle_data_file['test_ix']
+            t0 = time.time()
+
+            shuffs = []
+            for i in range(nshuffs):
+                #former_shuff_ix = shuffle_data_file[i]
+
+                if np.mod(i, 100) == 0:
+                    print('Shuff %d, tm = %.3f' %(i, time.time() - t0))
+
+                ### offset was meant for 
+                pred_spks_shufflei = plot_generated_models.get_shuffled_data_v2_super_stream(animal, day_ix, i)
+                # pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_wc(animal, 
+                #     day_ix, spks_sub_tm1*.1, push_true, 
+                #     tm0ix, tempN, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0)
+                # pred_spks_shuffle = pred_spks_shuffle[an_ind, :]*10
+                assert(np.all(pred_spks_shufflei[nT:, :] == 0.))
+                pred_spks_shuffle = pred_spks_shufflei[:nT, :]
+                assert(pred_spks_shuffle.shape == spks_true.shape)
+                shuffs.append(pred_spks_shuffle.copy())
+
+            #### nT x nN x 1000 ####
+            shuffs = np.dstack((shuffs))
+            err = dict(su=[], pop=[], su_shuff = [], pop_shuff =[])
+            fs = dict(su_sig=0, su_tot=0, pop_sig=0, pop_tot=0)
+
+            assert(shuffs.shape[0] == spks_true.shape[0])
+
+            for cmi, cm_ix in enumerate(MC_dict['ix']):
+                
+                ### True 
+                tr = MC_dict['true'][cmi]
+
+                ### LO-pred 
+                lo = MC_dict['lo_pred'][cmi]
+
+                ### shuff_pred 
+                shuff = np.mean(shuffs[cm_ix, :, :], axis=0)
+
+                for n in range(nneur):
+
+                    su = np.abs(tr[n]-lo[n])
+                    sush = np.abs(tr[n] - shuff[n, :])
+                    assert(len(sush) == nshuffs)
+
+                    err['su'].append(su)
+                    err['su_shuff'].append(sush)
+
+                    pv = len(np.nonzero(sush <= su)[0]) / float(len(sush))
+                    if pv < 0.05:
+                        fs['su_sig'] += 1
+                    fs['su_tot'] += 1
+
+                pop = np.linalg.norm(tr-lo)/float(nneur)
+                popsh = np.linalg.norm(tr[:, np.newaxis] - shuff, axis=0)/float(nneur)
+                assert(len(popsh) == nshuffs)
+                    
+                err['pop'].append(pop)
+                err['pop_shuff'].append(popsh)
+
+                pvpop = len(np.nonzero(popsh <= pop)[0]) / float(len(popsh))
+                if pvpop < 0.05:
+                    fs['pop_sig'] += 1
+                fs['pop_tot'] += 1
+
+            ### Plot shuffled fraction ###
+            frac_su = float(fs['su_sig'])/float(fs['su_tot'])
+            frac_dict['su_frac'].append(frac_su)
+            axsu.plot(i_a, frac_su, 'k.')
+
+            frac_pop = float(fs['pop_sig'])/float(fs['pop_tot'])
+            frac_dict['pop_frac'].append(frac_pop)
+            axpop.plot(i_a, frac_pop, 'k.')
+
+            ### save the means !
+            mn_su_err = np.mean(err['su'])
+            mn_su_shuff = np.mean(np.vstack((err['su_shuff'])), axis=0)
+            assert(len(mn_su_shuff) == nshuffs)
+            pv_ = float(len(np.nonzero(mn_su_shuff <= mn_su_err)[0])) / float(len(mn_su_shuff))
+            print('Su Pv %s: %d = %.5f' %(animal, day_ix, pv_))
+
+            mn_pop_err = np.mean(err['pop'])
+            mn_pop_shuff = np.mean(np.vstack((err['pop_shuff'])), axis=0)
+            assert(len(mn_pop_shuff) == nshuffs)
+            pv_ = float(len(np.nonzero(mn_pop_shuff <= mn_pop_err)[0])) / float(len(mn_pop_shuff))
+            print('Pop Pv %s: %d = %.5f' %(animal, day_ix, pv_))
+
+            stats_dict['avg_su_err'].append(mn_su_err)
+            stats_dict['avg_su_shuff_err'].append(mn_su_shuff)
+
+            stats_dict['avg_pop_err'].append(mn_pop_err)
+            stats_dict['avg_pop_shuff_err'].append(mn_pop_shuff)
+
+        ### Plot the bars ###
+        axsu.bar(i_a, np.mean(frac_dict['su_frac']), color='k', alpha=.5)
+        axpop.bar(i_a, np.mean(frac_dict['pop_frac']), color='k', alpha=.5)
+
+        ### Sum pvalues ###
+        mn_su = np.mean(stats_dict['avg_su_err'])
+        mn_sh = np.mean(np.vstack((stats_dict['avg_su_shuff_err'])), axis=0)
+        pv_ = float(len(np.nonzero(mn_sh <= mn_su)[0])) / float(len(mn_sh))
+        print('SU pooled %s, pv = %.5f, mn = %.5f, sh_mn = %.5f, sh_5th = %.5f' %(animal, pv_, 
+            mn_su, np.mean(mn_sh), np.percentile(mn_sh, 5)))
+
+        mn_pop = np.mean(stats_dict['avg_pop_err'])
+        mn_popsh = np.mean(np.vstack((stats_dict['avg_pop_shuff_err'])), axis=0)
+        pv_ = float(len(np.nonzero(mn_popsh <= mn_pop)[0])) / float(len(mn_popsh))
+        print('Pop pooled %s, pv = %.5f, mn = %.5f, sh_mn = %.5f, sh_5th = %.5f' %(animal, pv_, 
+            mn_pop, np.mean(mn_popsh), np.percentile(mn_popsh, 5)))
+
+    for axi in [axsu, axpop]:
+        axi.set_xticks([0, 1])
+        axi.set_xticklabels(['G', 'J'])
+
+    axsu.set_ylabel('Frac Sig. Pred. Neuron\nCom-Move Activity')
+    axpop.set_ylabel('Frac Sig. Pred. Pop.\nCom-Move Activity')
+
+    fsu.tight_layout()
+    fpop.tight_layout()
+
+    if save:
+
+        util_fcns.savefig(fsu, 'lo_%s_cm_frac_sig_SU'%cat)
+        util_fcns.savefig(fpop, 'lo_%s_cm_frac_sig_POP'%cat)
         
+    return track_cm_analyzed
+
 def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False,
     tsk_spec_alphas = False, yval='r2', nshuffs = 1000, n_folds = 5, plot_eig = False,
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'): 
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', return_trans_from_lo = False): 
     '''
     For each model type lets plot the held out data vs real data correlations 
     ''' 
@@ -1207,7 +1762,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
     f, ax = plt.subplots(figsize=(3, 3))
     #f_spec, ax_spec = plt.subplots(ncols = 2); 
     
-    for i_a, animal in enumerate(['grom', 'jeev']):#,'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
         r2_stats = []
         r2_stats_shuff = []
@@ -1243,7 +1798,8 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             KG = util_fcns.get_decoder(animal, day_ix)
 
             ### Load the true data ###
-            spks_true, com_true, mov_true, push_true, com_true_tm1 = get_spks(animal, day_ix)
+            spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
+                day_ix, return_tm0=True)
 
             ### Only for matching commands ###
             if 'analyze_indices' in LOO_dict.keys():
@@ -1253,6 +1809,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
             ######## re index #####
             spks_true = spks_true[an_ind, :]
+            nT = spks_true.shape[0]
             com_true = com_true[an_ind, :]
             com_true_tm1 = com_true_tm1[an_ind]
             mov_true = mov_true[an_ind]
@@ -1278,9 +1835,18 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                 if len(LOO_dict[left_out].keys()) == 0:
                     pass
                 else:
+                    
                     #### Get the thing that was left out ###
                     lo_pred = 10*LOO_dict[left_out][-1, -1, -1]
-                    lo_ix = LOO_dict[left_out][-1, -1, -1, 'ix']
+                    lo_ix_og = LOO_dict[left_out][-1, -1, -1, 'ix']
+
+                    #### CRUCIAL : make sure this is np.unique(lo_ix)
+                    ### KEep 
+                    lo_ix = np.unique(lo_ix_og)
+
+                    tmp_lo_ix = list(lo_ix_og)
+                    lo_keep_ix = np.array([tmp_lo_ix.index(l) for l in lo_ix])
+                    assert(np.allclose(lo_ix, lo_ix_og[lo_keep_ix]))
 
                     ##### Get predicted spikes ###
                     spks_pred = 10*NLOO_dict[left_out]['y_pred_nlo']
@@ -1288,19 +1854,33 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                     nneur = spks_pred.shape[1]
 
                     #### Check that these indices corresond to the left out thing; 
-                    check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat)
+                    lo_sub = check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat,
+                        return_trans_from_lo = return_trans_from_lo)
                     
+                    #### Subselect -- only analyze the commands that transition to this command
+                    #### to avoid double counting; 
+                    lo_ix = lo_ix[lo_sub]
+                    lo_keep_ix = lo_keep_ix[lo_sub]
+                    lo_ix_all.append(lo_ix)
+
+                    if return_trans_from_lo: 
+                        if cat == 'com':
+                            assert(np.all(com_true_tm1[lo_ix, 0]*8 + com_true_tm1[lo_ix, 1] == left_out))
+                    else:
+                        if cat == 'com':
+                            assert(np.all(com_true[lo_ix, 0]*8 + com_true[lo_ix, 1] == left_out))
+
                     if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
-                        lo_pred_all.append(lo_pred)
+                        lo_pred_all.append(lo_pred[lo_keep_ix, :])
                         lo_true_all.append(spks_true[lo_ix, :])
                         nlo_pred_all.append(spks_pred[lo_ix, :])
                         #shuff_pred_all.append(pred_spks_shuffle[lo_ix, :, :])
-                        lo_ix_all.append(lo_ix)
+                        
                         #### r2 stats specific ####
                         tmp,_=yfcn(spks_true[lo_ix, :], spks_pred[lo_ix, :])
                         r2_stats_spec_nlo.append([left_out, tmp])
 
-                        tmp2,_=yfcn(spks_true[lo_ix, :], lo_pred)
+                        tmp2,_=yfcn(spks_true[lo_ix, :], lo_pred[lo_keep_ix, :])
                         r2_stats_spec.append([left_out, tmp2])
                     
                         ###### PLot R2 by different categories; ######
@@ -1323,13 +1903,21 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                         ### want to plot "next action" 
                         ### Here theses are all predictions of tm0 | tm1, NOT conditioned on action 
                         ### Lets see how accurate the action is; 
-                        lo_pred_all.append(np.dot(KG, 0.1*lo_pred.T).T)
+                        lo_pred_all.append(np.dot(KG, 0.1*lo_pred[lo_keep_ix, :].T).T)
                         lo_true_all.append(push_true[np.ix_(lo_ix, [3, 5])])
                         nlo_pred_all.append(np.dot(KG, 0.1*spks_pred[lo_ix, :].T).T)
-                        shuff_act = []
-                        for n in range(nshuffs):
-                            shuff_act.append(np.dot(KG, 0.1*pred_spks_shuffle[lo_ix, :, n].T).T)
-                        shuff_pred_all.append(np.dstack((shuff_act)))
+
+                        if animal == 'grom':
+                            assert(np.allclose(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*spks_true[lo_ix, :].T).T))
+                        # shuff_act = []
+                        # for n in range(nshuffs):
+                        #     shuff_act.append(np.dot(KG, 0.1*pred_spks_shuffle[lo_ix, :, n].T).T)
+                        # shuff_pred_all.append(np.dstack((shuff_act)))
+                        tmp, _ = yfcn(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*lo_pred[lo_keep_ix, :].T).T)
+                        r2_stats_spec.append([left_out, tmp])
+
+                        tmp,_=yfcn(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*spks_pred[lo_ix, :].T).T)
+                        r2_stats_spec_nlo.append([left_out, tmp])
 
                     if plot_eig:
                         for i_fold in range(n_folds):
@@ -1364,23 +1952,59 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             r2_pred_nlo, _ = yfcn(lo_true_all, nlo_pred_all)
 
             r2_shuff = []
+            # N_tmp = len(tm0ix)
+
+            # now_shuff_ix = np.arange(tempN)
+            # pref = analysis_config.config['shuff_fig_dir']
+            # shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
+            # test_ix = shuffle_data_file['test_ix']
+            t0 = time.time()
             for i in range(nshuffs):
-                ### Get shuffle one at a time ###
-                pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, 
-                    model_nm, nshuffs = None, shuff_num = i, testing_mode = False)
-                pred_spks_shuffle = 10*pred_spks_shuffle[an_ind, :, :]; 
-                tmp,_ = yfcn(lo_true_all, pred_spks_shuffle[lo_ix_all, :, 0])
-                r2_shuff.append(tmp)
-            
+                #former_shuff_ix = shuffle_data_file[i]
+
+                if np.mod(i, 100) == 0:
+                    print('Shuff %d, tm = %.3f' %(i, time.time() - t0))
+        
+                if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                    pred_spks_shufflei = plot_generated_models.get_shuffled_data_v2_super_stream(animal,
+                        day_ix, i)
+                    pred_spks_shuffle = pred_spks_shufflei[:nT, :]
+                    assert(np.all(pred_spks_shufflei[nT:, :] == 0))
+                    color = 'cyan'
+                    tmp,_ = yfcn(lo_true_all, pred_spks_shuffle[lo_ix_all, :])
+                    r2_shuff.append(tmp)
+                
+                elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                    pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_super_stream_nocond(animal,
+                        day_ix, i)
+                    assert(spks_true.shape[0] == pred_spks_shuffle.shape[0])
+                    color = 'maroon'
+                    tmp,_ = yfcn(lo_true_all, np.dot(KG, 0.1*pred_spks_shuffle[lo_ix_all, :].T).T)
+                    r2_shuff.append(tmp)
+
+                ### offset was meant for 
+                # pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_wc(animal, 
+                #     day_ix, spks_sub_tm1*.1, push_true, 
+                #     tm0ix, N_tmp, test_ix, i, KG, former_shuff_ix, now_shuff_ix,
+                #     t0)
+                # pred_spks_shuffle = pred_spks_shuffle[an_ind, :]*10
+
+                # ### Get shuffle one at a time ###
+                # pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, 
+                #     model_nm, nshuffs = None, shuff_num = i, testing_mode = False)
+                # pred_spks_shuffle = 10*pred_spks_shuffle[an_ind, :, :]; 
+
+
             ### Clean up memory 
             gc.collect()
 
             ### Use for pooled stats ####
-            r2_stats.append([r2_pred_lo, r2_pred_nlo])
+            r2_stats.append(r2_pred_lo)
             r2_stats_shuff.append(np.hstack((r2_shuff)))
 
-            ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=analysis_config.blue_rgb, markersize=10)
-            ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='purple', markersize=10)
+            ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=color, markersize=10)
+            ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='m',
+                mec='purple', mew=1., markersize=10)
             util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
             mn = np.min([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
             mx = np.max([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
@@ -1389,18 +2013,20 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             ### Print the stats; 
             tmp_ix = np.nonzero(r2_shuff >= r2_pred_lo)[0]
             print('Animal %s, Day ix %s, pv = %.5f, r2_ = %.3f, shuff = [%.3f, %.3f]' %(animal, 
-                day_ix, float(len(tmp_ix)) / float(len(r2_shuff)), r2_pred_lo, np.mean(r2_shuff), np.percentile(r2_shuff, 95) ))
+                day_ix, float(len(tmp_ix)) / float(len(r2_shuff)), r2_pred_lo, np.mean(r2_shuff), 
+                np.percentile(r2_shuff, 95) ))
 
-            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
-                ### Animal specific plot 
-                r2_stats_spec = np.vstack((r2_stats_spec))
-                r2_stats_spec_nlo = np.vstack((r2_stats_spec_nlo))
+            #if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+            ### Animal specific plot 
+            #r2_stats_spec = np.vstack((r2_stats_spec))
+            #r2_stats_spec_nlo = np.vstack((r2_stats_spec_nlo))
 
                 # ax_spec[i_a].plot(r2_stats_spec[:, 0], r2_stats_spec[:, 1], '.', 
                 #     color=analysis_config.pref_colors[day_ix])
 
                 # ax_spec[i_a].plot(r2_stats_spec_nlo[:, 0]+.2, r2_stats_spec_nlo[:, 1], '^', 
                 #     color=analysis_config.pref_colors[day_ix])
+                #elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
 
         r2_shuff_mn = np.mean(np.vstack((r2_stats_shuff)), axis = 0)
         assert(len(r2_shuff_mn) == nshuffs)
@@ -1433,6 +2059,8 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
     f.tight_layout()
     #f_spec.tight_layout()
     util_fcns.savefig(f, 'held_out_cat%s_%s'%(cat, model_nm))
+    f.tight_layout()
+    util_fcns.savefig(f, 'r2_heldout_cat%s'%(cat))
 
 ######## Plot whether the move-speicfic command activity has the right structure #####
 def plot_pop_dist_corr_COMMAND(nshuffs=10, min_commands = 15): 
