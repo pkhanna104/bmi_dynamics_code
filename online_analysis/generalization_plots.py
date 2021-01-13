@@ -1747,7 +1747,8 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
 
 def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False,
     tsk_spec_alphas = False, yval='r2', nshuffs = 1000, n_folds = 5, plot_eig = False,
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', return_trans_from_lo = False): 
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', return_trans_from_lo = False,
+    plot_r2_by_lo_cat = False): 
     '''
     For each model type lets plot the held out data vs real data correlations 
     ''' 
@@ -1760,14 +1761,16 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
     model_set_number = 6 
 
     f, ax = plt.subplots(figsize=(3, 3))
-    #f_spec, ax_spec = plt.subplots(ncols = 2); 
     
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    if plot_r2_by_lo_cat:
+        f3, ax3 = plt.subplots(ncols = 3, figsize=(6, 3))
+
+    for i_a, animal in enumerate(['grom']):#, 'jeev']):
 
         r2_stats = []
         r2_stats_shuff = []
 
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
 
             if plot_eig:
                 fmn, axmn = plt.subplots()
@@ -1959,6 +1962,8 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             # shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
             # test_ix = shuffle_data_file['test_ix']
             t0 = time.time()
+            
+            shuffx = []
             for i in range(nshuffs):
                 #former_shuff_ix = shuffle_data_file[i]
 
@@ -1982,6 +1987,9 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                     tmp,_ = yfcn(lo_true_all, np.dot(KG, 0.1*pred_spks_shuffle[lo_ix_all, :].T).T)
                     r2_shuff.append(tmp)
 
+                    if plot_r2_by_lo_cat:
+                        shuffx.append(pred_spks_shuffle)
+
                 ### offset was meant for 
                 # pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_wc(animal, 
                 #     day_ix, spks_sub_tm1*.1, push_true, 
@@ -1993,7 +2001,6 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                 # pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, 
                 #     model_nm, nshuffs = None, shuff_num = i, testing_mode = False)
                 # pred_spks_shuffle = 10*pred_spks_shuffle[an_ind, :, :]; 
-
 
             ### Clean up memory 
             gc.collect()
@@ -2016,17 +2023,51 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                 day_ix, float(len(tmp_ix)) / float(len(r2_shuff)), r2_pred_lo, np.mean(r2_shuff), 
                 np.percentile(r2_shuff, 95) ))
 
-            #if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
-            ### Animal specific plot 
-            #r2_stats_spec = np.vstack((r2_stats_spec))
-            #r2_stats_spec_nlo = np.vstack((r2_stats_spec_nlo))
+            if plot_r2_by_lo_cat:
+                ### This is an exploration into why prediction of a command that is left out is 
+                ### worse than transitions from that command 
 
-                # ax_spec[i_a].plot(r2_stats_spec[:, 0], r2_stats_spec[:, 1], '.', 
-                #     color=analysis_config.pref_colors[day_ix])
+                shuffx = np.dstack((shuffx))
+                off_ang = []
+                control_ang = np.array([0, 1.])
 
-                # ax_spec[i_a].plot(r2_stats_spec_nlo[:, 0]+.2, r2_stats_spec_nlo[:, 1], '^', 
-                #     color=analysis_config.pref_colors[day_ix])
-                #elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                for com_id in range(32):
+                    #### Take the offset: 
+                    #### project through the decoder
+                    ### Compare to the direction of the commands 
+                    ### 
+                    x=[]; y=[]
+                    for i in range(5):
+                        off = LOO_dict[com_id][(i, 'intc_lo')]
+                        kg = np.squeeze(np.dot(KG, off[:, np.newaxis]))
+                        x.append(kg[0]); y.append(kg[1])
+                    
+                    #### Offset direction for commands 
+                    ax3[0].plot([0, np.mean(x)], [0, np.mean(y)], '-', 
+                        color=analysis_config.pref_colors[np.mod(com_id, 8)],
+                        alpha = 0.2*com_id/8, linewidth=1.)
+
+                    ang_bins = np.linspace(0, 2*np.pi, 9)[:-1]
+                    command_angle = ang_bins[np.mod(com_id, 8)]
+                    vect = np.array([np.cos(command_angle), np.sin(command_angle)])
+                    vect = vect/np.linalg.norm(vect)
+
+                    vect_offs = np.array([np.mean(x), np.mean(y)])
+                    vect_offs = vect_offs/np.linalg.norm(vect_offs)
+
+                    ang = np.dot(vect, vect_offs)
+                    ang_control = np.dot(control, vect)
+
+                    off_ang.append([ang, ang_control])
+
+                ### Plot the distribution of the offset angles vs. control 
+                off_ang = np.vstack((off_ang))
+                ax3[1].hist(off_ang[:, 0], np.linspace(-1, 1, 10))
+                ax3[2].hist(off_ang[:, 1], np.linspace(-1, 1, 10))
+                ax3[0].set_title('KG*offset for models\n leaving out command', fontsize=14)
+                ax3[1].set_title('np.dot(off_ang, \ncommand_direction)', fontsize=14)
+                ax3[2].set_title('np.dot(constant_ang, \ncommand_direction)', fontsize=14)
+                f3.tight_layout()
 
         r2_shuff_mn = np.mean(np.vstack((r2_stats_shuff)), axis = 0)
         assert(len(r2_shuff_mn) == nshuffs)
