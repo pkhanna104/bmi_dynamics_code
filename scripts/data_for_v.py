@@ -122,7 +122,7 @@ def get_cursor_state_and_neural_push(co=co, obs=obs, animal='grom',
 ####### PLOT #############
 
 import matplotlib.pyplot as plt
-import pickle
+import pickle, os
 
 def open_data_for_v(data_name='for_v.pkl'):
     cmap_list = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab',
@@ -236,6 +236,122 @@ def activity_plot_by_targ(data_name='for_v.pkl', unit_index=38.):
         plt.tight_layout()
 
 
+###### Export decoders ######
+from online_analysis import util_fcns
+
+def save_decoders(): 
+
+    decoder_dict = {}
+    dynamics_dict = {}
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(6)+'_.pkl'
+        model_data = pickle.load(open(model_fname, 'rb'))
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            ### get decoder: 
+            if animal == 'grom':
+
+                F, KG = util_fcns.get_grom_decoder(day_ix)
+
+            elif animal == 'jeev':
+
+                F = util_fcns.get_jeev_F(day_ix)
+
+                ### Returns a 2 x Nneurons estimated Kalman Gain matrix 
+                KG_sub = util_fcns.get_jeev_decoder(day_ix)
+
+                ### Populate the 7 x Nneurons matrix
+                ### Confirmed from previous analysis that neural push only 
+                ### ever effects velocity (on current timestep), not position 
+                KG = np.zeros((7, KG_sub.shape[1]))
+                KG[[3, 5], :] = KG_sub.copy()
+
+            #### Format of matrices is [Xpos,Zpos,Ypos, Xvel,Zvel,Yvel, offset]: 7 dim
+            #### This is a 2D task, so Zpos/Zvel are irrelevant, so removing them:
+            keep_ix = [0, 2, 3, 5, 6] 
+            KG_xy = KG[keep_ix, :]
+            F_xy = F[np.ix_(keep_ix, keep_ix)]
+
+            ### Shoudl yield a 5 x Nneurons and 5x5 matrix: 
+            assert(KG_xy.shape[0] == F_xy.shape[0] == F_xy.shape[1] == 5)
+
+            decoder_dict[animal, day_ix, 'KG'] = KG_xy.copy()
+            decoder_dict[animal, day_ix, 'F'] = F_xy.copy()
+
+            ### Get dynamics 
+            fold = 0
+            mod = model_data[day_ix, 'hist_1pos_0psh_2spksm_1_spksp_0', fold, 0, 'model']
+            dynamics_dict[animal, day_ix, 'A'] =  mod.coef_.copy()
+            dynamics_dict[animal, day_ix, 'b'] =  mod.intercept_.copy()
+
+    pickle.dump(decoder_dict, open(os.path.join(analysis_config.config['BMI_DYN'], 'scripts', 'decoders_for_v.pkl'), 'wb'))
+    pickle.dump(dynamics_dict, open(os.path.join(analysis_config.config['BMI_DYN'], 'scripts', 'dynamics_for_v.pkl'), 'wb'))
+
+# def print_EVs():
+#     dat = pickle.load(open(os.path.join(analysis_config.config['BMI_DYN'], 'scripts', 'dynamics_for_v.pkl'), 'rb'))
+#     for day in range(9):
+#         A = dat['grom', day, 'A']
+#         AI = A - np.eye(A.shape[0])
+
+#         ev, evect = np.linalg.eig(AI)
+
+#         ix_sort = np.argsort(ev)
+#         ev = ev[ix_sort[::-1]]
+#         evect = evect[ix_sort[::-1]]
+
+#         time_decay = -1/np.real(ev)*.1
+
+#         f, ax = plt.subplots()
+#         ax.plot(time_decay, 'k.')
+#         ax.set_title(day)
+#         ax.set_ylim([0., .5])
+
+#         KG = util_fcns.get_decoder('grom', day)
+#         s, v, d = np.linalg.svd(KG)
+#         print('Day %d' %(day))
+#         for i in range(8):
+#             print('ev %d: %.2f, %.2f'% (i, np.dot(np.real(evect[:, i]), d[0, :]),
+#                 np.dot(np.real(evect[:, i]), d[0, :])))
+        
 
 
+# tes = [4377, 4395, 4411, 4499, 4510, 4523, 4536, 4553, 4558]
+# for te in tes: 
+#     TE = dbfn.TaskEntry(te)
+#     clda_seed = TE.decoder_record.entry_id
+#     TEclda = dbfn.TaskEntry(clda_seed)
+#     print(TEclda)
+
+
+# f, ax = plt.subplots(figsize=(3, 3))
+
+# for i_ in range(9):
+#     print('session %d' %i_) 
+#     F, KG, decoder = util_fcns.get_grom_decoder(i_)
+#     #print(decoder.filt.A)
+#     #print(decoder.filt.W)
+#     #print(np.round(F[np.ix_([0, 2, 3, 5, 6], [0, 2, 3, 5, 6])], 2))
+#     #print(np.squeeze(np.round(decoder.filt.C[0:5, :], 2)))
+#     #print(np.trace(decoder.filt.Q)/float(KG.shape[1]))
+#     #Fsub = np.dot(KG[[3, 5], :], decoder.filt.C)
+#     #print(np.sum(decoder.filt.Q)/(float(KG.shape[1])**2))
+#     #print(Fsub[:, [3, 5, 6]])
+#     #print(np.linalg.norm(decoder.filt.C[:, [3, 5]], axis=1))
+#     #print(np.mean(np.linalg.norm(decoder.filt.C[:, [3, 5]], axis=1)))
+#     if i_ in [0, 1, 2, 8]:
+#         mew = 1.
+#         mec = 'r'
+#     else:
+#         mew = 0.
+#         mec = 'r'
+
+#     ax.plot(F[3, 3], np.mean(np.linalg.norm(decoder.filt.C[:, 3])), 'k.', mew=mew, mec=mec)
+#     ax.plot(F[5, 5], np.mean(np.linalg.norm(decoder.filt.C[:, 5])), 'b.', mew=mew, mec=mec)
+
+# ax.set_xlabel('Cursor dyn. value (F[3,3] and F[5,5])')
+# ax.set_ylabel('np.linalg.norm(C[3, :] or C[5, :])')
+# plt.title('Blue=yvel, Black=xvel, Red Edge=CO-trained')
 
