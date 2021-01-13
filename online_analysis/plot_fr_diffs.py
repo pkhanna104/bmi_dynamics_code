@@ -1453,8 +1453,6 @@ def print_pv_from_pooled_stats(stats):
     pv_day = float(len(np.nonzero(shuff >= dpsth)[0]))/float(len(shuff))
     return pv_day, dpsth, shuff
 
-
-
 def plot_distribution_of_nmov_per_command(): 
     """
     Plot distribution of number of movements per command as boxplot

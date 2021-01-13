@@ -2082,8 +2082,20 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
 
     return float(cnt_sig)/float(cnt_tot), r2_true_pop, r2_shuff_pop
 
-def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm0, spks_tm1, push_tm0, tm0ix, temp_N, test_ix, shuffle_num,
-    KG, former_shuff_ix, now_shuff_ix):
+def get_shuffled_data_v2_super_stream(animal, day_ix, shuffle_num):
+    pref = analysis_config.config['shuff_fig_dir']
+
+    dat = sio.loadmat(os.path.join(pref, '%s_%s_predY_wc_shuff%d.mat'%(animal, day_ix, shuffle_num)))
+    return dat['pred']
+
+def get_shuffled_data_v2_super_stream_nocond(animal, day_ix, shuffle_num):
+    pref = analysis_config.config['shuff_fig_dir']
+
+    dat = sio.loadmat(os.path.join(pref, '%s_%s_predY_no_cond_shuff%d.mat'%(animal, day_ix, shuffle_num)))
+    return dat['pred']
+
+def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, test_ix, shuffle_num,
+    KG, former_shuff_ix, now_shuff_ix, t0):
     """Summary
     
     Parameters
@@ -2092,8 +2104,6 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm0, spks_tm1, push_tm
         'grom' or 'jeev'
     day : int
         session index 
-    spks_tm0 : np.array
-        full_spks[tm0, :] from non-streamlined fcn
     spks_tm1 : np.array
         full_spks[tm1, :] from non-streamlined fcn
     push_tm0 : np.array
@@ -2101,12 +2111,12 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm0, spks_tm1, push_tm
     tm0ix : np.array
         the actual tm0 indices used to figure otu the right train/test data 
     temp_N : int
-        the length of tm0 
+        the length of tm0ix
     test_ix : list with 5 entries, each an np.array of the original test indices 
     shuffle_num : shuffle number -- used to indicate which weights to open 
     KG : KalmanGain for this day 
     former_shuff_ix : shuffle indices that were used to make train/test data 
-    now_shuff_ix : np.arange(temp_N)
+    now_shuff_ix : np.arange(temp_N) --> full data length
     
     Returns
     -------
@@ -2121,35 +2131,47 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm0, spks_tm1, push_tm
     ### Get model variables 
     #### setup pred_Y to be accurate 
     nneur = KG.shape[1]
-    pred_Y = np.zeros((temp_N, nneur))
+    
+    ##### This is correct -- but we did everything wrong ###
+    #pred_Y = np.zeros((len(tm0ix), nneur))
+    pred_Y = np.zeros((len(now_shuff_ix), nneur))
 
     #### Load the coefficients 
     pref = analysis_config.config['shuff_fig_dir']
     shuff_str = str(shuffle_num)
     shuff_str = shuff_str.zfill(3)
-    model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, model_name))
+    model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, 'hist_1pos_0psh_2spksm_1_spksp_0'))
 
     ##### Deal with the shuffling indices ###
     shuff_x = []
-    current_inds = list(tm0ix.copy())
-
+    current_inds = tm0ix.copy()
+    slope = float(len(current_inds))/float(len(now_shuff_ix))
+    
+    ### map b/w actual_test_ix and current inds? 
+    actual_test_ix = now_shuff_ix[former_shuff_ix[tm0ix]]
+    t2 = time.time()
+    actual_test2current_inds = get_ati2inds_map(actual_test_ix, current_inds, slope)
+    
     #### For each data fold #####
     for i_fold in range(5): 
         
+        t1 = time.time()
         ### Test indices AFTER shuff_ix[tm0ix]
-        test_ix_fold = test_ix[i_fold]
-        actual_test_ix_fold = now_shuff_ix[former_shuff_ix[tm0ix[test_ix_fold]]]
 
-        test_ix_fold_current = np.array([current_inds.index(atif) for atif in actual_test_ix_fold])
+        ### Whta these test inds are on the global scheme: 
+        actual_test_ix_fold = list(actual_test_ix[test_ix[i_fold]])
+
+        ### Need to get the location of these in our current scheme: 
+        test_ix_fold_current = np.array([actual_test2current_inds[x] for x in actual_test_ix_fold])
         
         if i_fold < 4:
-            shuff_x.append(test_ix_fold_current)
+            shuff_x.append(np.hstack((test_ix_fold_current)))
 
         elif i_fold == 4:
-            tot = np.hstack((shuff_x))
-            tot = np.hstack((tot, test_ix_fold_current))
-            remaining = np.array([i for i,j in enumerate(current_inds) if i not in tot])
-            test_ix_fold_current = np.hstack((remaining, test_ix_fold_current))
+            ### Get stuff in our current list that wasn't in any of the test indices 
+            tot = np.hstack(( np.hstack((shuff_x)), np.hstack((test_ix_fold_current))))
+            remaining = np.array([i for i, j in enumerate(current_inds) if i not in tot])
+            test_ix_fold_current = np.hstack((remaining, np.hstack((test_ix_fold_current))))
             shuff_x.append(test_ix_fold_current)
 
             assert(len(np.hstack((shuff_x))) == len(tm0ix))
@@ -2158,7 +2180,7 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm0, spks_tm1, push_tm
     for i_fold in range(5):
         coef = model_file[str((i_fold, 'coef_'))]
         intc = model_file[str((i_fold, 'intc_'))]
-        assert(int(model_file['shuff_num']) == shuffle)
+        assert(int(model_file['shuff_num']) == shuffle_num)
 
         #### Get the updated shuffle indices ####
         test_ix_fold_current = shuff_x[i_fold]
@@ -2167,7 +2189,7 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm0, spks_tm1, push_tm
         W = model_file[str((i_fold, 'W'))]
 
         ### Pre-assemble these to avoid the stupid re-assembly in pred_w_cond ####
-        kwargs = dict(A_preassembled = push_tm0[test_ix_fold_current, [3, 5]], 
+        kwargs = dict(A_preassembled = push_tm0[np.ix_(test_ix_fold_current, [3, 5])], 
                       X_preassembled = spks_tm1[test_ix_fold_current, :])
 
         ### Make the predictions 
@@ -2179,12 +2201,136 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm0, spks_tm1, push_tm
 
         #### Make sure the push actuall matches intended push: #### 
         assert(np.allclose(np.dot(KG, pred_wc.T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
-        assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold_current, :, ishuff].T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
+        assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold_current, :].T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
 
     if np.all(pred_Y == 0):
         import pdb; pdb.set_trace()
     return pred_Y
 
+def get_shuffled_data_v2_streamlined_no_cond(animal, day, spks_tm1, tm0ix, test_ix, shuffle_num,
+    KG, former_shuff_ix, now_shuff_ix, t0):
+    """Summary
+    
+    Parameters
+    ----------
+    animal : string
+        'grom' or 'jeev'
+    day : int
+        session index 
+    spks_tm1 : np.array
+        full_spks[tm1, :] from non-streamlined fcn
+    tm0ix : np.array
+        the actual tm0 indices used to figure otu the right train/test data 
+    temp_N : int
+        the length of tm0ix
+    test_ix : list with 5 entries, each an np.array of the original test indices 
+    shuffle_num : shuffle number -- used to indicate which weights to open 
+    KG : KalmanGain for this day 
+    former_shuff_ix : shuffle indices that were used to make train/test data 
+    now_shuff_ix : np.arange(temp_N) --> full data length
+    
+    Returns
+    -------
+    TYPE
+        Description
+    
+    Deleted Parameters
+    ------------------
+    data_temp_dict
+        Description
+    """
+    ### Get model variables 
+    #### setup pred_Y to be accurate 
+    nneur = KG.shape[1]
+    
+    ##### This is correct
+    pred_Y = np.zeros((len(tm0ix), nneur))
+    
+    #### Load the coefficients 
+    pref = analysis_config.config['shuff_fig_dir']
+    shuff_str = str(shuffle_num)
+    shuff_str = shuff_str.zfill(3)
+    model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, 'hist_1pos_0psh_0spksm_1_spksp_0'))
+
+    ##### Deal with the shuffling indices ###
+    shuff_x = []
+    current_inds = tm0ix.copy()
+    slope = float(len(current_inds))/float(len(now_shuff_ix))
+    
+    ### map b/w actual_test_ix and current inds? 
+    actual_test_ix = now_shuff_ix[former_shuff_ix[tm0ix]]
+    t2 = time.time()
+    actual_test2current_inds = get_ati2inds_map(actual_test_ix, current_inds, slope)
+    
+    #### For each data fold #####
+    for i_fold in range(5): 
+        
+        t1 = time.time()
+        ### Test indices AFTER shuff_ix[tm0ix]
+
+        ### Whta these test inds are on the global scheme: 
+        actual_test_ix_fold = list(actual_test_ix[test_ix[i_fold]])
+
+        ### Need to get the location of these in our current scheme: 
+        test_ix_fold_current = np.array([actual_test2current_inds[x] for x in actual_test_ix_fold])
+        
+        if i_fold < 4:
+            shuff_x.append(np.hstack((test_ix_fold_current)))
+
+        elif i_fold == 4:
+            ### Get stuff in our current list that wasn't in any of the test indices 
+            tot = np.hstack(( np.hstack((shuff_x)), np.hstack((test_ix_fold_current))))
+            remaining = np.array([i for i, j in enumerate(current_inds) if i not in tot])
+            test_ix_fold_current = np.hstack((remaining, np.hstack((test_ix_fold_current))))
+            shuff_x.append(test_ix_fold_current)
+
+            assert(len(np.hstack((shuff_x))) == len(tm0ix))
+            assert(len(np.unique(np.hstack((shuff_x)))) == len(tm0ix))
+
+    for i_fold in range(5):
+        coef = model_file[str((i_fold, 'coef_'))]
+        intc = model_file[str((i_fold, 'intc_'))]
+        assert(int(model_file['shuff_num']) == shuffle_num)
+
+        #### Get the updated shuffle indices ####
+        test_ix_fold_current = shuff_x[i_fold]
+
+        ### Pre-assemble these to avoid the stupid re-assembly in pred_w_cond ####
+        kwargs = dict(X_preassembled = spks_tm1[test_ix_fold_current, :])
+
+        ### Make the predictions 
+        pred_wc = pred_wo_cond(coef, intc, None,
+            None, None, nneur, KG = KG, **kwargs) 
+
+        pred_Y[test_ix_fold_current, :] = pred_wc.copy()
+
+        #### Make sure the push actuall matches intended push: #### 
+        
+    if np.all(pred_Y == 0):
+        import pdb; pdb.set_trace()
+    return pred_Y
+
+def get_ati2inds_map(shuff_ix, current_inds, slope):
+    CI_dict = {}
+    for s in shuff_ix:
+        start = int(s*slope) - 10
+        search_ix = np.arange(start, int(s*slope) + 10)
+        try:
+            CI_dict[s] = np.where(current_inds[search_ix] == s)[0]  + start
+        except:
+            search_ix = search_ix[search_ix >= 0]
+            search_ix = search_ix[search_ix < len(current_inds)]
+            CI_dict[s] = np.where(current_inds[search_ix] == s)[0]  + search_ix[0]
+        if len(CI_dict[s]) > 0: assert(current_inds[int(CI_dict[s])] == s)
+    return CI_dict
+
+# shuff_ix = np.random.randint(0, 10, (10))
+# current_inds = np.arange(3, 7)
+# actual_test2current_inds = get_ati2inds_map(shuff_ix, current_inds)
+
+# shuff_ix_fold = shuff_ix[:5]
+# test_ix_fold_current = np.hstack(list(map(lambda x:actual_test2current_inds[x], shuff_ix_fold)))
+        
 def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None, testing_mode = False, 
     mean_maint = False, within_mov = False, test_streamlined = False):
     """
@@ -2240,7 +2386,6 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None
         order_mat = analysis_config.data_params['%s_ordered_input_type'%animal] 
         test_Data, test_Data_temp, test_Sub_spikes, test_Sub_spk_temp_all, test_Sub_push = generate_models_utils.get_spike_kinematics(animal, day_mat[day], 
                     order_mat[day], 1, within_bin_shuffle = False, day_ix = day, nshuffs = 1)
-    t0 = time.time()
     
     #### Get teh spike indices ###
     tm0ix, tm1ix = generate_models.get_temp_spks_ix(data_file['Data'])
@@ -2268,8 +2413,11 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None
         #sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = generate_models.get_temp_spks(data_file['Data'], shuff_ix)
         #print('Time to shuffles and subselect %.5f '%(time.time() - t0))
         if test_streamlined:
+            print('start streamline')
+            t1 = time.time()
             pred_y_streamlined = get_shuffled_data_v2_streamlined_wc(animal, day, sub_spikes, sub_spikes_tm1, sub_push, 
-                tm0ix, len(tm0ix), test_ix, shuffle, KG, former_shuff_ix, now_shuff_ix)
+                tm0ix, test_ix, shuffle, KG, former_shuff_ix, now_shuff_ix)
+            print('end streamline %.4f' %(time.time() - t1))
 
         if testing_mode: 
             assert(np.allclose(sub_spikes, test_Sub_spikes))
@@ -2371,7 +2519,7 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None
 
     if test_streamlined:
         assert(np.allclose(pred_y_streamlined, pred_Y[:, :, ishuff]))
-
+    print('Done with big fcn, %.5f' %(time.time() - t0))
     return pred_Y
 
 def get_shuffled_data_pred_null_roll_pot_shuff(animal, day, model_name, nshuffs = 10, testing_mode = False):
@@ -2393,6 +2541,7 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
     if pot_shuff:
         data_file = pickle.load(open(pref + '%s_%d_shuff_ix_null_roll_pot_beh_maint.pkl' %(animal, day)))
         mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+    
     else:
         data_file = pickle.load(open(pref + '%s_%d_shuff_ix_null_roll.pkl' %(animal, day)))
         
@@ -2485,13 +2634,47 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
         test_stack = np.hstack(([test_ix[i_fold] for i_fold in range(5)]))
         assert(np.allclose(np.sort(test_stack), np.arange(temp_N)))
 
+        #### Deal with index re-assignment; 
+        ### map b/w actual_test_ix and current inds? 
+        now_shuff_ix = np.arange(full_push.shape[0])
+        actual_test_ix = now_shuff_ix[pot_shuff_ix[tm0ix]]
+        t2 = time.time()
+        current_inds = now_shuff_ix[tm0ix]
+        slope = float(len(current_inds))/float(len(now_shuff_ix))
+        actual_test2current_inds = get_ati2inds_map(actual_test_ix, current_inds, slope)
+        
+        shuff_x = []
+        #### For each data fold #####
+        for i_fold in range(5): 
+            ### Test indices AFTER shuff_ix[tm0ix]
+            ### What these test inds are on the global scheme: 
+            actual_test_ix_fold = list(actual_test_ix[test_ix[i_fold]])
+
+            ### Need to get the location of these in our current scheme: 
+            test_ix_fold_current = np.array([actual_test2current_inds[x] for x in actual_test_ix_fold])
+            
+            if i_fold < 4:
+                shuff_x.append(np.hstack((test_ix_fold_current)))
+
+            elif i_fold == 4:
+                ### Get stuff in our current list that wasn't in any of the test indices 
+                tot = np.hstack(( np.hstack((shuff_x)), np.hstack((test_ix_fold_current))))
+                remaining = np.array([i for i, j in enumerate(current_inds) if i not in tot])
+                test_ix_fold_current = np.hstack((remaining, np.hstack((test_ix_fold_current))))
+                shuff_x.append(test_ix_fold_current)
+
+                assert(len(np.hstack((shuff_x))) == len(tm0ix))
+                assert(len(np.unique(np.hstack((shuff_x)))) == len(tm0ix))
+
+
+
         #### For each data fold #####
         for i_fold in range(5): 
             
             coef = model_file[str((i_fold, 'coef_'))]
             intc = model_file[str((i_fold, 'intc_'))]
             assert(model_file['shuff_num'] == shuffle)
-            test_ix_fold = test_ix[i_fold]
+            test_ix_fold = shuff_x[i_fold]
 
             ### Make sure the test Ix are in the right units ## 
             assert(np.all(test_ix_fold < temp_N))
@@ -2501,35 +2684,36 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
                 intc[:] = 0.
 
             #### Get W if conditinoing on action ####
-            if 'psh_2' in model_name: 
-                W = model_file[str((i_fold, 'W'))]
+            # if 'psh_2' in model_name: 
+            #     W = model_file[str((i_fold, 'W'))]
 
-                if testing_mode:
-                    ### No uncertainty/error in dynamics model 
-                    W[:,:] = 0.
+            #     if testing_mode:
+            #         ### No uncertainty/error in dynamics model 
+            #         W[:,:] = 0.
 
             for i_m, (model_nm, variables) in enumerate(zip(models_to_include, variables_list)):
 
-                if model_nm == model_name: 
-                    if 'psh_2' in model_name: 
+                # if model_nm == model_name: 
+                #     if 'psh_2' in model_name: 
 
-                        pred_wc = pred_w_cond(coef, intc, data_temp_dict,
-                            test_ix_fold, variables, nneur, w_ = W, KG = KG) 
+                #         pred_wc = pred_w_cond(coef, intc, data_temp_dict,
+                #             test_ix_fold, variables, nneur, w_ = W, KG = KG) 
 
-                        pred_Y[test_ix_fold, :, shuffle] = pred_wc.copy()
+                #         pred_Y[test_ix_fold, :, shuffle] = pred_wc.copy()
 
-                        if testing_mode:
-                            ### Set the "W" equal to zero so wont match actions 
-                            ### Want to test for equality to the previous action/spks
-                            pass
-                        else:
-                            #### Make sure the push actuall matches intended push: #### 
-                            assert(np.allclose(np.dot(KG, pred_wc.T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
-                            assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold, :, shuffle].T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
+                #         if testing_mode:
+                #             ### Set the "W" equal to zero so wont match actions 
+                #             ### Want to test for equality to the previous action/spks
+                #             pass
+                #         else:
+                #             #### Make sure the push actuall matches intended push: #### 
+                #             assert(np.allclose(np.dot(KG, pred_wc.T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
+                #             assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold, :, shuffle].T).T, sub_push[np.ix_(test_ix_fold, [3, 5])]))
 
-                    else:
-                        pred_Y[test_ix_fold, :, shuffle] = pred_wo_cond(coef, intc, data_temp_dict,
-                            test_ix_fold, variables, nneur) 
+                #     else:
+                    pred_Y[test_ix_fold, :, shuffle] = pred_wo_cond(coef, intc, data_temp_dict,
+                        test_ix_fold, variables, nneur)
+
         ### After all folds, if in testing mode, pred_Y should be equal to sub_spikes_tm1; 
         if testing_mode:
             assert(np.allclose(sub_spikes_tm1, pred_Y[:, :, shuffle]))
@@ -2573,13 +2757,18 @@ def pred_wo_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nne
     model.coef_ = np.squeeze(coef_.copy())
     model.intercept_ = np.squeeze(intc_.copy())
 
-    generate_models.check_variables_order(variable_names, nneur)
-    
+
+
     ### Get variables #### 
-    x_test = [] 
-    for vr in variable_names:
-        x_test.append(data_temp_dict[vr][test_ix_fold, np.newaxis])
-        X = np.mat(np.hstack((x_test)))
+    if 'X_preassembled' in kwargs.keys():
+        X = kwargs['X_preassembled']
+
+    else:
+        generate_models.check_variables_order(variable_names, nneur)
+        x_test = [] 
+        for vr in variable_names:
+            x_test.append(data_temp_dict[vr][test_ix_fold, np.newaxis])
+            X = np.mat(np.hstack((x_test)))
 
     predy = model.predict(X)
     return predy
