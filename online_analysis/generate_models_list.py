@@ -6,9 +6,10 @@ def get_model_var_list(model_set_number):
     ####### INCLUDE STATE VARIABLE -- at lags indicated in "lags" variable
     #######    1 -- velocity & position 
     #######    -1 --  position 
-    #######    2 -- velocity & position & target
+    #######    2 -- velocity & position & target position 
     #######    3 -- velocity & position & target & task
     #######    4 -- task only 
+    #######    5 -- velocity & position & target position & movement ID
     #######    0 -- none; 
     
     ###### Include action "psh_x"
@@ -140,5 +141,17 @@ def get_model_var_list(model_set_number):
         predict_key = 'spks'
         history_bins_max = 1
 
+    #### Addition as of January 2021
+    elif model_set_number == 12: 
+
+        ###                     Lags,               name,                   include state?, include y_{t-1}, include y_{t+1} ###
+        model_var_list.append([np.array([-1]),    'hist_1pos_1psh_2spksm_0_spksp_0',    1, 0, 0])     ### t=-1, action and prev state
+        model_var_list.append([np.array([-1]),    'hist_1pos_2psh_2spksm_0_spksp_0',    2, 0, 0])     ### t=-1, action and prev state + target
+        model_var_list.append([np.array([-1]),    'hist_1pos_5psh_2spksm_0_spksp_0',    5, 0, 0])     ### t=-1, action and prev state + target + movement ID 
+        model_var_list.append([np.array([-1]),    'hist_1pos_5psh_2spksm_1_spksp_0',    5, 1, 0])     ### t=-1, action and prev state + target + movement ID + neural dynamics
+        
+        predict_key = 'spks'
+        history_bins_max = 1
+        include_action_lags = False 
 
     return model_var_list, predict_key, include_action_lags, history_bins_max
