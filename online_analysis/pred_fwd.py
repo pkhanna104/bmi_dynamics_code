@@ -16,7 +16,7 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
 
     f, ax = plt.subplots(figsize=(3, 3))
     col = dict()
-    col[True] = 'maroon'
+    col[True] = 'red'
     col[False] = analysis_config.blue_rgb; 
 
     for i_a, animal in enumerate(['grom', 'jeev']):
@@ -70,11 +70,14 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
 
             ### Plot the r2 ###
             xpos = i_a*10 + day_ix
+
+            ax.plot([xpos, xpos], [np.mean(r2_shuff), r2_true], 'k-', linewidth=.5)
             ax.plot(xpos, r2_true, '.', markersize=15, color=col[plot_action])
             #print('r2 act %s %s %d = %.3f' %(str(plot_action), animal, day_ix, r2_true))
 
+            beige = np.array([196, 154, 108])/255.
             util_fcns.draw_plot(xpos, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
-            util_fcns.draw_plot(xpos, r2_null_roll, 'deeppink', np.array([1., 1., 1., 0.]), ax)
+            util_fcns.draw_plot(xpos, r2_null_roll, beige, np.array([1., 1., 1., 0.]), ax)
             #print('pink shuffle mean r2 act %s %s %d = %.3f' %(str(plot_action), animal, day_ix, np.mean(r2_null_roll)))
 
             _, pv = scipy.stats.ks_2samp(r2_shuff, r2_null_roll)
@@ -91,7 +94,6 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
                 print('%s, %d: shuffled: %s, pv = %.5f, r2 = %.3f, shuff=[%.3f,%3f]' %(animal, 
                     day_ix, shuffnm, pv, r2_true, np.mean(r2shuffi), np.percentile(r2shuffi, 95)))
             
-            ax.plot([xpos, xpos], [np.mean(r2_shuff), r2_true], 'k-', linewidth=.5)
 
         #### Pooled ####
         for i_r, (key, shuffnm, nsh) in enumerate(zip(['r2_shuff', 'r2_shuff_roll'], ['std','roll'], [nshuffs, nshuffs_roll])):
@@ -437,7 +439,7 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
 
     for ii, i_s in enumerate(ix_sort):
         ax_pw.plot(ii, PW_eg[i_s, 2], '.', color='k')
-        ax_pw2.plot(ii, PW_eg[i_s, 3], '.', color='maroon')
+        ax_pw2.plot(ii, PW_eg[i_s, 3], '.', color='r')
         ax_pw.plot(ii, 0., '.', markersize=12, color=util_fcns.get_color(PW_eg[i_s, 0]))
         ax_pw.plot(ii, -0.1, '.', markersize=12, color=util_fcns.get_color(PW_eg[i_s, 1]))
 
@@ -449,7 +451,7 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     
     ax_pw.set_ylim([-.12, 1.35])
     ax_pw2.set_ylim([-.05, .55])
-    ax_pw2.tick_params(axis='y', labelcolor='maroon')
+    ax_pw2.tick_params(axis='y', labelcolor='r')
     ax_pw.set_xticks([])
     ax_pw2.set_xticks([])
     f_pw.tight_layout()
@@ -461,7 +463,7 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     ax_pw2.spines['top'].set_visible(False)
     
     ax_pw.set_ylabel('Pairwise Next Command Diff.')
-    ax_pw2.set_ylabel('Pred. Pairwise Next Command Diff.', rotation=90, color='maroon')
+    ax_pw2.set_ylabel('Pred. Pairwise Next Command Diff.', rotation=90, color='r')
     ax_pw.set_xlabel('Movement Pairs', rotation=180)
     
     util_fcns.savefig(f_pw, 'pw_plot_next_action')
