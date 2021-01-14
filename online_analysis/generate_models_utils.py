@@ -635,6 +635,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
     tmp_dict['tsk'] = tsk_temp
     tmp_dict['trg'] = trg_temp
+    tmp_dict['mov'] = tsk_temp*10 + trg_temp
     tmp_dict['trg_posx'] = trg_pos_temp[:, 0]
     tmp_dict['trg_posy'] = trg_pos_temp[:, 1]
     tmp_dict['bin_num'] = bin_temp
