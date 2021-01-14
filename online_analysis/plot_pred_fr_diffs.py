@@ -7,7 +7,7 @@ import matplotlib.transforms as transforms
 
 import analysis_config
 from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs
-#from online_analysis import generalization_plots
+from online_analysis import generalization_plots
 from util_fcns import get_color
 
 from sklearn.linear_model import Ridge
@@ -15,7 +15,62 @@ import scipy.stats
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import pandas as pd
-import gc
+import gc, copy
+
+###### Supp Fig 4 plot #####
+def plot_suppfig4_R2_bars():
+
+    model_nms = ['hist_1pos_1psh_2spksm_0_spksp_0', 'hist_1pos_2psh_2spksm_0_spksp_0',
+        'hist_1pos_5psh_2spksm_0_spksp_0', 'hist_1pos_5psh_2spksm_1_spksp_0', 'cond']
+    plot_order = [1, 2, 3, 4, 0]
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        f, ax = plt.subplots()
+
+        R2 = {}
+        for m in model_nms:
+            R2[m] = []
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+            
+            for i_m, model_nm in enumerate(model_nms):
+    
+                if model_nm == 'cond':
+
+                    ### Get activity conditioned on action 
+                    pred_Y = 10*plot_generated_models.cond_act_on_psh(animal, day_ix)
+                
+                else:
+                    ### Load data object ####
+                    dataObj = generalization_plots.DataExtract(animal, day_ix, model_nm = model_nm, 
+                        model_set_number = 12, nshuffs=0)
+                    dataObj.load()
+                    pred_Y = dataObj.pred_spks
+                    true_Y = dataObj.spks
+
+                    assert(pred_Y.shape == true_Y.shape)
+
+                ### Get R2
+                R2[model_nm].append(util_fcns.get_R2(true_Y, pred_Y))
+
+        ### Plot 
+        for p in range(5):
+            ix = plot_order.index(p)
+            mod = model_nms[ix]
+            if p == 0: 
+                r2_ref = np.mean(R2[mod])
+            ax.bar(p, (np.mean(R2[mod]) - r2_ref )/ r2_ref, color=)
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+            x_ = []
+            for p in range(5):
+                ix = plot_order.index(p)
+                mod = model_nms[ix]
+                x_.append(R2[mod][day_ix])
+            ax.plot(range(5), x_, 'k-', linewidth=.5)
+
+    
+                #
 
 ###### Fig 4C r2 plot ########
 def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
@@ -728,11 +783,11 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
     fax_p_cc, ax_p_cc = plt.subplots(figsize=(2, 3))
 
 
-    for ia, animal in enumerate(['grom']):#, 'jeev']):
+    for ia, animal in enumerate(['grom', 'jeev']):
         
         animal_data = dict(su=[], pop=[], su_r = [], pop_r = [])
 
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             ####### Save the data ##########
             pw_dict = dict(); 
@@ -979,8 +1034,8 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
             dat = np.vstack(( animal_data[n] ))
             slp,intc,rv,pv,err = scipy.stats.linregress(dat[:, 0], dat[:, 1])
         
-            print('Animal POOLED %s, %s, slp=%.3f, intc=%.3f, rv=%.3f, pv=%.5f' %(
-                animal, n, slp, intc, rv, pv))
+            print('Animal POOLED %s, %s, slp=%.3f, intc=%.3f, rv=%.3f, pv=%.5f, N = %d' %(
+                animal, n, slp, intc, rv, pv, dat.shape[0]))
 
             ax_n_cc.bar(ia, np.mean(animal_data['su_r']), color='k', alpha=.2)
             ax_p_cc.bar(ia, np.mean(animal_data['pop_r']), color='k', alpha=.2)
@@ -1748,8 +1803,8 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
             data = pd.DataFrame(lme_dict)
             md = smf.mixedlm("dneur_pred ~ dbeh", data, groups=lme_dict['dgrp'])
             mdf = md.fit()
-            print('Animal %s, Day %d' %(animal, day_ix))
-            print(mdf.summary())
+            #print('Animal %s, Day %d' %(animal, day_ix))
+            #print(mdf.summary())
 
             animal_pooled_stats.append(D_pool)
 
@@ -1770,6 +1825,8 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
         mdf = md.fit()
         print('Animal %s POOLED' %(animal))
         print(mdf.summary())
+        print('Pv = %.5f')
+        print(mdf.pvalues)
 
         animal_pooled_stats.append(D_pool)
 
