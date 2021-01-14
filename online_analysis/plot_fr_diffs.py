@@ -850,7 +850,8 @@ def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
 
             ix = np.nonzero(ncm_diff <= shuff_diffs)[0]
             pv_ncm = float(len(ix)) / float(len(shuff_diffs))
-            print('pv_ncm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f' %(pv_ncm, ncm_diff, np.mean(shuff_diffs)))
+            print('pv_ncm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f (95th = %.3f)' %(pv_ncm, ncm_diff, np.mean(shuff_diffs),
+                np.percentile(shuff_diffs, 95)))
 
             ### Population level 
             cm_diff = np.mean([np.linalg.norm(d[0])/nneur for d in pooled_stats[animal, day_ix]])
@@ -861,21 +862,24 @@ def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
             
             cm_ix = np.nonzero(cm_diff <= cm_shuff_diffs)[0]
             pv_cm = float(len(cm_ix)) / float(len(cm_shuff_diffs))
-            print('pv_cm = %.5f, mn_cm = %.3f, mn_shuff = %.3f' %(pv_cm, cm_diff, np.mean(cm_shuff_diffs)))
+            print('pv_cm = %.5f, mn_cm = %.3f, mn_shuff = %.3f (95th = %.3f)' %(pv_cm, cm_diff, np.mean(cm_shuff_diffs),
+                np.percentile(cm_shuff_diffs, 95)))
 
         ### Pooled pooled; 
         ncm_pool = np.mean([d[0] for d in NCM])
         ncm_shuff_pool = np.vstack(([d[1] for d in NCM]))
         assert(ncm_shuff_pool.shape[1] == nshuffs)
         ix = np.nonzero(ncm_pool <= np.mean(ncm_shuff_pool, axis=0))[0]
-        print('POOL %s, pv_ncm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f' %(animal, float(len(ix))/1000., ncm_pool, np.mean(ncm_shuff_pool)))
+        print('POOL %s, pv_ncm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f (%.3f)' %(animal, float(len(ix))/1000., 
+            ncm_pool, np.mean(np.mean(ncm_shuff_pool, axis=0)), np.percentile(np.mean(ncm_shuff_pool, axis=0), 95)))
 
         ### Pooled pooled; 
         cm_pool = np.mean([d[0] for d in CM])
         cm_shuff_pool = np.vstack(([d[1] for d in CM]))
         assert(cm_shuff_pool.shape[1] == 1000)
         ix = np.nonzero(cm_pool <= np.mean(cm_shuff_pool, axis=0))[0]
-        print('POOL %s, pv_cm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f' %(animal, float(len(ix))/1000., cm_pool, np.mean(cm_shuff_pool)))
+        print('POOL %s, pv_cm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f (%.3f)' %(animal, float(len(ix))/1000., 
+            cm_pool, np.mean(np.mean(cm_shuff_pool, axis=0)), np.percentile(np.mean(cm_shuff_pool, axis=0), 95)))
         
 def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None, 
     plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5, neur_ix = 36):
@@ -1397,11 +1401,14 @@ def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, 
         ax_osa.bar(i_a, np.mean(perc_sig_one_step[animal]), width=.8, alpha=0.2, color='k')
 
         ### Pooled stats over days; 
+        print('POOLED: ')
         pv_animal, dp, sh = print_pv_from_pooled_stats(pooled_stats_pool[animal])
-        print('PV %s: %.5f, dpsth = %.3f, mnshuff = %.3f' %(animal, pv_animal, dp, np.mean(sh)))
+        print('PV %s: %.5f, dpsth = %.3f, mnshuff = %.3f (%.3f)' %(animal, pv_animal, dp, np.mean(sh),
+            np.percentile(sh, 95)))
 
         pv_animal_osa, dp, sh = print_pv_from_pooled_stats(pooled_stats_pool[animal, 'osa'])
-        print('PV OSA %s: %.5f, dpsth = %.3f, mnshuff = %.3f' %(animal, pv_animal_osa, dp, np.mean(sh)))
+        print('PV OSA %s: %.5f, dpsth = %.3f, mnshuff = %.3f (%.3f)' %(animal, pv_animal_osa, dp, np.mean(sh),
+            np.percentile(sh, 95)))
         
     for axi in [ax, ax_osa]:
         axi.set_xticks([0, 1])
@@ -1530,15 +1537,16 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
     pooled_stats_all = {}
     comm_sig = {}
 
-    for ia, animal in enumerate(['grom']):#, 'jeev']):
+    for ia, animal in enumerate(['grom', 'jeev']):#, 'grom', 'jeev']):
         rv_agg = []
 
         ### For each pw diff add: (norm diff behav, norm diff pop neur, day, ang, mag)
         pooled_stats = []
         pooled_dtype = np.dtype([('dB', 'f8'), ('dN', 'f8'), ('day_ix', np.int8), ('ang', np.int8), ('mag', np.int8)])
 
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
             
+            print('starting %s, day %d' %(animal, day_ix))
             ### Pull data ### 
             spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
             spks = spks * 10
@@ -1656,96 +1664,96 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
                                     mov_PSTH1 = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all[ix_ok1], num_bins=ncommands_psth, min_bin_set = 1)
                                     mov_PSTH2 = get_PSTH(bin_num, rev_bin_num, push, ix_mc_all2[ix_ok2], num_bins=ncommands_psth, min_bin_set = 1)
 
-                                    assert(mov_PSTH1.shape[0] == 2*ncommands_psth + 1)
-                                    assert(mov_PSTH1.shape[1] == 2)
+                                    if mov_PSTH1 is not None and mov_PSTH2 is not None:
+                                        assert(mov_PSTH1.shape[0] == 2*ncommands_psth + 1)
+                                        assert(mov_PSTH1.shape[1] == 2)
+                                        Nmov1 = len(ix_ok1)
+                                        Nmov2 = len(ix_ok2)
 
-                                    Nmov1 = len(ix_ok1)
-                                    Nmov2 = len(ix_ok2)
+                                        #### Matched dN and dB; 
+                                        dN = np.linalg.norm(mov_mean_FR1 -mov_mean_FR2)/nneur
+                                        dB = np.linalg.norm(mov_PSTH1 - mov_PSTH2)
 
-                                    #### Matched dN and dB; 
-                                    dN = np.linalg.norm(mov_mean_FR1 -mov_mean_FR2)/nneur
-                                    dB = np.linalg.norm(mov_PSTH1 - mov_PSTH2)
+                                        if mag == 0 and ang == 7 and animal == 'grom':
+                                            #### Pair 1 ### (1., 10.1), (10.1, 15.), 
+                                            # if mov == 1. and mov2 == 10.1:
+                                            #     plt_top.append([dB, dN, 'deeppink', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+                                            # elif mov == 10.1 and mov2 == 15.:
+                                            #     plt_top.append([dB, dN, 'limegreen', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+                                            if mov == 1. and mov2 == 10.1:
+                                                plt_top.append([dB, dN, 'deeppink', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+                                            elif mov == 1. and mov2 == 3.:
+                                                plt_top.append([dB, dN, 'limegreen', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+                                            
+                                            else: 
+                                                plt_top.append([dB, dN, 'darkblue', 10, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+                                        else:
+                                            rgb = util_fcns.rgba2rgb(np.array([0., 0., 0., .5]))
+                                            #ax.plot(dB, dN, '.', color=rgb, markersize=5)
+                                            #ax.plot(dB, dN, '.', color=analysis_config.pref_colors_rgb[int(mov)%10], markersize=10)
+                                        D.append([dB, dN])
+                                        dB_vs_dN_command.append([dB, dN])
 
-                                    if mag == 0 and ang == 7 and animal == 'grom':
-                                        #### Pair 1 ### (1., 10.1), (10.1, 15.), 
-                                        # if mov == 1. and mov2 == 10.1:
-                                        #     plt_top.append([dB, dN, 'deeppink', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
-                                        # elif mov == 10.1 and mov2 == 15.:
-                                        #     plt_top.append([dB, dN, 'limegreen', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
-                                        if mov == 1. and mov2 == 10.1:
-                                            plt_top.append([dB, dN, 'deeppink', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
-                                        elif mov == 1. and mov2 == 3.:
-                                            plt_top.append([dB, dN, 'limegreen', 15, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
+                                        ### For each pw diff add: (norm diff behav, norm diff pop neur, day, ang, mag)
+                                        pooled_stats.append(np.array((dB, dN, day_ix, ang, mag), dtype=pooled_dtype))
+
+                                        diff_beh.append([dB, mag])
+                                        var_neur.append(np.trace(np.cov(spks[ix_com_global, :].T)))
+
+                                        ############################################################
+                                        ########## Get the global taht matches the subsample #######
+                                        ############################################################
+                                        ###### Get shuffles for movement 1 / movement 2
+                                        skip = False
+
+                                        ### Shuffle takes from teh global distribution Nmov number of point adn saves 
+                                        _, pv3 = scipy.stats.ttest_ind(push[np.ix_(ix_mc_all[ix_ok1], [3])], push[np.ix_(ix_mc_all2[ix_ok2], [3])])
+                                        _, pv5 = scipy.stats.ttest_ind(push[np.ix_(ix_mc_all[ix_ok1], [5])], push[np.ix_(ix_mc_all2[ix_ok2], [5])])
+                                        assert(pv3 > 0.05)
+                                        assert(pv5 > 0.05)
                                         
-                                        else: 
-                                            plt_top.append([dB, dN, 'darkblue', 10, mov, len(ix_ok1), len(ix_mc_all), mov2, len(ix_ok2), len(ix_mc_all2)])
-                                    else:
-                                        rgb = util_fcns.rgba2rgb(np.array([0., 0., 0., .5]))
-                                        #ax.plot(dB, dN, '.', color=rgb, markersize=5)
-                                        #ax.plot(dB, dN, '.', color=analysis_config.pref_colors_rgb[int(mov)%10], markersize=10)
-                                    D.append([dB, dN])
-                                    dB_vs_dN_command.append([dB, dN])
+                                        ### Ok now get a global distribution that match mov1 and mov2
+                                        #globix1, niter1 = distribution_match_global_mov(push[np.ix_(ix_mc_all[ix_ok1],  [3, 5])], push[np.ix_(ix_com_global, [3, 5])])
+                                        #globix2, niter2 = distribution_match_global_mov(push[np.ix_(ix_mc_all2[ix_ok2], [3, 5])], push[np.ix_(ix_com_global, [3, 5])])
+                                        
+                                        #Nglobal1 = len(globix1)
+                                        #Nglobal2 = len(globix2)
+                                        Nglobal = len(ix_com_global)
 
-                                    ### For each pw diff add: (norm diff behav, norm diff pop neur, day, ang, mag)
-                                    pooled_stats.append(np.array((dB, dN, day_ix, ang, mag), dtype=pooled_dtype))
+                                        shuffle_mean_FR[mov, mov2, 1] = []
+                                        shuffle_mean_FR[mov, mov2, 2] = []
 
-                                    diff_beh.append([dB, mag])
-                                    var_neur.append(np.trace(np.cov(spks[ix_com_global, :].T)))
+                                        for ishuff in range(nshuffs):
 
-                                    ############################################################
-                                    ########## Get the global taht matches the subsample #######
-                                    ############################################################
-                                    ###### Get shuffles for movement 1 / movement 2
-                                    skip = False
+                                            complete = False
+                                            cnt = 0
+                                            while not complete: 
+                                                #### Movement 1 / Movement 2 ####
+                                                ix_shuff1 = np.random.permutation(Nglobal)[:Nmov1]
+                                                ix_shuff2 = np.random.permutation(Nglobal)[:Nmov2]
 
-                                    ### Shuffle takes from teh global distribution Nmov number of point adn saves 
-                                    _, pv3 = scipy.stats.ttest_ind(push[np.ix_(ix_mc_all[ix_ok1], [3])], push[np.ix_(ix_mc_all2[ix_ok2], [3])])
-                                    _, pv5 = scipy.stats.ttest_ind(push[np.ix_(ix_mc_all[ix_ok1], [5])], push[np.ix_(ix_mc_all2[ix_ok2], [5])])
-                                    assert(pv3 > 0.05)
-                                    assert(pv5 > 0.05)
-                                    
-                                    ### Ok now get a global distribution that match mov1 and mov2
-                                    #globix1, niter1 = distribution_match_global_mov(push[np.ix_(ix_mc_all[ix_ok1],  [3, 5])], push[np.ix_(ix_com_global, [3, 5])])
-                                    #globix2, niter2 = distribution_match_global_mov(push[np.ix_(ix_mc_all2[ix_ok2], [3, 5])], push[np.ix_(ix_com_global, [3, 5])])
-                                    
-                                    #Nglobal1 = len(globix1)
-                                    #Nglobal2 = len(globix2)
-                                    Nglobal = len(ix_com_global)
+                                                #### But now make sure these distributions match: 
+                                                ix_ok1_1, ix_ok2_2, niter = distribution_match_mov_pairwise(push[np.ix_(ix_com_global[ix_shuff1], [3, 5])], 
+                                                                     push[np.ix_(ix_com_global[ix_shuff2], [3, 5])])
 
-                                    shuffle_mean_FR[mov, mov2, 1] = []
-                                    shuffle_mean_FR[mov, mov2, 2] = []
-
-                                    for ishuff in range(nshuffs):
-
-                                        complete = False
-                                        cnt = 0
-                                        while not complete: 
-                                            #### Movement 1 / Movement 2 ####
-                                            ix_shuff1 = np.random.permutation(Nglobal)[:Nmov1]
-                                            ix_shuff2 = np.random.permutation(Nglobal)[:Nmov2]
-
-                                            #### But now make sure these distributions match: 
-                                            ix_ok1_1, ix_ok2_2, niter = distribution_match_mov_pairwise(push[np.ix_(ix_com_global[ix_shuff1], [3, 5])], 
-                                                                 push[np.ix_(ix_com_global[ix_shuff2], [3, 5])])
-
-                                            if len(ix_ok1_1) >= min_commands and len(ix_ok2_2) >= min_commands:
-                                                complete = True
-                                                shuff1 = np.mean(spks[ix_com_global[ix_shuff1[ix_ok1_1]], :], axis=0)
-                                                shuff2 = np.mean(spks[ix_com_global[ix_shuff2[ix_ok2_2]], :], axis=0)
-                                         
-                                                ### difference in neural ####
-                                                shuff_dN = np.linalg.norm(shuff1 - shuff2)/nneur
-                                                
-                                                ### Add shuffle 
-                                                D_shuff[ishuff].append([dB, shuff_dN])
-                                            else:
-                                                cnt +=1
-                                                if cnt > 50:
+                                                if len(ix_ok1_1) >= min_commands and len(ix_ok2_2) >= min_commands:
                                                     complete = True
-                                                    print('Skipping')
+                                                    shuff1 = np.mean(spks[ix_com_global[ix_shuff1[ix_ok1_1]], :], axis=0)
+                                                    shuff2 = np.mean(spks[ix_com_global[ix_shuff2[ix_ok2_2]], :], axis=0)
+                                             
+                                                    ### difference in neural ####
+                                                    shuff_dN = np.linalg.norm(shuff1 - shuff2)/nneur
+                                                    
+                                                    ### Add shuffle 
+                                                    D_shuff[ishuff].append([dB, shuff_dN])
+                                                else:
+                                                    cnt +=1
+                                                    if cnt > 50:
+                                                        complete = True
+                                                        print('Skipping')
 
-                                        #if ishuff == 0:
-                                        #    ax.plot(dB, shuff_dN, 'r.')
+                                            #if ishuff == 0:
+                                            #    ax.plot(dB, shuff_dN, 'r.')
                         #### Get dB vs. dN --> regression 
                         dB_vs_dN_command = np.vstack((dB_vs_dN_command))
                         _, _, rv_command, pv, _ = scipy.stats.linregress(dB_vs_dN_command[:, 0], dB_vs_dN_command[:, 1])
@@ -1764,7 +1772,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise(min_bin_indices=0, nshuffs = 1, nco
                 slp,intc,rv,pv,_ = scipy.stats.linregress(np.array(plt_top[:, 0], dtype=float), np.array(plt_top[:, 1], dtype=float))
                 print('Example r = %.4f, slp = %.2f, intc = %.2f, pv = %.5f, N = %d'%(rv, slp, intc, pv, plt_top.shape[0]))
                 ix_sort = np.argsort(np.vstack((plt_top))[:, 0])
-                print(np.vstack((plt_top))[ix_sort, :])
+                #print(np.vstack((plt_top))[ix_sort, :])
             ### Plot dB vs. neural var; 
             diff_beh = np.vstack((diff_beh))
             #ax2[0].plot(diff_beh[:, 1], diff_beh[:, 0], 'k.')
