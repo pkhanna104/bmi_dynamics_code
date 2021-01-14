@@ -177,9 +177,13 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
             ### Get number of neruons you expect ####
             nneur = sub_spk_temp_all.shape[2]
             variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
-            
+        
             ### For each variable in the model: 
             for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
+
+                print(model_var_list_i)
+                print('Variables; ')
+                print(variables)
 
                 ### Unpack model_var_list; 
                 _, model_nm, _, _, _ = model_var_list_i; 
@@ -2043,7 +2047,7 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
     variables_list = []
     
     for im, (model_vars, model_nm, include_state, include_past_yt, include_fut_yt) in enumerate(model_var_list):
-        
+
         ### Include state --> 
         if include_state == 1:
             vel_model_nms, vel_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'vel')
@@ -2077,6 +2081,14 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
             vel_model_nms = []; 
             pos_model_nms = []; 
             tsk_model_nms, tsk_model_str = ['tsk', '']
+
+        elif include_state == 5:
+            vel_model_nms, vel_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'vel')
+            pos_model_nms, pos_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'pos')
+
+            ### Also include target_info: 
+            tg_model_nms, tg_model_str = generate_models_utils.lag_ix_2_var_nm(model_vars, 'tg')    
+            tsk_model_nms, tsk_model_str = ['mov', '']           
 
         elif include_state == 0:
             vel_model_nms = pos_model_nms = []; tg_model_nms = tsk_model_nms = []; 
@@ -2242,8 +2254,7 @@ def check_variables_order(variables, nneur):
     elif len(variables) == 0:
         print('Identity dynamcis')
     else:
-        import pdb; pdb.set_trace()
-        raise Exception('No spikes in this model')
+        print('No spikes in this model')
 
 #### Decoder UTILS ####
 def get_KG_decoder_grom(day_ix):
