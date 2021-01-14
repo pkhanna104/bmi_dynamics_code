@@ -1406,11 +1406,11 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
     axn_eg.set_xticks([]) #
     axpop_eg.set_xticks([]) #
 
-    axn_eg.set_ylim([-3, 20.])
+    axn_eg.set_ylim([-2.86, 20.])
     axn_eg2.set_ylim([-1, 7])
 
-    axpop_eg2.set_ylim([-.05, .35])
-    axpop_eg.set_ylim([-.1, .9])
+    axpop_eg2.set_ylim([-.037, .4])
+    axpop_eg.set_ylim([-.097, 1.05])
 
     axn_eg.set_ylabel('Pairwise Neuron Diff. (Hz)', color='darkblue')
     axn_eg2.set_ylabel('Pred. Pairwise Neuron Diff. (Hz)', rotation=90, color=analysis_config.blue_rgb)
@@ -1423,7 +1423,7 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
     for xia, axi in enumerate([axn_eg, axn_eg2, axpop_eg, axpop_eg2]):
         yl = axi.get_yticks()
         if xia == 3:
-            yl = np.array([0.0, .1, .2, .3, .4])
+            yl = np.array([0.0, .1, .2, .3])
             axi.set_yticks(yl)
         axi.set_yticklabels(np.round(yl, 1), rotation=90)
     
