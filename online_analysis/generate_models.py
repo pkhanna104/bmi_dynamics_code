@@ -24,7 +24,8 @@ import sklearn.decomposition as skdecomp
 
 ######### STEP 1 -- Get alpha value #########
 def sweep_alpha_all(run_alphas=True, model_set_number = 3,
-    fit_intercept = True, within_bin_shuffle = False):
+    fit_intercept = True, within_bin_shuffle = False,
+    normalize_ridge_vars = False):
 
     """ Sweep different alphas for Ridge regression --> see which one is best
     
@@ -48,12 +49,13 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
 
     ndays = dict(grom=9, jeev=4) # for testing only; 
 
-    for animal in ['jeev','grom']:
+    for animal in ['jeev', 'grom']:
         if run_alphas:
             h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, 
-                ndays = ndays[animal], fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle)
+                ndays = ndays[animal], fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle,
+                normalize_ridge_vars = normalize_ridge_vars)
         else:
-            raise Exception('deprecated')
+            #raise Exception('deprecated')
             if animal == 'grom':
                 h5_name = config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number
             elif animal == 'jeev':
@@ -69,12 +71,18 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
             pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'wb'))
         else:
             pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'wb'))
+        
+        if normalize_ridge_vars:
+            pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_ridge_norm.pkl' %model_set_number, 'wb'))
+        else:
+            pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'wb'))
     else:
         pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'wb'))
     print('Done with max_alphas_ridge')
 
 def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1, 
-    model_set_number = 1, ndays=None, fit_intercept = True, within_bin_shuffle = False):
+    model_set_number = 1, ndays=None, fit_intercept = True, within_bin_shuffle = False,
+    normalize_ridge_vars = False):
     """Summary
     
     Args:
@@ -199,7 +207,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
 
                         ### Model ###
                         model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha,
-                            fit_intercept = fit_intercept, model_nm= model_nm)
+                            fit_intercept = fit_intercept, model_nm= model_nm, normalize_vars = normalize_ridge_vars)
                         str_alpha = str(alpha)
                         str_alpha = str_alpha.replace('.','_')
                         name = model_nm + '_alpha_' + str_alpha
@@ -308,6 +316,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     animal='grom', 
     n_folds = 5, 
     norm_neur = False, 
+    normalize_ridge_vars = False,
     return_models = True, 
     model_set_number = 8, 
     ndays = None,
@@ -424,13 +433,17 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             dim_dict = pickle.load(open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims_lowD.pkl', 'rb'))
 
     else:
-        if fit_intercept:
-            if within_bin_shuffle:
-                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
-            else:   
-                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+        if model_set_number == 12 and normalize_ridge_vars:
+            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_ridge_norm.pkl' %model_set_number, 'rb'))
+
         else:
-            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'rb')); 
+            if fit_intercept:
+                if within_bin_shuffle:
+                    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
+                else:   
+                    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+            else:
+                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'rb')); 
 
     for obj in gc.get_objects():   # Browse through ALL objects
         if isinstance(obj, tables.File):   # Just HDF5 files
@@ -674,7 +687,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
                                 only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
                                 fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
-                                fit_intercept = fit_intercept, model_nm = model_nm, nneur=nneur)
+                                fit_intercept = fit_intercept, model_nm = model_nm, nneur=nneur, 
+                                normalize_vars = normalize_ridge_vars)
                         
                         save_model = True
 
@@ -830,6 +844,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     else:
         sff6 = ''
 
+    if normalize_ridge_vars:
+        sff7 = 'ridge_norm'
+    else: 
+        sff7 = ''
+
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
         pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
@@ -844,7 +863,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec%s%s.pkl' %(model_set_number, sff2, sff3), 'wb'))
         
         else:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5, sff7), 'wb'))
 
 def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full',
     nshuffs = 1000, shuff_type = 'beh_maint'):
@@ -1450,7 +1469,6 @@ def decompose_null_pot(spks, push, KG, KG_null_proj, KG_potent_orth):
 
     return null_spks, pot_spks
 
-
 ######## Possible STEP 2 -- fit the residuals #####
 def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 'vel_tm1', 'trg', 'tsk'],
     model = 'hist_1pos_0psh_0spksm_1_spksp_0', n_folds = 5, fit_intercept = True):
@@ -1643,7 +1661,8 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
     test_data=None, test_data2=None, train_data2=None,
     only_potent_predictor = False, KG_pot = None, 
     fit_task_specific_model_test_task_spec = False,
-    fit_intercept = True, model_nm=None, nneur=None):
+    fit_intercept = True, model_nm=None, nneur=None,
+    normalize_vars = False):
 
     ''' fit Ridge regression using alpha = ridge parameter
         only_potent_predictor --> multiply KG_pot -- which I think should be N x N by data;  '''
@@ -1655,21 +1674,12 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
         model_2 = Ridge(alpha=alpha, fit_intercept=fit_intercept)
 
         ### Aggregate the variable name
-        x = []
-        for vr in x_var_names:
-            x.append(data_temp_dict[vr][: , np.newaxis])
-        X = np.hstack((x))
-        assert(X.shape[1] == len(x_var_names))
-
-        ### Aggregate the training data 2 if needed: 
-        X2 = []
+        X, mnX, stX = aggX(data_temp_dict, x_var_names, normalize_vars)
         if train_data2 is not None: 
-            for vr in x_var_names:
-                X2.append(train_data2[vr][:, np.newaxis])
-            X2 = np.hstack((X2))
-
-            ### Append the training data 1 to training data 2
-            print('Appending training_data2 to training_data1')
+            X2, _, _ = aggX(train_data2, x_var_names, normalize_vars)
+            if normalize_vars:
+                print('Different norm values for X1 and X2 ')
+                import pdb; pdb.set_trace()
             X = np.vstack((X, X2))
 
         if only_potent_predictor:
@@ -1722,6 +1732,12 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
             model_2.nobs = X.shape[0]
             model_2.coef_names = x_var_names
 
+            ##### Add normalize: 
+            model_2.normalize_vars = normalize_vars
+            if normalize_vars:
+                model_2.normalize_vars_mn = mnX
+                model_2.normalize_vars_std = stX
+
             if 'psh_2' in model_nm:
                 ###### Conditioning needs a covariance; 
                 pred_x = model_2.predict(X)
@@ -1732,6 +1748,10 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
             return model_2
         
         else:
+            if normalize_vars:
+                print('havent dealt with usingnrom vars to predict yet')
+                import pdb; pdb.set_trace()
+
             y = []
             z = []
             
@@ -1753,6 +1773,58 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
                 pred2 = None
             
             return model_2, pred, pred2
+
+def aggX(data, var_nms, normalize_vars):
+    x = []; mn = []; std = []; 
+    for vr in var_nms:
+        if vr == 'mov':
+            mov_hot = getonehotvar(data[vr][:, np.newaxis])
+            x.append(mov_hot)
+            mn.append(np.zeros((mov_hot.shape[1])) )
+            std.append(np.ones((mov_hot.shape[1])) )
+        else:
+            if normalize_vars:
+                tmp = data[vr][: , np.newaxis]
+                
+                ### Avoid divide by zero errors
+                if np.std(tmp) == 0:
+                    sd = 1.
+                else:
+                    sd = np.std(tmp)
+                                
+                x.append((tmp - np.mean(tmp)) / sd)
+                mn.append(np.mean(tmp))
+                std.append(sd)
+                
+            else:
+                x.append(data_temp_dict[vr][: , np.newaxis])
+                mn.append(0)
+                std.append(1)
+
+    X = np.hstack((x))
+
+    if 'mov' in var_nms:
+        assert(X.shape[1] == len(var_nms) - 1 + 28)
+    else:
+        assert(X.shape[1] == len(var_nms))
+    assert(len(np.hstack((mn))) == X.shape[1])
+    assert(len(np.hstack((std)) == X.shape[1]))
+
+    return X, np.hstack((mn)), np.hstack((std))
+
+def getonehotvar(var):
+
+    CO = np.arange(8)
+    OBS = np.arange(10, 20)
+    OBS2 = np.arange(10, 20) + 0.1
+
+    cols = list(np.hstack((CO, OBS, OBS2)))
+    X = np.zeros((var.shape[0], len(cols)))
+    for iv, v in enumerate(np.squeeze(var)):
+        tmp = cols.index(v)
+        X[iv, tmp] = 1
+    assert(np.all(np.sum(X, axis=1)) == 1)
+    return X
 
 def fit_LDS(data_temp_dict, x_var_names, trl_train_ix,
     nEMiters = 30, n_dim_latent = 'full'):
