@@ -7,7 +7,7 @@ import matplotlib.transforms as transforms
 
 import analysis_config
 from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs
-from online_analysis import generalization_plots
+#from online_analysis import generalization_plots
 from util_fcns import get_color
 
 from sklearn.linear_model import Ridge
@@ -18,21 +18,53 @@ import pandas as pd
 import gc, copy
 
 ###### Supp Fig 4 plot #####
-def plot_suppfig4_R2_bars():
+def plot_suppfig4_R2_bars(ridge_norm = False, fraction = False, plts=False):
 
-    model_nms = ['hist_1pos_1psh_2spksm_0_spksp_0', 'hist_1pos_2psh_2spksm_0_spksp_0',
-        'hist_1pos_5psh_2spksm_0_spksp_0', 'hist_1pos_5psh_2spksm_1_spksp_0', 'cond']
+    model_nms = ['cond', 'hist_1pos_1psh_2spksm_0_spksp_0', 'hist_1pos_2psh_2spksm_0_spksp_0',
+        'hist_1pos_5psh_2spksm_0_spksp_0', 'hist_1pos_5psh_2spksm_1_spksp_0']
     plot_order = [1, 2, 3, 4, 0]
+    colors=dict()
+    dblue = np.array([46, 46, 146])/255.
+    colors = ['r', dblue, dblue, dblue, analysis_config.blue_rgb]
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+    ferr, axerr = plt.subplots(ncols = 2, figsize = (6, 3))
 
     for i_a, animal in enumerate(['grom', 'jeev']):
-        f, ax = plt.subplots()
+        f, ax = plt.subplots(figsize = (3, 3))    
+        pooled_stats = []
 
+        ### Save R2 ####
         R2 = {}
         for m in model_nms:
             R2[m] = []
 
+        ### Get the population plots ### 
+        SU_err = dict(hist_1pos_5psh_2spksm_0_spksp_0=[],
+                      hist_1pos_5psh_2spksm_1_spksp_0=[],
+                      cond = [])
+
+        POP_err = dict(hist_1pos_5psh_2spksm_0_spksp_0=[],
+                      hist_1pos_5psh_2spksm_1_spksp_0=[],
+                      cond = [])
+        
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            su_err_day = dict(hist_1pos_5psh_2spksm_0_spksp_0=[],
+                              hist_1pos_5psh_2spksm_1_spksp_0=[],
+                              cond = [])
+
+            pop_err_day = dict(hist_1pos_5psh_2spksm_0_spksp_0=[],
+                              hist_1pos_5psh_2spksm_1_spksp_0=[],
+                              cond = [])
             
+            print('Animal %s, Day %d' %(animal, day_ix))
+            true_Y, push, _, _, _, _, mov, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+            tm0, tm1 = generate_models.get_temp_spks_ix(dat['Data'])
+            true_Y = 10*true_Y[tm0, :]; 
+            command_bins = util_fcns.commands2bins([push[tm0, :]], mag_boundaries, animal, day_ix, 
+                                       vel_ix=[3, 5])[0]
+            mov = mov[tm0]
+
             for i_m, model_nm in enumerate(model_nms):
     
                 if model_nm == 'cond':
@@ -42,35 +74,161 @@ def plot_suppfig4_R2_bars():
                 
                 else:
                     ### Load data object ####
-                    dataObj = generalization_plots.DataExtract(animal, day_ix, model_nm = model_nm, 
-                        model_set_number = 12, nshuffs=0)
-                    dataObj.load()
-                    pred_Y = dataObj.pred_spks
-                    true_Y = dataObj.spks
-
+                    if i_m == 1 and day_ix == 0:
+                        print('Extracting')
+                        dataObj = generalization_plots.DataExtract(animal, day_ix, model_nm = model_nm, 
+                            model_set_number = 12, nshuffs=0, ridge_norm = ridge_norm)
+                        dataObj.load()
+                        
+                    pred_Y = 10*dataObj.model_dict[day_ix, model_nm]
                     assert(pred_Y.shape == true_Y.shape)
-
+                    
                 ### Get R2
                 R2[model_nm].append(util_fcns.get_R2(true_Y, pred_Y))
 
-        ### Plot 
-        for p in range(5):
-            ix = plot_order.index(p)
-            mod = model_nms[ix]
-            if p == 0: 
-                r2_ref = np.mean(R2[mod])
-            ax.bar(p, (np.mean(R2[mod]) - r2_ref )/ r2_ref, color=)
+                ## Command-mov activity error ###
+                if model_nm in SU_err.keys(): 
+                    if animal == 'grom' and day_ix == 0:
+                        fi, axi = plt.subplots()
+                        axi.set_title(model_nm)
+                        xcnt = 0
 
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
-            x_ = []
+                        tru_store = []
+                        pop_store = []
+                        mv_store = []
+
+                    for mag in range(4):
+                        for ang in range(8): 
+                            for mv in np.unique(mov):
+
+                                ix_keep = np.where((command_bins[:, 0] == mag) & (command_bins[:, 1] == ang) & (mov==mv))[0]
+
+                                if len(ix_keep) >= 15: 
+
+                                    tru = np.mean(true_Y[ix_keep, :], axis=0)
+                                    pred = np.mean(pred_Y[ix_keep, :], axis=0)
+
+                                    SU_err[model_nm].append(np.abs(tru-pred))
+                                    POP_err[model_nm].append(np.linalg.norm(tru-pred)/float(len(tru)))
+
+                                    su_err_day[model_nm].append(np.abs(tru-pred))
+                                    pop_err_day[model_nm].append(np.linalg.norm(tru-pred)/float(len(tru)))
+
+                                    if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
+                                        axi.plot(xcnt, tru[36], '.', color=util_fcns.get_color(int(mv)))
+                                        axi.plot(xcnt, pred[36], 's', color=util_fcns.get_color(int(mv)))
+                                        xcnt += 1
+                                        tru_store.append(tru)
+                                        pop_store.append(pred)
+                                        mv_store.append(mv)
+                    
+                    if animal == 'grom' and day_ix == 0:
+                        ### Make pouplation plot: 
+                        tru_store = np.vstack((tru_store))
+                        pop_store = np.vstack((pop_store))
+                        mv_store = np.hstack((mv_store))
+
+                        _, pc_model, _ = util_fcns.PCA(tru_store, 2, mean_subtract = True, skip_dim_assertion=True)
+                        trans_tru = util_fcns.dat2PC(tru_store, pc_model)
+                        trans_pred = util_fcns.dat2PC(pop_store, pc_model)
+
+                        #### Make the pca plot 
+                        fpca, axpca = plt.subplots(figsize=(3, 3))
+
+                        for i_m, m in enumerate(mv_store):
+                            axpca.plot(trans_tru[i_m, 0], trans_tru[i_m, 1], '.', color=util_fcns.get_color(int(m)))
+                            axpca.plot(trans_pred[i_m, 0], trans_pred[i_m, 1], 's', color=util_fcns.get_color(int(m)))
+
+                        axpca.set_ylabel('PC 2')
+                        axpca.set_xlabel('PC 1')
+                        fpca.tight_layout()
+
+        
+            #### Plot error for each day: 
+            for ie, err in enumerate([su_err_day, pop_err_day]):
+                mn_err0 = np.mean(np.hstack(( err['cond'])))
+                mn_err1 = np.mean(np.hstack(( err['hist_1pos_5psh_2spksm_0_spksp_0'])))
+                mn_err2 = np.mean(np.hstack(( err['hist_1pos_5psh_2spksm_1_spksp_0'])))
+                err = np.array([mn_err0, mn_err1, mn_err2])
+                err = (err - mn_err0)/mn_err0
+                axerr[ie].plot(np.array([0, 1, 2]) + 3*i_a, err, 'k-', linewidth=0.5)
+
+        if plts: 
+            pass
+        else:
             for p in range(5):
-                ix = plot_order.index(p)
-                mod = model_nms[ix]
-                x_.append(R2[mod][day_ix])
-            ax.plot(range(5), x_, 'k-', linewidth=.5)
+                if p == 0: 
+                    r2_ref = np.mean(R2[model_nms[p]])
+                if fraction:
+                    ax.bar(p, (np.mean(R2[model_nms[p]]) - r2_ref )/ r2_ref, color=colors[p])
+                else:
+                    ax.bar(p, np.mean(R2[model_nms[p]]), color=colors[p])
+            
+            for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+                x_ = []
+                for p in range(5):
+                    if p == 0:
+                        r2r = R2[model_nms[p]][day_ix]
 
+                    if fraction:
+                        x_.append((R2[model_nms[p]][day_ix] - r2r) / r2r)
+                    else:
+                        x_.append(R2[model_nms[p]][day_ix])
+                ax.plot(range(5), x_, 'k-', linewidth=.5)
+
+            if fraction:
+                ax.set_ylabel('Frac. Increase in $R^2$')
+            else:
+                ax.set_ylabel('$R^2$')
+
+            ax.set_xticks([])
+
+            if fraction:    
+                print('R2 relative: mn = %.3f, std = %.3f' %(np.mean(R2['cond']), np.std(R2['cond'])))
+
+            #### Individual animal stats ###
+            stat, pv = scipy.stats.ttest_rel(R2['hist_1pos_5psh_2spksm_0_spksp_0'], R2['hist_1pos_5psh_2spksm_1_spksp_0'])
+            print('Animal %s, N = %d, T = %.3f, pv = '%(animal, len(R2['hist_1pos_5psh_2spksm_0_spksp_0']), stat))
+            print(pv)
+            #######################
+
+            ### Print SU stats ###
+            stat, pv = scipy.stats.ttest_rel(np.hstack((SU_err['hist_1pos_5psh_2spksm_0_spksp_0'])),
+                np.hstack((SU_err['hist_1pos_5psh_2spksm_1_spksp_0'])))
+            N = len(np.hstack((SU_err['hist_1pos_5psh_2spksm_0_spksp_0'])))
+            print('SU error: Animal %s, N = %d, T = %.3f, pv = '%(animal, N, stat))
+            print(pv)
+
+            stat, pv = scipy.stats.ttest_rel(np.hstack((POP_err['hist_1pos_5psh_2spksm_0_spksp_0'])),
+                np.hstack((POP_err['hist_1pos_5psh_2spksm_1_spksp_0'])))
+            N = len(np.hstack((POP_err['hist_1pos_5psh_2spksm_0_spksp_0'])))
+            print('POP error: Animal %s, N = %d, T = %.3f, pv = '%(animal, N, stat))
+            print(pv)
+            
+        ##### 
+        f.tight_layout()
+        util_fcns.savefig(f, '%s_r2_buildup_frac%s'%(animal, str(fraction)))
+
+        for ie, err in enumerate([SU_err, POP_err]):
+            mn_err0 = np.mean(np.hstack((err['cond'])))
+            mn_err1 = np.mean(np.hstack(( err['hist_1pos_5psh_2spksm_0_spksp_0'])))
+            mn_err2 = np.mean(np.hstack(( err['hist_1pos_5psh_2spksm_1_spksp_0'])))
+            err1 = np.array([mn_err0, mn_err1, mn_err2])
+            err1 = (err1 - mn_err0)/mn_err0
+            print('Animal %s, Cond err %.3f' %(animal, mn_err0))
+            axerr[ie].bar(3*i_a, err1[0], color='r')
+            axerr[ie].bar(1+ 3*i_a, err1[1], color=dblue)
+            axerr[ie].bar(2 + 3*i_a, err1[2], color=analysis_config.blue_rgb)
     
-                #
+    for axe in axerr:
+        axe.set_xticks([0.5, 2.5])
+        axe.set_xticklabels(['G', 'J'])
+    axerr[0].set_ylabel("Activity Error (Hz)")
+    axerr[1].set_ylabel("Pop. Dist. Error")
+    #axerr[0].set_ylim([0.6, 1.6])
+    #axerr[1].set_ylim([.05, .4])
+    ferr.tight_layout()
+    util_fcns.savefig(ferr, 'SU_POP_err_buildup')
 
 ###### Fig 4C r2 plot ########
 def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
