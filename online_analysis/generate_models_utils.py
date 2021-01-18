@@ -1460,6 +1460,7 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
 
     ##### Ridge Models ########
     if type(model_v) is sklearn.linear_model.ridge.Ridge or type(model_v[0]) is sklearn.linear_model.ridge.Ridge:
+        
         # CLF/RIDGE models: 
         model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
             KG, fit_task_specific_model_test_task_spec, fit_intercept = fit_intercept, model_nm = model_nm)
@@ -1536,6 +1537,60 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
 
     return h5file, model_v, predictions
 
+def aggX_pred(data, var_nms, model):
+
+    x = []; 
+    for vr in var_nms:
+        if vr == 'mov':
+            mov_hot = getonehotvar(data[vr][:, np.newaxis])
+            x.append(mov_hot)
+        else:
+            x.append(data[vr][: , np.newaxis])
+
+    X = np.hstack((x))
+
+    if 'mov' in var_nms:
+        assert(X.shape[1] == len(var_nms) - 1 + 28)
+    else:
+        assert(X.shape[1] == len(var_nms))
+
+    norm = False 
+    if hasattr(model, 'normalize_vars'):
+        if model.normalize_vars: 
+            norm = True
+
+    if norm: 
+        mn = model.normalize_vars_mn 
+        std = model.normalize_vars_std
+        assert(len(mn) == X.shape[1])
+        assert(len(std) == X.shape[1])
+
+        X = X - mn[np.newaxis, :]
+        X = X / std[np.newaxis, :]
+
+    return X
+
+
+
+    ##### Add normalize: 
+    model_2.normalize_vars = normalize_vars
+    if normalize_vars:
+        model_2.normalize_vars_mn = mnX
+
+def getonehotvar(var):
+
+    CO = np.arange(8)
+    OBS = np.arange(10, 20)
+    OBS2 = np.arange(10, 20) + 0.1
+
+    cols = list(np.hstack((CO, OBS, OBS2)))
+    X = np.zeros((var.shape[0], len(cols)))
+    for iv, v in enumerate(np.squeeze(var)):
+        tmp = cols.index(v)
+        X[iv, tmp] = 1
+    assert(np.all(np.sum(X, axis=1)) == 1)
+    return X
+
 def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
     KG_pot = None, KG = None, fit_task_specific_model_test_task_spec = False, testY = None, fit_intercept = True,
     model_nm = None):
@@ -1544,11 +1599,7 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
     # model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
     #     fit_task_specific_model_test_task_spec)
     
-    x_test = [];
-
-    for vr in x_var_names:
-        x_test.append(test_data[vr][: , np.newaxis])
-    X = np.mat(np.hstack((x_test)))
+    X = aggX_pred(test_data, x_var_names, model)
     
     if testY is None:
         Y = np.mat(test_data[predict_key])
@@ -1556,7 +1607,11 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
         Y = np.mat(testY.copy())
 
     assert(X.shape[0] == Y.shape[0])
-    assert(X.shape[1] == len(x_var_names))
+    
+    if 'mov' in x_var_names:
+        assert(X.shape[1] == len(x_var_names) - 1 + 28)
+    else:
+        assert(X.shape[1] == len(x_var_names))
 
     if fit_task_specific_model_test_task_spec:
         ix0 = np.nonzero(test_data['tsk'] == 0)[0]
@@ -1580,8 +1635,6 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
         ### Reduce size of HDF file by removing; 
         #model.X = X0; 
         #model.y = Y0; 
-
-    #mport pdb; pdb.set_trace()
 
     ### From training; 
     # This is added in add_ridge
