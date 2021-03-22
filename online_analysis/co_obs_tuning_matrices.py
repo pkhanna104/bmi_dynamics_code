@@ -18,7 +18,7 @@ import scipy.io as sio
 import sklearn.decomposition as skdecomp
 import tables
 
-import analysis_config
+import analysis_config, util_fcns
 
 # gbins = np.linspace(-3., 3., 20)
 # jbins = np.linspace(-9., 9., 40)
@@ -1057,15 +1057,18 @@ def extract_radial_bin_edges_grom_jeev(make_last_bin_95th = False):
     input_type2 = {}
     input_type2['grom'] = analysis_config.data_params['grom_input_type']
     input_type2['jeev'] = analysis_config.data_params['jeev_input_type']
+    input_type2['home'] = analysis_config.data_params['home_input_type']
 
     boundaries = {}
 
-    for animal in ['grom', 'jeev']:
+    for animal in ['home', 'grom', 'jeev']:
         inp = input_type2[animal]
 
         for i_d, day in enumerate(inp):
             # For each day get all commands:
             day_dict = []
+            if animal == 'home':
+                day = [day]
             for i_t, task_te in enumerate(day):
             
                 # For each task entry
@@ -1096,9 +1099,9 @@ def extract_radial_bin_edges_grom_jeev(make_last_bin_95th = False):
     return filename, boundaries
 
 def get_spks(animal, te, keep_trls_sep = False):
-    if animal == 'grom':
+    if animal in ['grom', 'home']:
 
-        pref = analysis_config.config['grom_pref']
+        pref = analysis_config.config['%s_pref'%animal]
 
         co_obs_dict = pickle.load(open(pref+'co_obs_file_dict.pkl'))
         hdf = co_obs_dict[te, 'hdf']
@@ -1118,16 +1121,20 @@ def get_spks(animal, te, keep_trls_sep = False):
 
         # decoder_all is now KG*spks
         # decoder_all units (aka 'neural push') is in cm / sec
-        bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all = pa.extract_trials_all(hdf, rew_ix, 
-            drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
-            reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, **dict(kalman_gain=KG))
+        if animal == 'home':
+            update_bmi_ix = util_fcns.get_update_ix_homer(hdf)
+        else:
+            update_bmi_ix = None
+
+        bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all = pa.extract_trials_all(hdf, rew_ix, update_bmi_ix=update_bmi_ix,
+            drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True, animal=animal,
+            reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, **dict(kalman_gain=KG, dec=decoder))
 
         print('# unique trials %d' %(len(np.unique(trial_ix_all))))
         for trg in np.unique(targ_ix):
 
             trg_ix = np.nonzero(targ_ix == trg)[0]
             print('Targ %d, N = %d' %(trg, len(np.unique(trial_ix_all[trg_ix]))))
-
 
     elif animal == 'jeev':
         bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, unbinned, exclude = ppf_pa.get_jeev_trials_from_task_data(te, binsize=.1)
@@ -1138,5 +1145,32 @@ def get_spks(animal, te, keep_trls_sep = False):
         #Squish all bin_spk together:
         return np.vstack((decoder_all))
 
+def make_co_obs_dict_homer():
+    '''
+    assume db.sql is from lynx
+    '''
+    pref = analysis_config.config['home_pref']
+    homer_inputs = np.hstack(( analysis_config.data_params['home_input_type'] ))
+
+    from db import dbfunctions as dbfn 
+    co_obs_dict = {}
+
+    for te in homer_inputs:
+        task = dbfn.TaskEntry(te)
+
+        co_obs_dict[te, 'hdf'] = task.hdf_filename
+        co_obs_dict[te, 'dec'] = task.decoder_filename
+
+    #### Check decoders are teh same 
+    for i_d, day in enumerate(analysis_config.data_params['home_input_type']):
+        for i, te in enumerate(day): 
+            if i == 0: 
+                te0 = te
+                dec = co_obs_dict[te, 'dec']
+            else:
+                assert(dec==co_obs_dict[te, 'dec'])
+                print('Checks out %d == %d' %(te0, te))
+
+    pickle.dump(co_obs_dict, open(pref + 'co_obs_file_dict.pkl', 'wb'))
 
 
