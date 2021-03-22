@@ -30,43 +30,59 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
                 model_set_number = model_set_number, nshuffs=nshuffs, nshuffs_roll=nshuffs_roll)
             dataObj.load()
             dataObj.load_null_roll_pot_shuff()
+            valid_ix = dataObj.valid_analysis_ix
+            print('ix valid: %d' %(len(valid_ix)))
+
+            ### Get analysis for the push --> eliminate transitions to and from command bin 4; 
+            com_rolled = dataObj.rolled_push_comm_bins
+            com_rolled_tm1 = dataObj.rolled_push_comm_bins_tm1
+
+            ### Valid ix 
+            valid_ix_rolled = np.nonzero(np.logical_and(com_rolled[:, 0] < 4, com_rolled_tm1[:, 0] < 4))[0]
+            print('ix valid: %d' %(len(valid_ix_rolled)))
+            
+            ### Intersecton of these: 
+            valid_ix_rolled = np.array([i for i in valid_ix_rolled if i in valid_ix])
+            print('ix valid: %d' %(len(valid_ix_rolled)))
+            
 
             if plot_action:
                 KG = util_fcns.get_decoder(animal, day_ix)
 
-                r2_true = util_fcns.get_R2(np.dot(KG, dataObj.spks.T).T, 
-                    np.dot(KG, dataObj.pred_spks.T).T)
+                r2_true = util_fcns.get_R2(np.dot(KG, dataObj.spks[valid_ix, :].T).T, 
+                    np.dot(KG, dataObj.pred_spks[valid_ix, :].T).T)
                 
                 r2_shuff = []
                 for n in range(nshuffs):
-                    r2_shuff.append(util_fcns.get_R2(np.dot(KG, dataObj.spks.T).T, 
-                        np.dot(KG, dataObj.pred_spks_shuffle[:, :, n].T).T))
+                    r2_shuff.append(util_fcns.get_R2(np.dot(KG, dataObj.spks[valid_ix, :].T).T, 
+                        np.dot(KG, dataObj.pred_spks_shuffle[valid_ix, :, n].T).T))
 
                 r2_null_roll = []
-                true_command_bins = util_fcns.commands2bins([dataObj.push[:, [3, 5]]], mag_boundaries, animal, day_ix, 
+                true_command_bins = util_fcns.commands2bins([dataObj.push[np.ix_(valid_ix, [3, 5])]], mag_boundaries, animal, day_ix, 
                     vel_ix = [0, 1], ndiv=8)[0]
 
                 for n in range(nshuffs_roll):
-                    shuff_command_bins = util_fcns.commands2bins([0.1*np.dot(KG, dataObj.null_roll_pot_beh_true[:, :, n].T).T],
+                    shuff_command_bins = util_fcns.commands2bins([0.1*np.dot(KG, dataObj.null_roll_pot_beh_true[valid_ix, :, n].T).T],
                         mag_boundaries, animal, day_ix, vel_ix = [0, 1], ndiv=8)[0]
 
                     if animal == 'grom':
                         assert(np.allclose(true_command_bins, shuff_command_bins))
 
-                    r2_null_roll.append(util_fcns.get_R2(np.dot(KG, dataObj.null_roll_pot_beh_true[:, :, n].T).T, 
-                        np.dot(KG, dataObj.null_roll_pot_beh_pred[:, :, n].T).T))
+                    r2_null_roll.append(util_fcns.get_R2(np.dot(KG, dataObj.null_roll_pot_beh_true[valid_ix_rolled, :, n].T).T, 
+                        np.dot(KG, dataObj.null_roll_pot_beh_pred[valid_ix_rolled, :, n].T).T))
             else:
                 ### get predictions ###
-                r2_true = util_fcns.get_R2(dataObj.spks, dataObj.pred_spks)
+                r2_true = util_fcns.get_R2(dataObj.spks[valid_ix, :], dataObj.pred_spks[valid_ix, :])
 
                 r2_shuff = []
                 for n in range(nshuffs):
-                    r2_shuff.append(util_fcns.get_R2(dataObj.spks, dataObj.pred_spks_shuffle[:, :, n]))
+                    r2_shuff.append(util_fcns.get_R2(dataObj.spks[valid_ix, :], 
+                        dataObj.pred_spks_shuffle[valid_ix, :, n]))
 
                 r2_null_roll = []
                 for n in range(nshuffs_roll):
-                    r2_null_roll.append(util_fcns.get_R2(dataObj.null_roll_pot_beh_true[:, :, n], 
-                        dataObj.null_roll_pot_beh_pred[:, :, n]))
+                    r2_null_roll.append(util_fcns.get_R2(dataObj.null_roll_pot_beh_true[valid_ix_rolled, :, n], 
+                        dataObj.null_roll_pot_beh_pred[valid_ix_rolled, :, n]))
 
             ### Plot the r2 ###
             xpos = i_a*10 + day_ix
@@ -77,7 +93,7 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
 
             beige = np.array([196, 154, 108])/255.
             util_fcns.draw_plot(xpos, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
-            util_fcns.draw_plot(xpos, r2_null_roll, beige, np.array([1., 1., 1., 0.]), ax)
+            util_fcns.draw_plot(xpos, r2_null_roll, 'deeppink', np.array([1., 1., 1., 0.]), ax)
             #print('pink shuffle mean r2 act %s %s %d = %.3f' %(str(plot_action), animal, day_ix, np.mean(r2_null_roll)))
 
             _, pv = scipy.stats.ks_2samp(r2_shuff, r2_null_roll)
