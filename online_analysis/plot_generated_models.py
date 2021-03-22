@@ -2585,6 +2585,7 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
         if pot_shuff:
             null_shuff_ix = data_file[shuffle, 'null_roll']
             pot_shuff_ix = data_file[shuffle]
+
         else:
             null_shuff_ix = data_file[shuffle]
 
@@ -2593,7 +2594,7 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
             pot_shuff_ix = np.arange(nT)
 
         if pot_shuff:
-            sub_spikes, sub_spikes_tm1, sub_push, tm0, tm1 = generate_models.get_temp_spks_null_roll_pot_shuff(data_file['Data'], pot_shuff_ix, null_shuff_ix)
+            sub_spikes, sub_spikes_tm1, sub_push, tm0, tm1, ix_roll = generate_models.get_temp_spks_null_roll_pot_shuff(data_file['Data'], pot_shuff_ix, null_shuff_ix)
         
             #### Split up #####
             shuff_com_bins_disc = util_fcns.commands2bins([sub_push], mag_boundaries, animal, day, vel_ix = [3, 5], ndiv=8)[0]
@@ -2605,7 +2606,7 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
             
         else:
             #### get the spikes and previous spikes with roll applied ###
-            sub_spikes, sub_spikes_tm1, sub_push, tm0, tm1 = generate_models.get_temp_spks_null_pot_roll(data_file['Data'], null_shuff_ix)
+            sub_spikes, sub_spikes_tm1, sub_push, tm0, tm1, ix_roll = generate_models.get_temp_spks_null_pot_roll(data_file['Data'], null_shuff_ix)
         
             ### Makes ure sub_push matches: 
             assert(np.allclose(sub_push, full_push[tm0, :]))
@@ -2720,7 +2721,7 @@ def get_shuffled_data_pred_null_roll(animal, day, model_name, nshuffs = 10, test
     
     assert(np.sum(np.isnan(pred_Y)) == 0)
     assert(np.sum(np.isnan(true_Y)) == 0)
-    return pred_Y, true_Y
+    return pred_Y, true_Y, sub_push, ix_roll
 
 def get_shuffled_mean_maint(animal, day, model_name, nshuffs = 10, testing_mode = False):
     return get_shuffled_data_v2(animal, day, model_name, nshuffs = nshuffs, testing_mode = False, mean_maint = True)
