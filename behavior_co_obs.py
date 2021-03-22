@@ -122,6 +122,8 @@ def bin_vec_data(vec_data, bin_dic):
     """
     input: vec_data, bin_dic
     output: bin_result, hist_result
+    bin_result: returns the bin each data point falls in
+    hist_result: returns the histogram of bin counts 
 
     assumes: 
     vec_data is num_observations X num_dim
@@ -1979,13 +1981,14 @@ def dlqr(A, B, Q, R, Q_f=None, T=np.inf, max_iter=1000, eps=1e-10, dtype=np.mat)
         Q_f = Q
 
     if T < np.inf: # Finite horizon
-        K = [None]*T
+        K = [None]*(T) #T, previous code from suraj
         P = Q_f
-        for t in range(0,T-1)[::-1]:       
+        for t in range(0,T-1)[::-1]:
             K[t] = -((R + B.T*P*B).I * B.T*P*A)
             P = Q + A.T*P*A +A.T*P*B*K[t]
             # K[t] = (R + B.T*P*B).I * B.T*P*A
             # P = Q + A.T*P*A -A.T*P*B*K[t]                 
+
         return dtype(K)
     else: # Infinite horizon
         P = Q_f
@@ -2210,7 +2213,7 @@ def def_nk_AB(An, bn, Kn, F, num_neurons, num_kin):
     #A_bot: [Kn, F]
     #
     #Assemble A matrices with zero-ed out neural dynamics and neural offset 
-    A_list = ['n_do', 'n_o', 'n_null']
+    A_list = ['n_do', 'n_o', 'n_null', 'n_d']
     A_dic = {}
 
     num_kin = 4
@@ -2229,13 +2232,23 @@ def def_nk_AB(An, bn, Kn, F, num_neurons, num_kin):
     A_top_n_null = np.hstack((n_z, n_k_z, no_z))
     A_dic['n_null'] = np.vstack((A_top_n_null, A_bot))
 
+    A_top_n_d = np.hstack((An, n_k_z, no_z))
+    A_dic['n_d'] = np.vstack((A_top_n_d, A_bot))    
+
+    n_init_dic = {}
+    for m in A_list:
+        if (m == 'n_null') or (m == 'n_d'):
+            n_init_dic[m] = np.zeros(num_neurons)
+        if (m == 'n_do') or (m == 'n_o'):
+            n_init_dic[m] = np.array(bn).squeeze()
+
     #B matrix of inputs to neural dynamics:
     #B_top = eye(num_neurons)
     #B_bot = 0
     num_non_n = num_kin+1
     B = np.vstack((np.eye(num_neurons), np.zeros((num_non_n, num_neurons))))
 
-    return A_list, A_dic, B
+    return A_list, A_dic, B, n_init_dic
 
 
 
@@ -2266,9 +2279,10 @@ def def_nk_lqr_models(inf_horizon, T, model_list, A_dic, B, Q, Q_f, R):
             lqr_m[k]['K'] = K         
     return lqr_m
 
-def def_move_models(move_horizon, model_list, A_dic, B, Q, R, Q_f, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed,\
+def def_move_models(move_horizon, model_list, A_dic, B, Q, R, Q_f, target_list, task_list, center, target_pos, obs_pos, n_init_dic, obs_margin, waypoint_speed,\
     state_label, state_dim, input_label, num_neurons, hold_req=2, target_r=1.7):
     """
+    Calculates LQR simulation without noise
     (set move_horizon to be odd, so co and obs movements can be the same length)
     for each movement model: 
         state_init
@@ -2281,14 +2295,15 @@ def def_move_models(move_horizon, model_list, A_dic, B, Q, R, Q_f, target_list, 
 
     move_lqr = {}
     #--------------------------------------------------------------------
-    #Initial State:
-    state_init = np.zeros(state_dim)
-    state_init[:num_neurons] = n_init #initialize neural activity
-    state_init[num_neurons:num_neurons+2] = center #initial position
-    state_init[-1] = 1 #offset
-    state_init = np.mat(state_init).T
-
     for m in model_list:
+        #Initial State:
+        n_init = n_init_dic[m]
+        state_init = np.zeros(state_dim)
+        state_init[:num_neurons] = n_init #initialize neural activity
+        state_init[num_neurons:num_neurons+2] = center #initial position
+        state_init[-1] = 1 #offset
+        state_init = np.mat(state_init).T
+
         for target in target_list:
             T_pos = np.squeeze(target_pos[target,:])
             T_theta = np.angle(T_pos[0]-center[0] + 1j*(T_pos[1]-center[1]))
@@ -2618,7 +2633,7 @@ def lqr_sim_nk_noise(state_noise_mean, state_noise_cov, A_list, B, K_list, state
     # return u_list, state_list, state_e_list
 
 def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f,\
-    noise_dic, target_list, task_list, center, target_pos, obs_pos, n_init, obs_margin, waypoint_speed,\
+    noise_dic, target_list, task_list, center, target_pos, obs_pos, n_init_dic, obs_margin, waypoint_speed,\
     state_label, state_dim, input_label, num_neurons, hold_req=2, target_r=1.7):
     """
     (set move_horizon to be odd, so co and obs movements can be the same length)
@@ -2633,16 +2648,17 @@ def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f
 
     move_lqr = {}
     #--------------------------------------------------------------------
-    #Initial State:
-    state_init = np.zeros(state_dim)
-    state_init[:num_neurons] = n_init #initialize neural activity
-    state_init[num_neurons:num_neurons+2] = center #initial position
-    state_init[-1] = 1 #offset
-    state_init = np.mat(state_init).T
-
     for m in model_list:
         state_noise_mean = noise_dic[m, 'state_noise_mean']
         state_noise_cov = noise_dic[m, 'state_noise_cov']
+
+        #Initial State:
+        state_init = np.zeros(state_dim)
+        state_init[:num_neurons] = n_init_dic[m] #initialize neural activity
+        state_init[num_neurons:num_neurons+2] = center #initial position
+        state_init[-1] = 1 #offset
+        state_init = np.mat(state_init).T
+
         for target in target_list:
             T_pos = np.squeeze(target_pos[target,:])
             T_theta = np.angle(T_pos[0]-center[0] + 1j*(T_pos[1]-center[1]))
@@ -2712,3 +2728,4 @@ def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f
                 move_lqr[target, task, m]['move_len'] = move_len
                 move_lqr[target, task, m]['sim_len'] = sim_len
     return move_lqr
+
