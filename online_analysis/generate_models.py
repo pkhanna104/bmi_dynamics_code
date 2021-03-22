@@ -1047,7 +1047,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
 
                     ##### Shuffles and get trial starts #####
                     if shuff_type == 'null_roll':
-                        sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks_null_pot_roll(Data2, Shuff_ix[shuffle])
+                        sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix, _ = get_temp_spks_null_pot_roll(Data2, Shuff_ix[shuffle])
                     
                     elif shuff_type == 'null_roll_pot_beh_maint':
                         sub_spikes, sub_spikes_tm1, sub_push, tm0ix, tm1ix = get_temp_spks_null_roll_pot_shuff(Data2, Shuff_ix[shuffle], Shuff_ix[shuffle, 'null_roll'])
@@ -1375,7 +1375,7 @@ def get_temp_spks_null_roll_pot_shuff(Data2, shuff_ix, shuff_int_roll):
         assert(len(iy)/float(diff_c.shape[0]) < .1)
         #assert(np.allclose(command_bins_kg_shuff_spks, command_bins_kg_shuff_spks2))
         
-    return spks_shuff_tm0, spks_shuff_tm1, push_shuff, spks_keep, spks_keep - 1
+    return spks_shuff_tm0, spks_shuff_tm1, push_shuff, spks_keep, spks_keep - 1, ix_roll
 
 def get_temp_spks_null_pot_roll(Data2, shuff_ix):
     """
@@ -1444,7 +1444,7 @@ def get_temp_spks_null_pot_roll(Data2, shuff_ix):
 
     push_shuff = Data2['push'][spks_keep, :]
 
-    return spks_shuff_tm0, spks_shuff_tm1, push_shuff, spks_keep, spks_keep - 1
+    return spks_shuff_tm0, spks_shuff_tm1, push_shuff, spks_keep, spks_keep - 1, ix_roll
 
 def decompose_null_pot(spks, push, KG, KG_null_proj, KG_potent_orth):
     '''
