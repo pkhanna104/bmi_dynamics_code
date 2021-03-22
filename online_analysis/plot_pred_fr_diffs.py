@@ -7,7 +7,7 @@ import matplotlib.transforms as transforms
 
 import analysis_config
 from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs
-#from online_analysis import generalization_plots
+from online_analysis import generalization_plots
 from util_fcns import get_color
 
 from sklearn.linear_model import Ridge
@@ -252,13 +252,13 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
                 model_set_number = 6, nshuffs=nshuffs)
             dataObj.load()
             print('starting %s, day %d' %(animal, i_d))
-            
+            valid_ix = dataObj.valid_analysis_ix
+
             spks = dataObj.spks
-            nT = spks.shape[0]
 
             ### Condition on push 
             cond = 10*plot_generated_models.cond_act_on_psh(animal, i_d)
-            r2_cond = util_fcns.get_R2(spks, cond)
+            r2_cond = util_fcns.get_R2(spks[valid_ix, :], cond[valid_ix, :])
 
             pred = dataObj.pred_spks 
             assert(pred.shape == spks.shape)
@@ -269,7 +269,7 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
             if cond_on_act:
                 assert(np.allclose(np.dot(KG, cond.T).T, np.dot(KG, pred.T).T))
 
-            r2_pred = util_fcns.get_R2(spks, pred)
+            r2_pred = util_fcns.get_R2(spks[valid_ix, :], pred[valid_ix, :])
 
             #### Get shuffled 
             r2_shuff = []
@@ -290,7 +290,7 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
                 #     import pdb; pdb.set_trace()
 
                 shuffled = dataObj.pred_spks_shuffle[:, :, i]
-                r2_shuff.append(util_fcns.get_R2(spks, shuffled))
+                r2_shuff.append(util_fcns.get_R2(spks[valid_ix, :], shuffled[valid_ix, :]))
 
             ax_r2.plot(ia*10 + i_d, r2_pred, '.', color=analysis_config.blue_rgb, markersize=10)
             ax_r2.plot(ia*10 + i_d+.125, r2_cond, '^', color='gray', markersize=10)
@@ -309,8 +309,8 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
         mn_shuff = np.mean(np.vstack(([d[1] for d in pooled_shuff])), axis=0)
         assert(len(mn_shuff) == nshuffs)
         ix = np.nonzero(mn_r2 <= mn_shuff)[0]
-        print('POOLED: Animal %s, Day %d, pv %5f, r2_pred %.3f, mn r2_shuff%.3f, 95th r2_shuff%.3f' %(animal, i_d, float(len(ix))/float(nshuffs),
-            mn_r2, np.mean(mn_shuff), np.percentile(mn_shuff, 95)))
+        print('POOLED: Animal %s, Day %d, pv %5f, r2_pred %.3f, mn r2_shuff%.3f, 95th r2_shuff%.3f' %(animal, 
+            i_d, float(len(ix))/float(nshuffs), mn_r2, np.mean(mn_shuff), np.percentile(mn_shuff, 95)))
 
     ax_r2.set_ylabel('$R^2$')
     ax_r2.set_xlim([-1, 14])
