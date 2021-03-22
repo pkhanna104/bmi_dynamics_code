@@ -25,10 +25,37 @@ def test():
 
     plot_traj(R)
 
+def test_homer(): 
+    tmbu = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/home2020/'
+    hdf = tables.openFile(tmbu+'home20210312_06_te3481.hdf')
+    dec = pickle.load(open(tmbu+'home20210312_04_test03121410.pkl'))
+
+    R = RerunDecoding(hdf, dec, task='bmi_resetting', center = np.array([5., 0., -1.]))
+    sc = hdf.root.task[:]['spike_counts']
+    R.run_decoder(sc, False, cutoff=50000)
+    plot_traj(R, it_cutoff=50000, monk='home', )
+
+    for i in [0, 2]:
+        ### Pos ###
+        slp_pos,offs_pos,rv_pos,_,_= scipy.stats.linregress(np.squeeze(R.cursor_pos[:, i]), R.dec_state_mn['all'][:, i])
+        ### Vel ###
+        slp_vel,offs_vel,rv_vel,_,_= scipy.stats.linregress(np.squeeze(R.cursor_vel[:, i]), R.dec_state_mn['all'][:, i+3])
+        
+        print('Pos %d, rv=%.10f, slp=%.5f, offs=%.5f'%(i, rv_pos, slp_pos, offs_pos))
+        print('Vel %d, rv=%.10f, slp=%.5f, offs=%.5f'%(i, rv_vel, slp_vel, offs_vel))
+        print('')
+        print('')
+
+
 class RerunDecoding(object):
     
     def __init__(self, hdf, decoder, task='bmi_multi', drives_neurons = 0, center = np.array([0., 0., 0.])):
         self.center = center
+        if np.sum(np.abs(self.center))>0:
+            self.monk = 'home'
+        else:
+            self.monk = 'grom'
+
         try:
             self.cursor_pos = hdf.root.task[:]['cursor_pos']
         except:
@@ -128,7 +155,14 @@ class RerunDecoding(object):
             
             if t in self.task_msgs[:]['time']:
                 ix = np.nonzero(self.task_msgs[:]['time']==t)[0]
-                self.state = self.task_msgs[ix[0]]['msg']
+                if len(ix) > 1:
+                    if 'premove' in self.task_msgs[ix]['msg']:
+                        self.state = 'premove'
+
+                    else:
+                        self.state = self.task_msgs[ix[0]]['msg']
+                else:
+                    self.state = self.task_msgs[ix[0]]['msg']
 
             if t in self.update_bmi_ix:
                 cnt += 1
@@ -143,12 +177,19 @@ class RerunDecoding(object):
                     dec_new = self.dec.predict(spike_accum)
 
                 #### Try to explicitly map out dec_new updates ####
-                z = (np.asarray(spike_accum.ravel()) - self.dec.mFR)*(1./self.dec.sdFR)
-                typical_pred = np.dot(self.F, pre_state) + np.dot(self.kalman_gain, z[:, np.newaxis])
+                if self.monk == 'home':
+                    z = (np.asarray(spike_accum.ravel()) - self.dec.mFR)*(1./self.dec.sdFR)
+                    typical_pred = np.dot(self.F, pre_state) + np.dot(self.kalman_gain, z[:, np.newaxis])
+
+                #### Dont z-score 
+                elif self.monk == 'grom':
+                    typical_pred = np.dot(self.F, pre_state) + np.dot(self.kalman_gain, spike_accum)
+                
                 try:
                     assert(np.allclose(np.asarray(typical_pred).ravel(-1), dec_new))
                 except:
                     print('iter %d, error %.2f' %(cnt, np.linalg.norm(np.asarray(typical_pred).ravel(-1) - dec_new)))
+
 
                 if self.task == 'bmi_multi':
                     pos = dec_new[[0,1,2]]
@@ -165,7 +206,9 @@ class RerunDecoding(object):
                         self.plant.set_endpoint_pos(self.center)
                         self.dec['q'] = self.plant.get_intrinsic_coordinates()
                         pos1 = self.center
-                        vel1 = dec_new[[3,4,5]]
+                        vel1 = dec_new[[3,4,5]]   
+                        print('premove in loop %d'%t)                   
+
                     else:
                         pos = dec_new[[0,1,2]]
                         vel = dec_new[[3,4,5]]
@@ -202,13 +245,14 @@ class RerunDecoding(object):
 
             else:
 
-                if self.task == 'bmi_resetting' and self.state == 'premove' and np.sum(np.abs(self.center))>0:
+                if self.task == 'bmi_resetting' and self.state == 'premove' and self.monk=='home':
                     self.plant.set_endpoint_pos(self.center)
                     self.dec['q'] = self.plant.get_intrinsic_coordinates()
                     tmp_dec_last = dec_last.copy()
                     tmp_dec_last[[0, 1, 2]] = self.center
                     decoded_state.append(tmp_dec_last) 
-                    # dont remember whtat decoded_state_OG is for homer sims               
+                    # dont remember whtat decoded_state_OG is for homer sims    
+                    print(t)           
                 else:
                     decoded_state.append(dec_last)
                     decoded_state_OG.append(dec_last_og)
@@ -262,7 +306,6 @@ class RerunDecoding(object):
         self.run_decoder(spike_counts, input_type=input_type, save_only_innovation=save_only_innovation)
         self.main_move_plant(input_type=input_type)
 
-
     def main_move_plant(self, input_type):
         #For Vel BMI: 
         if not hasattr(self, 'decoded_pos'):
@@ -309,10 +352,12 @@ def plot_traj(R, plot_pos=1, plot_vel=1, plot_force=0, it_cutoff=20000,
 
     targ_pos = R.hdf.root.task[go_ix.astype(int)+5]['target']
 
-    if monk == 'homer':
+    if monk == 'home':
         targ_ix = get_target_ix_homer(targ_pos[:, [0, 2]]).astype(int)
     else:
         targ_ix = get_target_ix(targ_pos[:,[0, 2]]).astype(int)
+
+    import pdb; pdb.set_trace()
 
     if plot_pos == 1:
         f, ax = plt.subplots(nrows=4, ncols=2)
@@ -393,14 +438,23 @@ def get_target_ix(targ_pos):
 
 def get_target_ix_homer(targ_pos):
 
-    unique_targ = np.array([[0.40380592, -5.59619408],
-                            [5., -7.5],
-                            [9.59619408, -5.59619408],
-                            [11.5, -1.],
-                            [9.59619408, 3.59619408],
-                            [5., 5.5],
-                            [0.40380592, 3.59619408],
-                            [-1.5, -1]])
+    # unique_targ = np.array([[0.40380592, -5.59619408],
+    #                         [5., -7.5],
+    #                         [9.59619408, -5.59619408],
+    #                         [11.5, -1.],
+    #                         [9.59619408, 3.59619408],
+    #                         [5., 5.5],
+    #                         [0.40380592, 3.59619408],
+    #                         [-1.5, -1]])
+    
+    unique_targ = np.array([[-1.01040764, -7.01040764],
+                            [ 5.        , -9.5   ],
+                            [11.01040764, -7.01040764],
+                            [13.5       , -1.        ],
+                            [11.01040764,  5.01040764],
+                            [ 5.        ,  7.5       ],
+                            [-1.01040764,  5.01040764],
+                            [-3.5       , -1.        ]])
 
     targ_ix = np.zeros((targ_pos.shape[0]), )
     for ig, (x,y) in enumerate(targ_pos):
