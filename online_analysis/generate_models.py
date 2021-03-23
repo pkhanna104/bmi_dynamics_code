@@ -49,7 +49,7 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
 
     ndays = dict(grom=9, jeev=4, home=5) # for testing only; 
 
-    for animal in ['home', 'jeev', 'grom']:
+    for animal in ['home']:#, 'jeev', 'grom']:
         if run_alphas:
             h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, 
                 ndays = ndays[animal], fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle,
@@ -450,13 +450,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                 pass #
 
     tuning_dict = {}
-    if animal == 'grom':
-        order_dict = analysis_config.data_params['grom_ordered_input_type']
-        input_type = analysis_config.data_params['grom_input_type']
-
-    elif animal == 'jeev':
-        order_dict = analysis_config.data_params['jeev_ordered_input_type']
-        input_type = analysis_config.data_params['jeev_input_type']
+    order_dict = analysis_config.data_params['%s_ordered_input_type'%animal]
+    input_type = analysis_config.data_params['%s_input_type'%animal]
 
     if ndays is None:
         pass
@@ -480,10 +475,14 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         print('##############################')
         print('########## DAY %d ##########' %(i_d) )
         print('##############################')
-        
+        if animal == 'home':
+            day = [day]
+            order_d = [order_dict[i_d]]
+        else:
+            order_d = order_dict[i_d]
         # Get spike data from data fcn
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
-            order_dict[i_d], history_bins_max, within_bin_shuffle = within_bin_shuffle,
+            order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle,
             day_ix = i_d)
         
         print('R2 again, %.2f' %generate_models_utils.quick_reg(sub_spikes, sub_push_all))
@@ -495,7 +494,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         ### Get kalman gain etc. 
         if animal == 'grom':
             KG, KG_null_proj, KG_potent_orth = get_KG_decoder_grom(i_d)
-
+        elif animal == 'home':
+            KG, KG_null_proj, KG_potent_orth = get_KG_decoder_home(i_d)
         elif animal == 'jeev':
             KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
 
