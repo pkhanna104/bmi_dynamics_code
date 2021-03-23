@@ -333,6 +333,13 @@ def get_data_from_shuff(animal, day_ix, w_intc = True):
     assert(spks.shape[0] == push.shape[0] == len(tsk) == len(trg) == len(bin_num) == len(rev_bin_num))
     return spks, push, tsk, trg, bin_num, rev_bin_num, move, dat
 
+def get_update_ix_homer(hdf, drives_neurons_ix0=3): 
+    internal_state = hdf.root.task[:]['internal_decoder_state']
+    update_bmi_ix = np.nonzero( np.round( np.diff(np.squeeze(internal_state[:, drives_neurons_ix0, 0])), 6))[0]+1
+    T = internal_state.shape[0]
+    update_bmi_ix = np.arange(update_bmi_ix[0], T, 6)
+    return update_bmi_ix
+
 
 #### Linear mixed effect modeling: 
 def run_LME(Days, Grp, Metric, bar_plot = False, xlabels = None, title = ''):
