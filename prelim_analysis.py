@@ -374,9 +374,16 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
                               np.squeeze(te_num_cursor_state['cursor_vel'][np.ix_(hdf_ix_i, [0, 2])])))
 
             ### Make sure the positions match up
-            try:
-                assert(np.allclose(decoder_state[:, [0, 1]], tmp[:, [0, 1]]))
-            except:
+            if np.allclose(decoder_state[:, [0, 1]], tmp[:, [0, 1]]):
+
+                ### Also make sure if its an obstacle trial it doesn't go through the obstacle...
+                target_pos = hdf.root.task[hdf_ix_i[0]]['target']
+                tsk_id = hdf.root.task[hdf_ix_i[0]]['target_label']
+
+                ### check positions -- this will raise an assertion error if any issues with obstacle
+                check_trial_goes_around_obs(decoder_state[:, [0, 1]], target_pos, tsk_id)
+
+            else:
                 keep_trial = False
                 print('TE %d, Rejecting trial %d' %(te_num, ig))
 
@@ -550,6 +557,17 @@ def extract_trials(hdf, rew_ix, animal, ms=500, time_cutoff=40):
     
     targ_ix = get_target_ix(targ_pos, animal)
     return spk, targ_pos, targ_ix, reach_time
+
+def check_trial_goes_around_obs(cursor, target_pos, label):
+    if 'obs' in label: 
+        obs_ = 0.5*(target_pos - np.array([5., 0., -1])) + np.array([5., 0., -1])
+        for _, (cx, cy) in enumerate(cursor): 
+            withinx = np.abs(cx - obs_[0]) < 1.4
+            withiny = np.abs(cy - obs_[2]) < 1.4
+            both = np.logical_and(withinx, withiny)
+            assert(not both)
+            
+
 
 def get_target_ix(targ_pos, animal, targ_label):
     #Target Index: 
