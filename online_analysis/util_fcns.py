@@ -224,10 +224,13 @@ def get_target_cw_ccw(animal, day_ix, cursor_pos, targIx):
 
         return targIx + cw_ccw
 
-    elif animal == 'grom':
-        dats = sio.loadmat(analysis_config.config['grom_pref'] + 'unique_targ.mat')
+    elif animal in ['grom', 'home']:
+        dats = sio.loadmat(analysis_config.config['%s_pref'%animal] + 'unique_targ.mat')
         targetPos = np.squeeze(dats['unique_targ'][int(targIx), :])
-        centerPos = np.array([0., 0.])
+        if animal == 'grom':
+            centerPos = np.array([0., 0.])
+        elif animal == 'home':
+            centerPos = np.array([5., -1.])
         cw_ccw, s = CW_CCW_obs(centerPos, targetPos, cursor_pos.T)
         return targIx + cw_ccw
 
@@ -280,18 +283,25 @@ def CW_CCW_obs(centerPos, targPos, trialPos):
         return 0.1, np.dot(dx, y)
 
 #### Extract Data ###
-def get_grom_decoder(day_ix):
-    co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
-    input_type = analysis_config.data_params['grom_input_type']
+def get_grom_decoder(day_ix, animal='grom'):
+    co_obs_dict = pickle.load(open(analysis_config.config['%s_pref'%animal]+'co_obs_file_dict.pkl'))
+    input_type = analysis_config.data_params['%s_input_type'%animal]
 
-    ### First CO task for that day: 
-    te_num = input_type[day_ix][0][0]
+    ### First CO task for that day:
+    if animal == 'grom':    
+        te_num = input_type[day_ix][0][0]
+    elif animal == 'home':
+        te_num = input_type[day_ix][0]
+
     dec = co_obs_dict[te_num, 'dec']
     decix = dec.rfind('/')
-    decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
-    
+    decoder = pickle.load(open(analysis_config.config['%s_pref'%animal]+dec[decix:]))
     F, KG = decoder.filt.get_sskf()
     return F, KG
+
+def get_home_decoder(day_ix):
+    return get_grom_decoder(day_ix, animal='home') 
+
 
 def get_jeev_decoder(day_ix):
     kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'))
@@ -313,6 +323,9 @@ def get_decoder(animal, day_ix):
         return KG[[3, 5], :]
     elif animal == 'jeev':
         return get_jeev_decoder(day_ix)
+    elif animal == 'home':
+        _, KG = get_home_decoder(day_ix)
+        return KG[[3, 5], :]
 
 def get_data_from_shuff(animal, day_ix, w_intc = True):
     dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
