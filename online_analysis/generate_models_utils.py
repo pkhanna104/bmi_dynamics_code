@@ -20,7 +20,7 @@ from collections import defaultdict
 
 pref = analysis_config.config['grom_pref']
 n_entries_hdf = 800
-
+import scipy.io as sio
 import seaborn
 seaborn.set(font='Arial',context='talk',font_scale=1.0, style='white')
 
@@ -717,6 +717,9 @@ def plot_data_temp(data_temp, animal, use_bg = False):
     ### COLORS ####
     cmap_list = analysis_config.pref_colors + analysis_config.pref_colors
 
+    if animal == 'home':
+        dats = sio.loadmat(analysis_config.config['%s_pref'%animal] + 'unique_targ.mat')
+        unique_targ = dats['unique_targ']
 
     ### for each target new plto: 
     fco, axco = plt.subplots()
@@ -756,6 +759,17 @@ def plot_data_temp(data_temp, animal, use_bg = False):
                 ix = np.nonzero(data_temp['trl'][tsk_ix] == trl)[0]
                 axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=cmap_list[int(np.round(tr))])
             axi.set_title('Targ. %.1f' %(tr))
+
+            if animal == 'home':
+                if i == 1:
+                    ## Plot the obstacles 
+                    trgid = int(tr)
+                    axi.plot(unique_targ[trgid, 0], unique_targ[trgid, 1], 'k.')
+                    obs_ = 0.5*(unique_targ[trgid, :] - np.array([5., -1.])) + np.array([5., -1.])
+                    axi.vlines([obs_[0]-1.4, obs_[0]+1.4], obs_[1]-1.4, obs_[1]+1.4, 'k')
+                    axi.hlines([obs_[1]-1.4, obs_[1]+1.4], obs_[0]-1.4, obs_[0]+1.4, 'k')
+                
+
     ### Add target info for Grom: 
     # for i, a in enumerate(np.linspace(0., 2*np.pi, 9)):
     #     if i < 8:
