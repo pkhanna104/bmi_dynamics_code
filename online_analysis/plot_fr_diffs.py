@@ -706,7 +706,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
 
     pooled_stats = {}
     
-    for ia, animal in enumerate(['grom', 'jeev']):
+    for ia, animal in enumerate(['home', 'grom', 'jeev']):
         
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
             
@@ -719,6 +719,9 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
 
             ### Pull data ### 
             spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+            
+            ### Convert spike count (e.g. 2 spks/bin to rate: 2 spks/bin *1 bin/.1 sec = 20 Hz)
+            ### For homer spks count should be in z-scored values for bin
             spks = spks * 10
             nneur = spks.shape[1]
             command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
@@ -837,7 +840,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
 
 def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
 
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['home','grom', 'jeev']):
         NCM = []
         CM = []
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
@@ -912,7 +915,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     fsig_pop, axsig_pop = plt.subplots(figsize=(2, 3))
 
     #### For each animal 
-    for ia, animal in enumerate(['grom', 'jeev']):
+    for ia, animal in enumerate(['grom', 'jeev', 'home']):
 
         ### Bar plots ####
         bar_dict = dict(percNCMsig = [], percNgte1CMsig = [], percCMsig=[], percCgte1Msig = [], 
@@ -990,6 +993,8 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                     if sig_move_diffs is not None: 
                         if list(k) in sig_move_diffs[animal, day_ix]:
                             NCM_tot_beh_sig += 1
+                    else:
+                        NCM_tot_beh_sig = np.nan
             
             ####### Single Neuorns ######
             ax.plot(ia, float(NCM_sig)/float(NCM_tot), 'k.')
@@ -1050,6 +1055,8 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                         if list(k) in sig_move_diffs[animal, day_ix]:
                             vect_sig_beh_sig += 1
                             sig_hz_diff_vect_bsig.append(float(varr['norm_diff_fr']))
+                    else:
+                        vect_sig_beh_sig = np.nan
 
                     ##### Plot the dots on the population ######
                     if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7: 
@@ -1076,6 +1083,8 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                 if sig_move_diffs is not None: 
                     if list(k) in sig_move_diffs[animal, day_ix]:
                         vect_tot_beh_sig += 1
+                else:
+                    vect_tot_beh_sig = np.nan
             
             if plot_sig_mov_comm_grid:
                 fsig.tight_layout()
@@ -1102,8 +1111,10 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
             axsig_pop.plot(ia, tmp_frc, 'k.')
             bar_dict['percCMsig_behsig'].append(tmp_frc)
             print('A %s, D %d, perc sig. tot %d/%d  =%.2f' %(animal, day_ix, vect_sig, vect_tot, float(vect_sig)/float(vect_tot)))
-            print('A %s, D %d, perc sig. of beh sig %d/%d  =%.2f' %(animal, day_ix, vect_sig_beh_sig, vect_tot_beh_sig, tmp_frc))
-
+            try:
+                print('A %s, D %d, perc sig. of beh sig %d/%d  =%.2f' %(animal, day_ix, vect_sig_beh_sig, vect_tot_beh_sig, tmp_frc))
+            except:
+                pass
 
         ####### Single neuron summary for the day #####
         ax.bar(ia, np.mean(bar_dict['percNCMsig']), width=.8,alpha=0.2, color='k')
@@ -1116,9 +1127,9 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
         axsig_pop.bar(ia, np.mean(bar_dict['percCMsig_behsig']), width=.8, alpha=0.2, color='k')
 
     for axi in [ax, ax2, axv, axv2, axsig_su, axsig_pop]:
-        axi.set_xticks([0, 1])
-        axi.set_xticklabels(['G', 'J'])
-        axi.set_xlim([-1, 2])
+        axi.set_xticks([0, 1, 2])
+        axi.set_xticklabels(['G', 'J', 'H'])
+        axi.set_xlim([-1, 3])
 
     ax.set_ylabel('Frac NCM sig. diff \nfrom global (nshuff=1000)')
     ax2.set_ylabel('Frac N with > 0 sig. CM \nfrom global (nshuff=1000)')
@@ -1132,8 +1143,12 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     f2.tight_layout()
     fv.tight_layout()
     fv2.tight_layout()
-    fsig_su.tight_layout()
-    fsig_pop.tight_layout()
+    try:
+        fsig_su.tight_layout()
+        fsig_pop.tight_layout()
+    except:
+        pass
+    
 
     util_fcns.savefig(f, 'frac_neur_comm_mov_sig_diff_from_global')
     util_fcns.savefig(f2, 'frac_with_gte_0_sig_diff_from_global')
@@ -1146,19 +1161,19 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
 
     ###### Effect size plots #######
     for ax_ in [axeff, axeff2, axveff, axveff2, axveff_bsig, axeff_bsig, axeff_bsig_frac]:
-        ax_.set_xlim([-1, 14])
+        ax_.set_xlim([-1, 25])
     axeff.set_ylim([0, 10.])
-    axeff.set_xlim([-1.5, 14.])
+    axeff.set_xlim([-1.5, 25.])
     axeff_bsig.set_ylim([0., 10.])
 
     axeff2.set_ylim([0, 3.0])
-    axeff2.set_xlim([-1.5, 14])
+    axeff2.set_xlim([-1.5, 25])
     axeff_bsig_frac.set_ylim([0., 3.])
 
     axveff.set_ylim([0, .8])
-    axveff.set_xlim([-1.5, 14])
+    axveff.set_xlim([-1.5, 25])
     axveff2.set_ylim([0, .71])
-    axveff2.set_xlim([-1.5, 14])
+    axveff2.set_xlim([-1.5, 25])
     axveff_bsig.set_ylim([0, .8])
 
     axeff.set_ylabel('Activity Diff from Command  Act. Mean (Hz)')
@@ -1181,7 +1196,8 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     lab = ['hz_diff', 'frac_diff', 'hz_diff_bsig', 'frac_diff_bsig', 'vect_diff', 'frac_vect_diff', 'vect_diff_bsig']
     F=[feff, feff2, feff_bsig, feff_bsig_frac, fveff, fveff2, fveff_bsig]
     for i_, (f_, l_) in enumerate(zip(F, lab)):
-        util_fcns.savefig(f_, l_)
+        pass
+        #util_fcns.savefig(f_, l_)
 
 def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, save=True,
     use_saved_move_command_sig = False):
@@ -1467,10 +1483,11 @@ def plot_distribution_of_nmov_per_command():
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
     
     ######## Percent sig #############
-    f, ax = plt.subplots(figsize=(3,3 ))
+    #f, ax = plt.subplots(figsize=(3,3 ))
+    f, ax = plt.subplots(figsize=(6, 6 ))
 
     ############ Loop ##############
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev', 'home']):
 
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
@@ -1481,6 +1498,7 @@ def plot_distribution_of_nmov_per_command():
             command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
                                                vel_ix=[3, 5])[0]
             mov_per_com = []
+            mov_per_com_array = np.zeros((4, 8))
 
             for mag in range(4):
 
@@ -1505,6 +1523,7 @@ def plot_distribution_of_nmov_per_command():
                         ### If enough of these then proceed; 
                         if len(ix_mc) >= 15:
                             movements += 1
+                            mov_per_com_array[mag, ang] += 1
 
                     ### Add to list: 
                     if movements >= 2:
@@ -1513,13 +1532,17 @@ def plot_distribution_of_nmov_per_command():
             ### Plot distribution ###
             util_fcns.draw_plot(i_a*10 + day_ix, mov_per_com, 'k', 'w', ax)
 
+            f2,ax2 = plt.subplots()
+            cax=ax2.pcolor(mov_per_com_array)
+            f2.colorbar(cax, ax=ax2)
+            ax2.set_title('%s, session %d' %(animal, day_ix))
     ax.set_ylabel('# move per command')
-    ax.set_xlim([-1, 14])
+    ax.set_xlim([-1, 26])
     ax.set_xticks([])
     ax.set_xticklabels([])
     f.tight_layout()
 
-    util_fcns.savefig(f, 'fig2_numMov_perComm')
+    #util_fcns.savefig(f, 'fig2_numMov_perComm')
 
 
 ######### Behavior vs. neural correlations #########
@@ -1869,7 +1892,7 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
     ### Open mag boundaries 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
-    for ia, animal in enumerate(['grom', 'jeev']):
+    for ia, animal in enumerate([ 'grom', 'jeev', 'home']):
 
         perc_sig = []
 
@@ -1993,10 +2016,10 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
         ### Bar sig; 
         axps.bar(ia, np.mean(perc_sig), width=.8,alpha=0.2, color='k')
 
-    axcc.set_xlim([-1, 14])
-    axps.set_xlim([-1, 2])
-    axps.set_xticks([0, 1])
-    axps.set_xticklabels(['G', 'J'])
+    axcc.set_xlim([-1, 25])
+    axps.set_xlim([-1, 3])
+    axps.set_xticks([0, 1, 2])
+    axps.set_xticklabels(['G', 'J', 'H'])
 
     axps.set_ylabel('% Commands with Sig. Corr',fontsize=10)
     axcc.set_ylabel('Dist. of Sig. Corr. Coeff.',fontsize=10)
@@ -2004,8 +2027,8 @@ def neuraldiff_vs_behdiff_corr_pw_by_command(min_bin_indices=0, min_move_per_com
 
     fps.tight_layout()
     fcc.tight_layout() 
-    util_fcns.savefig(fps, 'perc_comm_w_sig_cc')
-    util_fcns.savefig(fcc, 'dist_of_sig_cc')
+    #util_fcns.savefig(fps, 'perc_comm_w_sig_cc')
+    #util_fcns.savefig(fcc, 'dist_of_sig_cc')
 
 ######## Plot the command PSTH as arrows ###########
 def eg_command_PSTH(animal='grom', day_ix = 0, mag = 0, ang = 7, nbins_past_fut = 5,
