@@ -73,8 +73,11 @@ data_params['home_input_type'] = [[3471, 3472, 3473, 3474],
 								  [3516, 3517, 3519, 3521, 3522],
 								  [3562, 3563, 3564, 3565, 3566],
 								  [3590, 3591, 3592, 3593, 3594]]
+data_params['home_ordered_input_type'] = [[0, 1,2, 3], [0, 1, 2], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
+
 data_params['home_names'] = ['3-11', '3-12', '3-16', '3-18', '3-19']
 data_params['home_ndays'] = 5
+
 
 # Whether or not to use the 95th percentile? 
 ninty_fifth_perc = True
@@ -89,7 +92,7 @@ min_targix = dict()
 ### For CO / OBS --> Jeev only analyze targs >= 2
 min_targix['jeev'] = [0, 2]
 min_targix['grom'] = [0, 0]
-
+min_targix['home'] = [0]
 
 ############ Jeev Cw/CCW ########
 jeev_cw_ccw_dict = {}
