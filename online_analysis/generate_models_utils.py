@@ -132,9 +132,10 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             ################################################
             ####### Spike and Kinematics Extraction ########
             ################################################
-            if animal == 'grom':
+            if animal in ['grom', 'home']:
 
                 ### Open up CO / OBS ###
+                pref = analysis_config.config['%s_pref'%animal]
                 co_obs_dict = pickle.load(open(pref+'co_obs_file_dict.pkl'))
                 hdf = co_obs_dict[te_num, 'hdf']
                 hdfix = hdf.rfind('/')
@@ -150,17 +151,30 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 key = 'spike_counts'
                 rew_ix = np.array([t[1] for it, t in enumerate(hdf.root.task_msgs[:]) if t[0]=='reward'])
                 
+                if animal == 'home':
+                    update_bmi_ix = util_fcns.get_update_ix_homer(hdf)
+                else:
+                    update_bmi_ix = None
+
                 ### Get out all the items desired from prelim_analysis ####
                 bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all = pa.extract_trials_all(hdf, rew_ix, 
+                    update_bmi_ix = update_bmi_ix, animal = animal,
                     drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
-                    reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, **dict(kalman_gain=KG))
+                    reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, **dict(kalman_gain=KG, dec=decoder,
+                        te_num = te_num))
 
                 ### Make sure targ_i_all changes and targ_ix changes are at the same time; 
                 ############################
                 ######## TESTING ###########
                 ############################
                 dTA = np.diff(targ_i_all, axis=0)
-                dTI = np.diff(targ_ix, axis=0)
+
+                if animal == 'home':
+                    targ_ix2 = np.hstack(([int(tg[-1]) for tg in targ_ix]))
+                else:
+                    targ_ix2 = targ_ix.copy()
+
+                dTI = np.diff(targ_ix2, axis=0)
 
                 ixx = np.nonzero(dTA[:, 0])[0]
                 ixy = np.nonzero(dTA[:, 1])[0]
@@ -169,21 +183,29 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 assert(np.all(ixx == ixy))
                 assert(np.all(ixy == ixt))
 
-                tmp = np.nonzero(targ_ix >= 0)[0]
+                tmp = np.nonzero(targ_ix2 >= 0)[0]
                 
-                assert(len(np.unique(targ_ix[tmp])) == 8)
+                if animal == 'grom':
+                    assert(len(np.unique(targ_ix2[tmp])) == 8)
+                elif animal == 'home':
+                    assert(len(np.unique(targ_ix2[tmp])) <= 8)
+                    print('number of unique targs home: %d = %d' %(te_num, len(np.unique(targ_ix2[tmp]))))
                 assert(len(np.vstack((bin_spk))) == len(np.vstack((decoder_all))))
                 assert(len(np.vstack((bin_spk))) == len(targ_i_all))
 
                 #Also get position from cursor pos: 
                 _, _, _, _, cursor_pos = pa.extract_trials_all(hdf, rew_ix, 
+                    update_bmi_ix = update_bmi_ix, animal = animal,
                     drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
-                    reach_tm_is_hdf_cursor_pos=True, reach_tm_is_kg_vel=False)  
+                    reach_tm_is_hdf_cursor_pos=True, reach_tm_is_kg_vel=False, **dict(dec=decoder,
+                        te_num = te_num))  
 
                 _, _, _, _, cursor_state = pa.extract_trials_all(hdf, rew_ix,
+                    update_bmi_ix = update_bmi_ix, animal = animal,
                     drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
                     reach_tm_is_hdf_cursor_pos=False, reach_tm_is_hdf_cursor_state=True, 
-                    reach_tm_is_kg_vel=False)
+                    reach_tm_is_kg_vel=False, **dict(dec=decoder, 
+                        te_num = te_num))
 
                 assert(len(np.vstack((cursor_pos))) == len(targ_i_all))
                 assert(len(np.vstack((cursor_state)) == len(targ_i_all)))
@@ -191,8 +213,10 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 ###################################
                 ######## End of TESTING ###########
                 ###################################
-                cursor_vel = [curs[:, 2:, 0] for curs in cursor_state]
-                
+                if animal == 'grom':
+                    cursor_vel = [curs[:, 2:, 0] for curs in cursor_state]
+                elif animal == 'home':
+                    cursor_vel = [curs[:, 2:] for curs in cursor_state]            
                 ##### Trial order ####### 
                 #trl_rd.append(order[i_t][i])     
                 
@@ -266,6 +290,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
             ############ Get the target, same size as cursor/velocity/spks #########
             rm_trls = [] ### Target indices for the trials 
+            tsk_home = []
             for ix_ in ix_mod:
 
                 ### Get an index that corresponds to this trial number 
@@ -280,7 +305,11 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 ### Get the target index for this trial -- if it is -1 then remove this trial 
                 min_targ_ix = analysis_config.min_targix[animal][i_t]
 
-                if targ_ix[ix_x[0]] < min_targ_ix:
+                tmp_tg_ix = targ_ix[ix_x[0]] 
+                if animal == 'home':
+                    tmp_tg_ix = int(targ_ix[ix_x[0]][-1])
+
+                if tmp_tg_ix < min_targ_ix:
                     rm_trls.append(ix_)
                     print('REMOVING A TRIAL: Animal %s, TargIx %.1f' %(animal, targ_ix[ix_x[0]]))
                     #import pdb; pdb.set_trace()
@@ -289,18 +318,29 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 else:
                     ### Assess CW vs. CCW here to decide on targ_ix
                     ### Get position, center, target, animal ####
-                    tmp_tg_ix = targ_ix[ix_x[0]]
-
                     ### Postion 
                     trl_cursor_pos = cursor_pos[ix_]
 
-                    ### If obstacle task: 
-                    if i_t == 1:
-                        trl_targ_cw_ccw = util_fcns.get_target_cw_ccw(animal, day_ix, trl_cursor_pos, tmp_tg_ix)
+                    if animal == 'home':
+                        ####
+                        if targ_ix[ix_x[0]][:2] == 'ob':
+                            trl_targ_cw_ccw = util_fcns.get_target_cw_ccw(animal, day_ix, trl_cursor_pos, tmp_tg_ix)
+                            tsk_home.append(np.ones((trl_cursor_pos.shape[0], )))
 
-                    ### Elif CO task -- copy
-                    elif i_t == 0: 
-                        trl_targ_cw_ccw = tmp_tg_ix
+                        elif targ_ix[ix_x[0]][:2] == 'co':
+                            trl_targ_cw_ccw = tmp_tg_ix
+                            tsk_home.append(np.zeros((trl_cursor_pos.shape[0], )))
+                            
+                        else:
+                            raise Exception
+                    else:
+                        ### If obstacle task: 
+                        if i_t == 1:
+                            trl_targ_cw_ccw = util_fcns.get_target_cw_ccw(animal, day_ix, trl_cursor_pos, tmp_tg_ix)
+
+                        ### Elif CO task -- copy
+                        elif i_t == 0: 
+                            trl_targ_cw_ccw = tmp_tg_ix
 
                     assert(int(np.round(trl_targ_cw_ccw)) == tmp_tg_ix)
 
@@ -330,7 +370,10 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             push.append(np.vstack(([decoder_all[x] for x in ix_mod])))
 
             # Not the Kalman Gain: 
-            tsk.append(np.zeros(( np.vstack(([bin_spk[x] for x in ix_mod])).shape[0], )) + i_t)
+            if animal == 'home':
+                tsk.append(np.hstack((tsk_home)))
+            else:
+                tsk.append(np.zeros(( np.vstack(([bin_spk[x] for x in ix_mod])).shape[0], )) + i_t)
             
             ### Get the trial INDEX for this new formation ####
             tmp = np.array([np.zeros(( bin_spk[x].shape[0])) + ix + trl_off for ix, x in enumerate(ix_mod)])
@@ -731,6 +774,11 @@ def plot_data_temp(data_temp, animal, use_bg = False):
                 ax.set_ylim([-12, 12])
                 ax.set_xticks([])
                 ax.set_yticks([])
+            elif animal == 'home':
+                ax.set_xlim([-12, 18])
+                ax.set_ylim([-12, 12])
+                ax.set_xticks([])
+                ax.set_yticks([])                
             else:
                 ax.set_xlim([-.5, 3.3])
                 ax.set_ylim([1.2, 5.0])
@@ -1270,7 +1318,9 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
     #### Get KG ###
     if animal == 'grom':
         _, KG = util_fcns.get_grom_decoder(day_ix)
-        #KG = KG[[3, 5], :]
+        
+    elif animal == 'home':
+        _, KG = util_fcns.get_home_decoder(day_ix)
 
     elif animal == 'jeev':
         KG_imp = util_fcns.get_jeev_decoder(day_ix)
