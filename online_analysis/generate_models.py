@@ -38,7 +38,7 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
     Raises:
         Exception: if run_alphas is false
     """
-    max_alphas = dict(grom=[], jeev=[])
+    max_alphas = dict(grom=[], jeev=[], home=[])
 
     alphas = []; 
     for i in range(-4, 7):
@@ -47,19 +47,16 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
         alphas.append((3./4.)*10**i)
         alphas.append(1.*10**i)
 
-    ndays = dict(grom=9, jeev=4) # for testing only; 
+    ndays = dict(grom=9, jeev=4, home=5) # for testing only; 
 
-    for animal in ['jeev', 'grom']:
+    for animal in ['home', 'jeev', 'grom']:
         if run_alphas:
             h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, 
                 ndays = ndays[animal], fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle,
                 normalize_ridge_vars = normalize_ridge_vars)
         else:
             #raise Exception('deprecated')
-            if animal == 'grom':
-                h5_name = config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number
-            elif animal == 'jeev':
-                h5_name = config['jeev_pref'] + 'jeev_sweep_alpha_days_models_set%d.h5' %model_set_number
+            h5_name = config['%s_pref'%animal] + '%s_sweep_alpha_days_models_set%d.h5' %(animal, model_set_number)
 
         max_alpha = plot_sweep_alpha(animal, alphas=alphas, model_set_number=model_set_number, ndays=ndays[animal],
             fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle)
@@ -126,13 +123,8 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
     tuning_dict = {}
 
     ### Get data files 
-    if animal == 'grom':
-        order_dict = analysis_config.data_params['grom_ordered_input_type']
-        input_type = analysis_config.data_params['grom_input_type']
-
-    elif animal == 'jeev':
-        order_dict = analysis_config.data_params['jeev_ordered_input_type']
-        input_type = analysis_config.data_params['jeev_input_type']
+    order_dict = analysis_config.data_params['%s_ordered_input_type'%animal]
+    input_type = analysis_config.data_params['%s_input_type'%animal]
 
     if ndays is None:
         pass
@@ -153,9 +145,14 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
         ####### data is everything; 
         ###### data_temp / sub_pikes / sub_spk_temp_all / sub_push_all --> all spks / actions 
         ##### but samples only using history_bins:nT-history_bins within trial 
-        
+        if animal == 'home':
+            day = [day]
+            order_d = [order_dict[i_d]]
+        else:
+            order_d = order_dict[i_d]
+
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
-            day, order_dict[i_d], history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle)
+            day, order_d, history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle)
 
         KG = util_fcns.get_decoder(animal, i_d)
 
@@ -939,18 +936,13 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
             except:
                 pass #
 
-    for animal in ['grom', 'jeev']:
-        if animal == 'grom':
-            order_dict = analysis_config.data_params['grom_ordered_input_type']
-            input_type = analysis_config.data_params['grom_input_type']
-
-        elif animal == 'jeev':
-            order_dict = analysis_config.data_params['jeev_ordered_input_type']
-            input_type = analysis_config.data_params['jeev_input_type']
+    for animal in ['home', 'grom', 'jeev']:
+        order_dict = analysis_config.data_params['%s_ordered_input_type'%animal]
+        input_type = analysis_config.data_params['%s_input_type'%animal]
 
         ##### For each day ####
         for i_d, day in enumerate(input_type):
-            if animal == 'none':
+            if animal in ['grom', 'jeev']:
                 pass
             else:
                 print('##############################')
@@ -960,41 +952,46 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                 ### Get kalman gain etc. 
                 if animal == 'grom':
                     KG, KG_null_proj, KG_potent_orth = get_KG_decoder_grom(i_d)
-
+                    ord_d = order_dict[i_d]
                 elif animal == 'jeev':
                     KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
-
+                    ord_d = order_dict[i_d]
+                elif animal == 'home': 
+                    KG, KG_null_proj, KG_potent_orth = get_KG_decoder_home(i_d)
+                    day = [day]
+                    ord_d = [order_dict[i_d]]
+                
                 # Get spike data from data fcn
                 if shuff_type == 'beh_maint':
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = True, 
+                        ord_d, history_bins_max, within_bin_shuffle = True, 
                         day_ix = i_d, nshuffs = nshuffs)
 
                 elif shuff_type == 'mn_diff_maint':
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = True, 
+                        ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = True, 
                         day_ix = i_d, nshuffs = nshuffs)
                 
                 elif shuff_type ==  'within_mov_shuff':
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False,
+                        ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False,
                         within_mov_bin_shuffle = True, 
                         day_ix = i_d, nshuffs = nshuffs)
                 
                 elif shuff_type == 'null_roll': 
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
+                        ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
                         day_ix = i_d, nshuffs = nshuffs)
 
                 elif shuff_type == 'null_roll_pot_beh_maint':
                     ### Ge the rolling indices ######
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix_roll = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
+                        ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
                         day_ix = i_d, nshuffs = nshuffs)
 
                     #### Get the behavior maintaining indices ####
                     _, _, _, _, _, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        order_dict[i_d], history_bins_max, within_bin_shuffle = True, 
+                        ord_d, history_bins_max, within_bin_shuffle = True, 
                         day_ix = i_d, nshuffs = nshuffs)
 
                     #### For each shuffle add teh shuff_ix_roll to the shuff_ix: 
@@ -1797,7 +1794,7 @@ def aggX(data, var_nms, normalize_vars):
                 std.append(sd)
                 
             else:
-                x.append(data_temp_dict[vr][: , np.newaxis])
+                x.append(data[vr][: , np.newaxis])
                 mn.append(0)
                 std.append(1)
 
@@ -2212,18 +2209,21 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
     model_names = [i[1] for i in model_var_list]
 
     ##### Plotted 
-    if animal == 'grom':
+    if animal in ['grom', 'home']:
         if fit_intercept:
             if within_bin_shuffle:
-                hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d_shuff.h5' %model_set_number)
+                hdf = tables.openFile(analysis_config.config['%s_pref'%animal] + '%s_sweep_alpha_days_models_set%d_shuff.h5' %(animal, model_set_number))
             else:
-                hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d.h5' %model_set_number)
+                hdf = tables.openFile(analysis_config.config['%s_pref'%animal] + '%s_sweep_alpha_days_models_set%d.h5' %(animal, model_set_number))
         else:
-            hdf = tables.openFile(analysis_config.config['grom_pref'] + 'grom_sweep_alpha_days_models_set%d_no_intc.h5' %model_set_number)
+            hdf = tables.openFile(analysis_config.config['%s_pref'%animal] + '%s_sweep_alpha_days_models_set%d_no_intc.h5' %(animal, model_set_number))
         
         if ndays is None:
-            ndays = 9; 
-    
+            if animal == 'grom':
+                ndays = 9; 
+            elif animal == 'home':
+                ndays = 5; 
+
     elif animal == 'jeev':
         if fit_intercept:
             if within_bin_shuffle:
@@ -2329,15 +2329,21 @@ def check_variables_order(variables, nneur):
         print('No spikes in this model')
 
 #### Decoder UTILS ####
-def get_KG_decoder_grom(day_ix):
-    co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
-    input_type = analysis_config.data_params['grom_input_type']
+def get_KG_decoder_home(day_ix): 
+    return get_KG_decoder_grom(day_ix, animal='home')
+
+def get_KG_decoder_grom(day_ix, animal='grom'):
+    co_obs_dict = pickle.load(open(analysis_config.config['%s_pref'%animal]+'co_obs_file_dict.pkl'))
+    input_type = analysis_config.data_params['%s_input_type'%animal]
 
     ### First CO task for that day: 
-    te_num = input_type[day_ix][0][0]
+    if animal == 'grom':
+        te_num = input_type[day_ix][0][0]
+    elif animal == 'home':
+        te_num = input_type[day_ix][0]
     dec = co_obs_dict[te_num, 'dec']
     decix = dec.rfind('/')
-    decoder = pickle.load(open(analysis_config.config['grom_pref']+dec[decix:]))
+    decoder = pickle.load(open(analysis_config.config['%s_pref'%animal]+dec[decix:]))
     F, KG = decoder.filt.get_sskf()
     KG_potent = KG[[3, 5], :]; # 2 x N
     KG_null = scipy.linalg.null_space(KG_potent) # N x (N-2)
