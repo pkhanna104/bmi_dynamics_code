@@ -68,8 +68,12 @@ class RerunDecoding(object):
 
         self.target = hdf.root.task[:]['target']
 
-        self.target_rad = hdf.root.task.attrs.target_radius
-        self.cursor_rad = hdf.root.task.attrs.cursor_radius
+        if hasattr(hdf.root.task.attrs, 'target_radius'):
+            self.target_rad = hdf.root.task.attrs.target_radius
+            self.cursor_rad = hdf.root.task.attrs.cursor_radius
+        else:
+            print('Skipping target rad, cursor rad ')
+
         try:
             spike_counts = hdf.root.task[:]['spike_counts']
         except:
@@ -115,7 +119,7 @@ class RerunDecoding(object):
         self.hdf = hdf
 
     def run_decoder(self, spike_counts, save_only_innovation, input_type = 'all', cutoff=None, 
-        spike_counts_true=None):
+        spike_counts_true=None, verbose=True):
         '''
         Summary: method to use the 'predict' function in the decoder object
         Input param: spike_counts: unbinned spike counts in iter x units x 1
@@ -207,7 +211,8 @@ class RerunDecoding(object):
                         self.dec['q'] = self.plant.get_intrinsic_coordinates()
                         pos1 = self.center
                         vel1 = dec_new[[3,4,5]]   
-                        print('premove in loop %d'%t)                   
+                        if verbose:
+                            print('premove in loop %d'%t)                   
 
                     else:
                         pos = dec_new[[0,1,2]]
@@ -252,7 +257,8 @@ class RerunDecoding(object):
                     tmp_dec_last[[0, 1, 2]] = self.center
                     decoded_state.append(tmp_dec_last) 
                     # dont remember whtat decoded_state_OG is for homer sims    
-                    print(t)           
+                    if verbose:
+                        print(t)           
                 else:
                     decoded_state.append(dec_last)
                     decoded_state_OG.append(dec_last_og)
