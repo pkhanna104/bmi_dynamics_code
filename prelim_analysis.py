@@ -270,6 +270,12 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
 
         update_bmi_ix = np.nonzero(np.diff(np.squeeze(internal_state[:, drives_neurons_ix0, 0])))[0]+1
 
+    if animal == 'home':
+        te_num = kwargs.pop('te_num', None)
+        if te_num is None:
+            raise Exception('Cannot proceed without te_num for homer')
+        te_num_cursor_state = pickle.load(open(analysis_config.config['home_pref'] + 'te_%d_cursor.pkl'%te_num, 'rb'))
+
     #### Index cutoff #### 
     if time_cutoff is None:
         it_cutoff = len(hdf.root.task)
@@ -332,10 +338,12 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
     ### be added to, approach from 2020 preeya is to use a default dict that is a list-like thing ###
     all_data = defaultdict(list)
 
+    keep_ix = []; 
+    trl_cnt = -1
     for ig, (g, r) in enumerate(zip(go_ix, rew_ix)):
         g = int(g)
-        r = int(r)
-        
+        r = int(r)               
+
         ### If we want to analyze you ###
         if g >= 0:
 
@@ -345,59 +353,99 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
             #Sum spikes in neural_bins:
             bin_spk_i, nbins, hdf_ix_i = bin_spks(spk_i, g, r, neural_bins, update_bmi_ix, divide_by_6)
 
+            #If homer data then z-score: 
+            if animal == 'home': 
+                dec = kwargs['dec']
+                bin_spk_i = (bin_spk_i - dec.mFR[np.newaxis, :])/dec.sdFR[np.newaxis, :]
+
         else:
             nn = hdf.root.task[0]['spike_counts'].shape[0]
             bin_spk_i = np.zeros((1, nn))
             nbins = 0
             hdf_ix_i = []
 
-        ### Append all now, vstack later 
-        nT = bin_spk_i.shape[0]
-        all_data['bin_spk'].append(bin_spk_i)
-
-        ### Add back the pre_go so get the right target ####
-        targ = hdf.root.task[int(g) + 1 + int(include_pre_go*60)]['target'][[0,2]]
-        nT_targ = np.tile(targ, (nT, 1))
-        all_data['targ_i_all'].append(nT_targ)
-        all_data['trial_ix_all'].append(np.zeros((nT, )) + ig)
-
-        if reach_tm_is_hdf_cursor_pos:
-            if len(hdf_ix_i) > 0:
-                sub_cursor_i = hdf.root.task[hdf_ix_i]['cursor'][:, [0, 2]]
-                #reach_tm_all.append(sub_cursor_i)
-                all_data['cursor_pos'].append(sub_cursor_i)
-            else:
-                all_data['cursor_pos'].append(np.zeros((1, 2)))
-
         
-        elif reach_tm_is_hdf_cursor_state:
-            if animal == 'home':
-                raise Exception('not yet implemented')
+        keep_trial = True
+        #### Run decoder check for homer ######
+        if animal == 'home':
+            decoder_state = te_num_cursor_state['decoder_state'][np.ix_(hdf_ix_i, [0, 2, 3, 5])]
 
-            if len(hdf_ix_i) > 0:
-                sub_cursor_i = hdf.root.task[hdf_ix_i]['decoder_state'][:, [0, 2, 3, 5]]
-                #reach_tm_all.append(sub_cursor_i)
-                all_data['decoder_state'].append(sub_cursor_i)
+            tmp = np.hstack(( np.squeeze(te_num_cursor_state['cursor'][np.ix_(hdf_ix_i, [0, 2])]),  
+                              np.squeeze(te_num_cursor_state['cursor_vel'][np.ix_(hdf_ix_i, [0, 2])])))
+
+            ### Make sure the positions match up
+            try:
+                assert(np.allclose(decoder_state[:, [0, 1]], tmp[:, [0, 1]]))
+            except:
+                keep_trial = False
+                print('TE %d, Rejecting trial %d' %(te_num, ig))
+
+
+        if keep_trial:
+            trl_cnt+= 1
+            keep_ix.append(ig)
+
+            ### Append all now, vstack later 
+            nT = bin_spk_i.shape[0]
+            all_data['bin_spk'].append(bin_spk_i)
+
+            ### Add back the pre_go so get the right target ####
+            targ = hdf.root.task[int(g) + 1 + int(include_pre_go*60)]['target'][[0,2]]
+            nT_targ = np.tile(targ, (nT, 1))
+            all_data['targ_i_all'].append(nT_targ)
+
+            if animal == 'home':
+                tl = hdf.root.task[int(g) + 1 + int(include_pre_go*60)]['target_label']
+                all_data['tsk'].append(np.tile(tl, (nT, 1)))
             else:
-                all_data['decoder_state'].append(np.zeros((1, 4, 1)))
+                all_data['tsk'].append([])
+
+            all_data['trial_ix_all'].append(np.zeros((nT, )) + trl_cnt)
+
+            if reach_tm_is_hdf_cursor_pos:
+                if len(hdf_ix_i) > 0:
+                    sub_cursor_i = hdf.root.task[hdf_ix_i]['cursor'][:, [0, 2]]
+                    #reach_tm_all.append(sub_cursor_i)
+                    all_data['cursor_pos'].append(sub_cursor_i)
+                else:
+                    all_data['cursor_pos'].append(np.zeros((1, 2)))
+
             
-        elif reach_tm_is_kg_vel:
-            kg = kwargs['kalman_gain']
-            #reach_tm_all.append(hdf.root.task[g:r]['internal_decoder_state'][:, :, 0])
-            #reach_tm_all.append(bin_spk_i*np.mat(kg).T)
-            ### pos/vel x time 
-            if animal == 'home':
-                dec = kwargs['dec']
-                bin_spk_i_z = (bin_spk_i - dec.mFR[np.newaxis, :])/dec.sdFR[np.newaxis, :]
-                all_data['kg_vel'].append(np.dot(bin_spk_i_z, kg.T))
+            elif reach_tm_is_hdf_cursor_state:
+                if animal == 'home':
+                    decoder_state = te_num_cursor_state['decoder_state'][np.ix_(hdf_ix_i, [0, 2, 3, 5])]
+
+                    tmp = np.hstack(( np.squeeze(te_num_cursor_state['cursor'][np.ix_(hdf_ix_i, [0, 2])]),  
+                                      np.squeeze(te_num_cursor_state['cursor_vel'][np.ix_(hdf_ix_i, [0, 2])])))
+
+                    ### Make sure the positions match up
+                    assert(np.allclose(decoder_state[:, [0, 1]], tmp[:, [0, 1]]))
+                    
+                else: 
+                    decoder_state = hdf.root.task[hdf_ix_i]['decoder_state'][:, [0, 2, 3, 5]]
+
+                if len(hdf_ix_i) > 0:
+                    all_data['decoder_state'].append(decoder_state)
+                else:
+                    all_data['decoder_state'].append(np.zeros((1, 4, 1)))
+                
+            elif reach_tm_is_kg_vel:
+                kg = kwargs['kalman_gain']
+                #reach_tm_all.append(hdf.root.task[g:r]['internal_decoder_state'][:, :, 0])
+                #reach_tm_all.append(bin_spk_i*np.mat(kg).T)
+                ### pos/vel x time 
+                if animal == 'home':
+                    dec = kwargs['dec']
+                    bin_spk_i_z = (bin_spk_i - dec.mFR[np.newaxis, :])/dec.sdFR[np.newaxis, :]
+                    all_data['kg_vel'].append(np.dot(bin_spk_i_z, kg.T))
+                else:
+                    all_data['kg_vel'].append(np.dot(bin_spk_i, kg.T))
             else:
-                all_data['kg_vel'].append(np.dot(bin_spk_i, kg.T))
-        else:
-            #reach_tm_all = np.hstack((reach_tm_all, np.zeros(( bin_spk_i.shape[0] ))+((r-g)*1000./60.) ))
-            all_data['rch_tm'].append(np.zeros((nT, )) + (r-g)*1000./60.)
-        
-    print go_ix.shape, rew_ix.shape, bin_spk_i.shape, nbins, hdf_ix_i.shape
-    targ_ix = get_target_ix(np.vstack((all_data['targ_i_all'])), animal) #targ_i_all[1:,:])
+                #reach_tm_all = np.hstack((reach_tm_all, np.zeros(( bin_spk_i.shape[0] ))+((r-g)*1000./60.) ))
+                all_data['rch_tm'].append(np.zeros((nT, )) + (r-g)*1000./60.)
+            
+    print go_ix[keep_ix].shape, rew_ix[keep_ix].shape, bin_spk_i.shape, nbins, hdf_ix_i.shape
+    targ_ix = get_target_ix(np.vstack((all_data['targ_i_all'])), animal, all_data['tsk']) #targ_i_all[1:,:])
     print np.unique(targ_ix)
 
     if hdf_ix:
@@ -503,7 +551,7 @@ def extract_trials(hdf, rew_ix, animal, ms=500, time_cutoff=40):
     targ_ix = get_target_ix(targ_pos, animal)
     return spk, targ_pos, targ_ix, reach_time
 
-def get_target_ix(targ_pos, animal):
+def get_target_ix(targ_pos, animal, targ_label):
     #Target Index: 
     # b = np.ascontiguousarray(targ_pos).view(np.dtype((np.void, targ_pos.dtype.itemsize * targ_pos.shape[1])))
     # _, idx = np.unique(b, return_index=True)
@@ -538,8 +586,19 @@ def get_target_ix(targ_pos, animal):
             targ_ix[ig] = tmp_ix
         else:
             targ_ix[ig] = -1
-            
-    return targ_ix
+
+    if animal == 'home':
+        targ_label = np.vstack((targ_label))
+        assert(len(targ_label) == len(targ_ix))
+
+        targ_ix_2 = []
+        for ig, (tix, lab) in enumerate(zip(targ_ix, targ_label)):
+            targ_ix_2.append([lab[0][:2]+'_'+str(int(tix))])
+        targ_ix_2 = np.hstack((targ_ix_2))
+    else:
+        targ_ix_2 = targ_ix.copy()
+
+    return targ_ix_2
 
 def proc_spks(spk, targ_ix, targ_ix_analysis=0, neural_bins = 100, return_unshapedX=False):
     '''
