@@ -129,7 +129,7 @@ def predict_shuffles_v2_no_cond(nshuffs=1000):
 class DataExtract(object):
 
     def __init__(self, animal, day_ix, model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0',
-        nshuffs = 1000, nshuffs_roll=None):
+        nshuffs = 1000, nshuffs_roll=None, ridge_norm = False):
 
         ### Make sure the model_nm is in the model set number 
         model_var_list, _, _, _ = generate_models_list.get_model_var_list(model_set_number)
@@ -147,6 +147,7 @@ class DataExtract(object):
             self.nshuffs_roll = nshuffs_roll
 
         self.loaded = False
+        self.ridge_norm = ridge_norm
 
     def load(self): 
         spks0, push0, tsk0, trg0, bin_num0, rev_bin_num0, move0, dat = util_fcns.get_data_from_shuff(self.animal, 
@@ -183,14 +184,23 @@ class DataExtract(object):
         ### Get number of neurons 
         self.nneur_flt = float(self.spks.shape[1])
         self.nneur = self.spks.shape[1]
+
+        ### Get the valid analysis indices -- dont analyze mag 5 bins = mag ix 4
+        self.valid_analysis_ix = np.nonzero(self.command_bins[:, 0] < 10)[0]
         
         ###############################################
         ###### Get predicted spikes from the model ####
         ###############################################
-        model_fname = analysis_config.config[self.animal+'_pref']+'tuning_models_'+self.animal+'_model_set'+str(self.model_set_number)+'_.pkl'
+        if self.ridge_norm:
+            model_fname = analysis_config.config[self.animal+'_pref']+'tuning_models_'+self.animal+'_model_set'+str(self.model_set_number)+'_ridge_norm.pkl'
+        else:
+            model_fname = analysis_config.config[self.animal+'_pref']+'tuning_models_'+self.animal+'_model_set'+str(self.model_set_number)+'_.pkl'
         model_dict = pickle.load(open(model_fname, 'rb'))
         pred_spks = model_dict[self.day_ix, self.model_nm]
         self.pred_spks = 10*pred_spks; 
+
+        if self.model_set_number == 12:
+            self.model_dict = model_dict # keep it
 
         ### Make sure spks and sub_spks match -- using the same time indices ###
         assert(np.allclose(self.spks, 10*model_dict[self.day_ix, 'spks']))
@@ -224,16 +234,27 @@ class DataExtract(object):
         self.loaded = True
 
     def load_null_roll(self): 
-        pred, true = plot_generated_models.get_shuffled_data_pred_null_roll(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs,
+        pred, true, push, roll_ix = plot_generated_models.get_shuffled_data_pred_null_roll(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs,
             testing_mode = False)
+
+        self.rolled_push_comm_bins = util_fcns.commands2bins([push[roll_ix, :]], mag_boundaries, self.animal, self.day_ix,
+            vel_ix=[3, 5])[0]
+
         self.null_roll_pred = 10*pred; 
         self.null_roll_true = 10*true
 
     def load_null_roll_pot_shuff(self):
-        pred, true = plot_generated_models.get_shuffled_data_pred_null_roll_pot_shuff(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs_roll,
+        pred, true, _, roll_ix = plot_generated_models.get_shuffled_data_pred_null_roll_pot_shuff(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs_roll,
             testing_mode = False)
+        
         self.null_roll_pot_beh_pred = 10*pred; 
         self.null_roll_pot_beh_true = 10*true
+        
+        self.rolled_push_comm_bins = self.command_bins[roll_ix, :]
+        self.rolled_push_comm_bins_tm1 = self.command_bins_tm1[roll_ix, :]
+
+        self.null_roll_pred = 10*pred; 
+        self.null_roll_true = 10*true
 
     def load_mn_maint(self):
         pred = plot_generated_models.get_shuffled_mean_maint(self.animal, self.day_ix, self.model_nm, nshuffs = self.nshuffs, testing_mode = False)
@@ -977,7 +998,8 @@ def fit_predict_loo_model(cat='tsk', mean_sub_tsk_spec = False,
 
 ######## Fit movement model group model #####
 def fit_predict_lomov_model(
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6, nshuffs=1000,
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
+    model_set_number = 6, nshuffs=1000,
     min_commands = 15, plot_pw = False):
 
     """Summary
@@ -1016,7 +1038,7 @@ def fit_predict_lomov_model(
 
             input_type = analysis_config.data_params['%s_input_type'%animal]
             ord_input_type = analysis_config.data_params['%s_ordered_input_type'%animal]
-            mov_train = cat_dict[cat_][animal]
+            mov_test = cat_dict[cat_][animal]
 
             model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(6)+'_.pkl'
             model_dict = pickle.load(open(model_fname, 'rb'))
@@ -1035,8 +1057,8 @@ def fit_predict_lomov_model(
                     ord_input_type[day_ix], 1, within_bin_shuffle = False, day_ix = day_ix, skip_plot = True)
 
                 ### Load predicted data freom the model 
-                sub_spikes = 10*sub_spikes
-                spks_pred = 10*model_dict[day_ix, model_nm]
+                #sub_spikes = 10*sub_spikes
+                spks_pred = model_dict[day_ix, model_nm]
                 nT = sub_spikes.shape[0]
 
                 spks_pred_shuff = []
@@ -1066,41 +1088,43 @@ def fit_predict_lomov_model(
                 data_temp['mov'] = data_temp['trg'] + 10*data_temp['tsk']
                 
                 ############## Get subspikes ##############
-                spks_tm1 = 10*sub_spk_temp_all[:, 0, :]
-                spks_tm0 = 10*sub_spk_temp_all[:, 1, :]
+                spks_tm1 = sub_spk_temp_all[:, 0, :]
+                spks_tm0 = sub_spk_temp_all[:, 1, :]
                 
                 LOO_dict = {}
                 LOO_dict_ctrl = {}
 
-                train_ix = []; N = push_tm0.shape[0]
-                for mt in mov_train:
+                test_ix = []; N = push_tm0.shape[0]
+                for mt in mov_test:
                     ix_mt = np.nonzero(data_temp['mov'] == mt)[0]
                     if len(ix_mt) > 0:
-                        train_ix.append(ix_mt)
+                        test_ix.append(ix_mt)
 
                 ##### Train / Test #####
-                train_ix = np.sort(np.hstack((train_ix)))
-                test_ix = np.array([i for i in range(N) if i not in train_ix])
+                test_ix = np.sort(np.hstack((test_ix)))
+                train_ix = np.array([i for i in range(N) if i not in test_ix])
                 
                 ##### Model fitting; #####
-                y_lo_pred, _, _ = train_and_pred(0.1*spks_tm1, 0.1*spks_tm0, push_tm0,
+                y_lo_pred, _, _ = train_and_pred(spks_tm1, spks_tm0, push_tm0,
                     train_ix, test_ix, alpha_spec, KG)
 
                 ### Multipy by 10 to match the spks
-                y_lo_pred_10 = y_lo_pred*10; 
+                #y_lo_pred_10 = y_lo_pred*10; 
+                #### Only assess R2 on commands with mag < 4: 
+                valid_test_ix = np.nonzero(command_bins[test_ix, 0] < 4)[0]
                 
-                y_std_pred = spks_pred[test_ix, :]
+                y_std_pred = spks_pred[test_ix[valid_test_ix], :]
 
-                r2_lo = util_fcns.get_R2(0.1*spks_tm0[test_ix, :], y_lo_pred)
-                r2_std = util_fcns.get_R2(0.1*spks_tm0[test_ix, :], 0.1*y_std_pred)
+                r2_lo = util_fcns.get_R2(spks_tm0[test_ix[valid_test_ix], :],   y_lo_pred[valid_test_ix, :])
+                r2_std = util_fcns.get_R2(spks_tm0[test_ix[valid_test_ix], :], y_std_pred)
 
                 #ax.plot(i_a*10 + day_ix + 0.2*ic, r2_std, marker[cat_], color=analysis_config.blue_rgb,
                 #    markersize=markersize[cat_])
                 
                 r2_shuff = []
                 for i in range(nshuffs):
-                    y_shuf = spks_pred_shuffle[test_ix, :, i]
-                    r2_shuff.append(util_fcns.get_R2(0.1*spks_tm0[test_ix, :], 0.1*y_shuf))
+                    y_shuf = spks_pred_shuffle[test_ix[valid_test_ix], :, i]
+                    r2_shuff.append(util_fcns.get_R2(spks_tm0[test_ix[valid_test_ix], :], 0.1*y_shuf))
                 
                 util_fcns.draw_plot(i_a*10 + day_ix + 0.15*ic, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
                 
@@ -1110,6 +1134,9 @@ def fit_predict_lomov_model(
                 ### Make sure dots are on top of the liens 
                 ax.plot(i_a*10 + day_ix + 0.15*ic, r2_lo, marker[cat_], mec='purple',
                     mfc='white', mew=1., markersize=markersize[cat_]*.5)
+
+                # ax.plot(i_a*10 + day_ix + 0.15*ic, r2_std, marker[cat_], mec=analysis_config.blue_rgb,
+                #     mfc='white', mew=1., markersize=markersize[cat_]*.5)
 
                 pooled_stats['r2'].append(r2_lo)
                 pooled_stats['r2_shuff'].append(r2_shuff)
@@ -1510,6 +1537,11 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
     
     track_cm_analyzed = {}
 
+    if 'com' in cat: 
+        return_trans_from_lo = False
+    else:
+        return_trans_from_lo = False
+
     for i_a, animal in enumerate(['grom', 'jeev']):
 
         frac_dict = {}
@@ -1742,7 +1774,6 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
 
         util_fcns.savefig(fsu, 'lo_%s_cm_frac_sig_SU'%cat)
         util_fcns.savefig(fpop, 'lo_%s_cm_frac_sig_POP'%cat)
-        
     return track_cm_analyzed
 
 def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False,
