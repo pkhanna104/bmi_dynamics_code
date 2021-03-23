@@ -223,7 +223,7 @@ def pk_convolve(window, arr):
     tmp = np.convolve(window, arr_pad, mode='same')
     return tmp[win_len:-win_len]
 
-def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=False, 
+def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=False, animal='grom',
     update_bmi_ix=None, rew_pls=False, step_dict=None, drives_neurons_ix0=None, first_n_sec_of_trial=None,
     use_ITI=False, hdf_key='spike_counts', keep_trials_sep=True, divide_by_6=False, reach_tm_is_hdf_cursor_pos=False,
     reach_tm_is_hdf_cursor_state=False, reach_tm_is_kg_vel=False, include_pre_go=0, **kwargs):
@@ -295,9 +295,9 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
 
         ### Make sure the mesaged for all of these are ...?
         assert(np.all(s[0] == 'target' for s in hdf.root.task_msgs[:] if s[1] in go_ix))
-        assert(len([s[0] for s in hdf.root.task_msgs[:] if s[1] in go_ix]) == len(go_ix))
+        assert(len([s[0] for s in hdf.root.task_msgs[:] if s[1] in go_ix and s[0] == 'target']) == len(go_ix))
         assert(np.all(s[0] == 'reward' for s in hdf.root.task_msgs[:] if s[1] in rew_ix))
-        assert(len([s[0] for s in hdf.root.task_msgs[:] if s[1] in rew_ix]) == len(rew_ix))
+        assert(len([s[0] for s in hdf.root.task_msgs[:] if s[1] in rew_ix and s[0] == 'reward']) == len(rew_ix))
 
     go_ix = go_ix[go_ix<it_cutoff]
     rew_ix = rew_ix[go_ix<it_cutoff]
@@ -371,6 +371,9 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
 
         
         elif reach_tm_is_hdf_cursor_state:
+            if animal == 'home':
+                raise Exception('not yet implemented')
+
             if len(hdf_ix_i) > 0:
                 sub_cursor_i = hdf.root.task[hdf_ix_i]['decoder_state'][:, [0, 2, 3, 5]]
                 #reach_tm_all.append(sub_cursor_i)
@@ -383,13 +386,18 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
             #reach_tm_all.append(hdf.root.task[g:r]['internal_decoder_state'][:, :, 0])
             #reach_tm_all.append(bin_spk_i*np.mat(kg).T)
             ### pos/vel x time 
-            all_data['kg_vel'].append(np.dot(bin_spk_i, kg.T))
+            if animal == 'home':
+                dec = kwargs['dec']
+                bin_spk_i_z = (bin_spk_i - dec.mFR[np.newaxis, :])/dec.sdFR[np.newaxis, :]
+                all_data['kg_vel'].append(np.dot(bin_spk_i_z, kg.T))
+            else:
+                all_data['kg_vel'].append(np.dot(bin_spk_i, kg.T))
         else:
             #reach_tm_all = np.hstack((reach_tm_all, np.zeros(( bin_spk_i.shape[0] ))+((r-g)*1000./60.) ))
             all_data['rch_tm'].append(np.zeros((nT, )) + (r-g)*1000./60.)
         
     print go_ix.shape, rew_ix.shape, bin_spk_i.shape, nbins, hdf_ix_i.shape
-    targ_ix = get_target_ix(np.vstack((all_data['targ_i_all']))) #targ_i_all[1:,:])
+    targ_ix = get_target_ix(np.vstack((all_data['targ_i_all'])), animal) #targ_i_all[1:,:])
     print np.unique(targ_ix)
 
     if hdf_ix:
@@ -475,7 +483,7 @@ def bin_spks(spk_i, g_ix, r_ix, binsize_ms, update_bmi_ix, divide_by_6):
         hdf_ix_i.append(hdf_ix)
     return bin_spk_i, nbins, np.array(hdf_ix_i)
     
-def extract_trials(hdf, rew_ix, ms=500, time_cutoff=40):
+def extract_trials(hdf, rew_ix, animal, ms=500, time_cutoff=40):
     it_cutoff = time_cutoff*60*60
     nsteps = int(ms/(1000.)*60)
 
@@ -492,10 +500,10 @@ def extract_trials(hdf, rew_ix, ms=500, time_cutoff=40):
         targ_pos[ig, :] = hdf.root.task[g+1]['target'][[0,2]]
         reach_time[ig] = (rew_ix[ig]- g)/(60.) #In seconds
     
-    targ_ix = get_target_ix(targ_pos)
+    targ_ix = get_target_ix(targ_pos, animal)
     return spk, targ_pos, targ_ix, reach_time
 
-def get_target_ix(targ_pos):
+def get_target_ix(targ_pos, animal):
     #Target Index: 
     # b = np.ascontiguousarray(targ_pos).view(np.dtype((np.void, targ_pos.dtype.itemsize * targ_pos.shape[1])))
     # _, idx = np.unique(b, return_index=True)
@@ -519,9 +527,9 @@ def get_target_ix(targ_pos):
     #        [ 6.12323400e-16,  1.00000000e+01],
     #        [-7.07106781e+00,  7.07106781e+00],
     #        [-1.00000000e+01,  1.22464680e-15]])
-
-    dats = sio.loadmat(analysis_config.config['grom_pref'] + 'unique_targ.mat')
-    unique_targ = dats['unique_targ']
+    dats = sio.loadmat(analysis_config.config['%s_pref'%animal] + 'unique_targ.mat')
+    unique_targ = np.round(dats['unique_targ'], 5)
+    targ_pos = np.round(targ_pos, 5)
 
     targ_ix = np.zeros((targ_pos.shape[0]), )
     for ig, (x,y) in enumerate(targ_pos):
@@ -530,7 +538,7 @@ def get_target_ix(targ_pos):
             targ_ix[ig] = tmp_ix
         else:
             targ_ix[ig] = -1
-
+            
     return targ_ix
 
 def proc_spks(spk, targ_ix, targ_ix_analysis=0, neural_bins = 100, return_unshapedX=False):
