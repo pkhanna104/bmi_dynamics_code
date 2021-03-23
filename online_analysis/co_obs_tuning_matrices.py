@@ -1145,14 +1145,17 @@ def get_spks(animal, te, keep_trls_sep = False):
         #Squish all bin_spk together:
         return np.vstack((decoder_all))
 
-def make_co_obs_dict_homer():
+def make_co_obs_dict_homer(run_cursor_state = False):
     '''
     assume db.sql is from lynx
     '''
     pref = analysis_config.config['home_pref']
     homer_inputs = np.hstack(( analysis_config.data_params['home_input_type'] ))
+    tmbu = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/home2020/'
 
     from db import dbfunctions as dbfn 
+    import resim
+
     co_obs_dict = {}
 
     for te in homer_inputs:
@@ -1161,6 +1164,38 @@ def make_co_obs_dict_homer():
         co_obs_dict[te, 'hdf'] = task.hdf_filename
         co_obs_dict[te, 'dec'] = task.decoder_filename
 
+        ### also do a re-sim of each te so we can later get cursor state: 
+        hdfix = co_obs_dict[te, 'hdf'].rfind('/')
+        hdf = tables.openFile(pref+co_obs_dict[te, 'hdf'][hdfix:])
+        
+        dec = co_obs_dict[te, 'dec']
+        decix = dec.rfind('/')
+        decoder = pickle.load(open(pref+dec[decix:]))
+        print('Starting TE %d' %te)
+        
+        if run_cursor_state:
+            R = resim.RerunDecoding(hdf, decoder, task='bmi_resetting', center = np.array([5., 0., -1.]))
+            sc = hdf.root.task[:]['spike_counts']
+            R.run_decoder(sc, False, verbose=False)
+            for i in [0, 2]:
+                ### Pos ###
+                slp_pos,offs_pos,rv_pos,_,_= scipy.stats.linregress(np.squeeze(R.cursor_pos[:, i]), R.dec_state_mn['all'][:, i])
+                ### Vel ###
+                slp_vel,offs_vel,rv_vel,_,_= scipy.stats.linregress(np.squeeze(R.cursor_vel[:, i]), R.dec_state_mn['all'][:, i+3])
+                print('Te %d'%te)
+                print('Pos %d, rv=%.10f, slp=%.5f, offs=%.5f'%(i, rv_pos, slp_pos, offs_pos))
+                print('Vel %d, rv=%.10f, slp=%.5f, offs=%.5f'%(i, rv_vel, slp_vel, offs_vel))
+                print('')
+                print('')
+
+            co_obs_dict_te = {}
+            co_obs_dict_te['decoder_state'] = R.dec_state_mn['all'].copy()
+            co_obs_dict_te['cursor'] = R.cursor_pos.copy()
+            co_obs_dict_te['cursor_vel'] = R.cursor_vel.copy()
+
+            ### Savethis; 
+            pickle.dump(co_obs_dict_te, open(pref + 'te_%d_cursor.pkl'%te, 'wb'))
+            
     #### Check decoders are teh same 
     for i_d, day in enumerate(analysis_config.data_params['home_input_type']):
         for i, te in enumerate(day): 
@@ -1170,6 +1205,8 @@ def make_co_obs_dict_homer():
             else:
                 assert(dec==co_obs_dict[te, 'dec'])
                 print('Checks out %d == %d' %(te0, te))
+
+
 
     pickle.dump(co_obs_dict, open(pref + 'co_obs_file_dict.pkl', 'wb'))
 
