@@ -685,7 +685,7 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             util_fcns.savefig(f2, 'Next_command_diff_mag%d_ang%d_%s_d%d'%(mag, ang, animal, day_ix))
     
 ##### Main plotting functions to use in Figs 2 and 3 ########
-def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
+def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False):
     """
     Args:
         nshuffs (int, optional): Description
@@ -718,11 +718,16 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
             pooled_stats[animal, day_ix] = []
 
             ### Pull data ### 
-            spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
-            
+            spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix, keep_bin_spk_zsc=keep_bin_spk_zsc)
+
             ### Convert spike count (e.g. 2 spks/bin to rate: 2 spks/bin *1 bin/.1 sec = 20 Hz)
             ### For homer spks count should be in z-scored values for bin
-            spks = spks * 10
+            if animal == 'home' and keep_bin_spk_zsc:
+                pass
+                ### dont multipy by 10 if youve been zscored
+            else:
+                spks = spks * 10
+    
             nneur = spks.shape[1]
             command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
