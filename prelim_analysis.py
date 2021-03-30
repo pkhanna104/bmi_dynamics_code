@@ -226,7 +226,7 @@ def pk_convolve(window, arr):
 def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=False, animal='grom',
     update_bmi_ix=None, rew_pls=False, step_dict=None, drives_neurons_ix0=None, first_n_sec_of_trial=None,
     use_ITI=False, hdf_key='spike_counts', keep_trials_sep=True, divide_by_6=False, reach_tm_is_hdf_cursor_pos=False,
-    reach_tm_is_hdf_cursor_state=False, reach_tm_is_kg_vel=False, include_pre_go=0, **kwargs):
+    reach_tm_is_hdf_cursor_state=False, reach_tm_is_kg_vel=False, include_pre_go=0, keep_bin_spk_zsc = False, **kwargs):
     '''
     Summary: method to extract all time points from trials
     Input param: hdf: task file input
@@ -354,9 +354,13 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
             bin_spk_i, nbins, hdf_ix_i = bin_spks(spk_i, g, r, neural_bins, update_bmi_ix, divide_by_6)
 
             #If homer data then z-score: 
-            if animal == 'home': 
+            if animal == 'home' and keep_bin_spk_zsc:
                 dec = kwargs['dec']
                 bin_spk_i = (bin_spk_i - dec.mFR[np.newaxis, :])/dec.sdFR[np.newaxis, :]
+                zscored_bin_spk_i = True
+            else:
+                assert(not keep_bin_spk_zsc)
+                zscored_bin_spk_i = False
 
         else:
             nn = hdf.root.task[0]['spike_counts'].shape[0]
@@ -441,11 +445,20 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
                 #reach_tm_all.append(hdf.root.task[g:r]['internal_decoder_state'][:, :, 0])
                 #reach_tm_all.append(bin_spk_i*np.mat(kg).T)
                 ### pos/vel x time 
-                if animal == 'home':
+                if animal == 'home' and not keep_bin_spk_zsc: 
+                    assert(not zscored_bin_spk_i)
+                    ### Z-score the bin_spk_i to compute kg_vel 
                     dec = kwargs['dec']
                     bin_spk_i_z = (bin_spk_i - dec.mFR[np.newaxis, :])/dec.sdFR[np.newaxis, :]
                     all_data['kg_vel'].append(np.dot(bin_spk_i_z, kg.T))
+                    assert(np.allclose(te_num_cursor_state['neural_push'][hdf_ix_i, :], np.dot(bin_spk_i_z, kg.T)))
+
+                elif animal == 'home' and keep_bin_spk_zsc:
+                    assert(zscored_bin_spk_i)
+                    all_data['kg_vel'].append(np.dot(bin_spk_i, kg.T))
+                    assert(np.allclose(te_num_cursor_state['neural_push'][hdf_ix_i, :], np.dot(bin_spk_i, kg.T)))
                 else:
+                    assert(not zscored_bin_spk_i)
                     all_data['kg_vel'].append(np.dot(bin_spk_i, kg.T))
             else:
                 #reach_tm_all = np.hstack((reach_tm_all, np.zeros(( bin_spk_i.shape[0] ))+((r-g)*1000./60.) ))
