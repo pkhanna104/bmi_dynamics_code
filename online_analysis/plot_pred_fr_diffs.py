@@ -231,7 +231,7 @@ def plot_suppfig4_R2_bars(ridge_norm = False, fraction = False, plts=False):
     util_fcns.savefig(ferr, 'SU_POP_err_buildup')
 
 ###### Fig 4C r2 plot ########
-def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
+def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10, keep_bin_spk_zsc = False):
     if cond_on_act:
         model_name = 'hist_1pos_0psh_2spksm_1_spksp_0'
     else:
@@ -241,15 +241,14 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
         assert(cond_on_act == False)
 
     fax_r2, ax_r2 = plt.subplots(figsize = (4, 4))
-    for ia, (animal, yr) in enumerate(zip(['grom','jeev'], ['2016','2013'])):
-        
+    for ia, (animal, _) in enumerate(zip(['grom','jeev', 'home'], ['2016','2013', '2021'])):
         pooled_shuff = []
 
         for i_d in range(analysis_config.data_params['%s_ndays'%animal]):
             
             ### Load data ###
             dataObj = generalization_plots.DataExtract(animal, i_d, model_nm = model_name, 
-                model_set_number = 6, nshuffs=nshuffs)
+                model_set_number = 6, nshuffs=nshuffs, keep_bin_spk_zsc=keep_bin_spk_zsc)
             dataObj.load()
             print('starting %s, day %d' %(animal, i_d))
             valid_ix = dataObj.valid_analysis_ix
@@ -257,7 +256,11 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
             spks = dataObj.spks
 
             ### Condition on push 
-            cond = 10*plot_generated_models.cond_act_on_psh(animal, i_d)
+            if animal == 'home' and keep_bin_spk_zsc:
+                mult = 1.
+            else:
+                mult = 10.
+            cond = mult*plot_generated_models.cond_act_on_psh(animal, i_d, keep_bin_spk_zsc=keep_bin_spk_zsc)
             r2_cond = util_fcns.get_R2(spks[valid_ix, :], cond[valid_ix, :])
 
             pred = dataObj.pred_spks 
@@ -304,18 +307,18 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10):
 
             gc.collect()
 
-        ### pooled stats
-        mn_r2 = np.mean([d[0] for d in pooled_shuff])
-        mn_shuff = np.mean(np.vstack(([d[1] for d in pooled_shuff])), axis=0)
-        assert(len(mn_shuff) == nshuffs)
-        ix = np.nonzero(mn_r2 <= mn_shuff)[0]
-        print('POOLED: Animal %s, Day %d, pv %5f, r2_pred %.3f, mn r2_shuff%.3f, 95th r2_shuff%.3f' %(animal, 
-            i_d, float(len(ix))/float(nshuffs), mn_r2, np.mean(mn_shuff), np.percentile(mn_shuff, 95)))
+            ### pooled stats
+            mn_r2 = np.mean([d[0] for d in pooled_shuff])
+            mn_shuff = np.mean(np.vstack(([d[1] for d in pooled_shuff])), axis=0)
+            assert(len(mn_shuff) == nshuffs)
+            ix = np.nonzero(mn_r2 <= mn_shuff)[0]
+            print('POOLED: Animal %s, Day %d, pv %5f, r2_pred %.3f, mn r2_shuff%.3f, 95th r2_shuff%.3f' %(animal, 
+                i_d, float(len(ix))/float(nshuffs), mn_r2, np.mean(mn_shuff), np.percentile(mn_shuff, 95)))
 
     ax_r2.set_ylabel('$R^2$')
-    ax_r2.set_xlim([-1, 14])
+    ax_r2.set_xlim([-1, 25])
     fax_r2.tight_layout()
-    util_fcns.savefig(fax_r2, 'ax_r2_dyn_cond_act_shuff_n%d.svg' %(nshuffs))
+    #util_fcns.savefig(fax_r2, 'ax_r2_dyn_cond_act_shuff_n%d.svg' %(nshuffs))
 
 ######## Figure 4 examples and fraction neurons well predicted etc. ###########
 def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, animal='grom', 
@@ -1224,7 +1227,7 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
     util_fcns.savefig(fax_p_err, 'err_pop_diffs')
     
 ####### Fig 4 Eigenvalue plots ########
-def get_data_EVs(): 
+def get_data_EVs(keep_bin_spk_zsc = False): 
     model_set_number = 6
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'
 
@@ -1236,15 +1239,26 @@ def get_data_EVs():
     fhz, axhz = plt.subplots(figsize = (3, 4))
 
 
-    for ia, animal in enumerate(['grom', 'jeev']):
+    for ia, animal in enumerate(['grom', 'jeev', 'home']):
         num_eigs_td_gte_bin = []
         frac_eigs_td_gte_bin = []
         avg_freq_eigs_td_gte_bin = []
 
+        zstr = ''
+        if animal == 'home': 
+            if keep_bin_spk_zsc:
+                zstr = 'zsc'
+            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_%s.pkl' %(model_set_number, zstr), 'rb')); 
+        else:
+            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             ### Get the saved shuffle data ####
-            data = pickle.load(open(analysis_config.config['shuff_fig_dir'] + '%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
+            if animal == 'home':
+                data = pickle.load(open(analysis_config.config['shuff_fig_dir'] + '%s_%d_%s_shuff_ix.pkl'%(animal, day_ix, zstr), 'rb'))
+            else:
+                data = pickle.load(open(analysis_config.config['shuff_fig_dir'] + '%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
 
             ### Get X, Xtm1 ###
             Data = data['Data']
@@ -1273,7 +1287,7 @@ def get_data_EVs():
                 ax.set_ylim([-.1,5.05])
                 ax.vlines(.1, 0, 5.05, 'k', linestyle='dashed', linewidth=.5)
                 f.tight_layout()
-                util_fcns.savefig(f, '%s_%d_eigs'%(animal, day_ix))
+                #util_fcns.savefig(f, '%s_%d_eigs'%(animal, day_ix))
 
             #### Get stats; 
             ix_gte_bin = np.nonzero(decay >= 0.1)[0]
@@ -1290,9 +1304,9 @@ def get_data_EVs():
         axhz.bar(ia, np.mean(avg_freq_eigs_td_gte_bin), width=0.8, color='k', alpha=.2)
     
     for axi in [axnum, axfrac, axhz]:
-        axi.set_xticks([0, 1])
-        axi.set_xticklabels(['G', 'J'])
-        axi.set_xlim([-1, 2])
+        axi.set_xticks([0, 1, 2])
+        axi.set_xticklabels(['G', 'J', 'H'])
+        axi.set_xlim([-1, 3])
 
     axnum.set_ylabel('# Eigs with td > 0.1 sec')
     axfrac.set_ylabel('Frac. Eigs with td > 0.1 sec')
@@ -1301,9 +1315,9 @@ def get_data_EVs():
     for f in [fnum, ffrac, fhz]:
         f.tight_layout()
 
-    util_fcns.savefig(fnum, 'num_eigs_gte_bin')
-    util_fcns.savefig(ffrac, 'frac_eigs_gte_bin')
-    util_fcns.savefig(fhz, 'avg_freq_of_eigs_gte_bin')
+    #util_fcns.savefig(fnum, 'num_eigs_gte_bin')
+    #util_fcns.savefig(ffrac, 'frac_eigs_gte_bin')
+    #util_fcns.savefig(fhz, 'avg_freq_of_eigs_gte_bin')
 
 def get_ang_td(A, plt_evs_gte=.99, dt=0.1): 
     ev, evect = np.linalg.eig(A)
