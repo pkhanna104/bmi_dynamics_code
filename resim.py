@@ -136,6 +136,7 @@ class RerunDecoding(object):
         
         decoded_state = []
         decoded_state_OG = []
+        neural_push = []
         dec_old = np.zeros((7, ))
 
         spike_accum = np.zeros_like(spike_counts[0,:])
@@ -143,6 +144,7 @@ class RerunDecoding(object):
         
         dec_last = np.zeros_like(self.dec.predict(spike_counts[0,:]))
         dec_last_og = np.zeros((7, 1))
+        neural_push_i = np.zeros((7, 1))
         
         tot_spike_accum = np.zeros_like(spike_counts[0,:])-1
         if self.task == 'point_mass':
@@ -184,11 +186,14 @@ class RerunDecoding(object):
                 if self.monk == 'home':
                     z = (np.asarray(spike_accum.ravel()) - self.dec.mFR)*(1./self.dec.sdFR)
                     typical_pred = np.dot(self.F, pre_state) + np.dot(self.kalman_gain, z[:, np.newaxis])
+                    neural_push_i = np.dot(self.kalman_gain, z[:, np.newaxis])
 
                 #### Dont z-score 
                 elif self.monk == 'grom':
                     typical_pred = np.dot(self.F, pre_state) + np.dot(self.kalman_gain, spike_accum)
+                    neural_push_i = np.dot(self.kalman_gain, spike_accum)
                 
+                #### Test...
                 try:
                     assert(np.allclose(np.asarray(typical_pred).ravel(-1), dec_new))
                 except:
@@ -241,6 +246,7 @@ class RerunDecoding(object):
 
                 tot_spike_accum = np.hstack((tot_spike_accum, spike_accum))
                 decoded_state.append(dec_new)
+                neural_push.append(neural_push_i)
 
                 if save_only_innovation:
                     decoded_state_OG.append(dec_old)
@@ -256,12 +262,14 @@ class RerunDecoding(object):
                     tmp_dec_last = dec_last.copy()
                     tmp_dec_last[[0, 1, 2]] = self.center
                     decoded_state.append(tmp_dec_last) 
+                    neural_push.append(neural_push_i)
                     # dont remember whtat decoded_state_OG is for homer sims    
                     if verbose:
                         print(t)           
                 else:
                     decoded_state.append(dec_last)
                     decoded_state_OG.append(dec_last_og)
+                    neural_push.append(neural_push_i)
 
         spk_cnt = np.array(tot_spike_accum)
 
@@ -272,6 +280,7 @@ class RerunDecoding(object):
         self.dec_spk_cnt_bin[input_type] = spk_cnt[:,1:]
         self.dec_state_mn[input_type] = np.vstack((decoded_state))
         self.dec_state_mn['true'] = np.hstack((decoded_state_OG)).T
+        self.neural_push = np.hstack((neural_push)).T
         
     def move_vel_plant(self, reset_ix, dt=1/60.):
         pass
