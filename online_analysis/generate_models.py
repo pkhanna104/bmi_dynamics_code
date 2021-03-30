@@ -25,7 +25,7 @@ import sklearn.decomposition as skdecomp
 ######### STEP 1 -- Get alpha value #########
 def sweep_alpha_all(run_alphas=True, model_set_number = 3,
     fit_intercept = True, within_bin_shuffle = False,
-    normalize_ridge_vars = False):
+    normalize_ridge_vars = False, keep_bin_spk_zsc = False):
 
     """ Sweep different alphas for Ridge regression --> see which one is best
     
@@ -46,6 +46,7 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
         alphas.append((2./4.)*10**i)
         alphas.append((3./4.)*10**i)
         alphas.append(1.*10**i)
+    
 
     ndays = dict(grom=9, jeev=4, home=5) # for testing only; 
 
@@ -53,7 +54,7 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
         if run_alphas:
             h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, 
                 ndays = ndays[animal], fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle,
-                normalize_ridge_vars = normalize_ridge_vars)
+                normalize_ridge_vars = normalize_ridge_vars, keep_bin_spk_zsc = keep_bin_spk_zsc)
         else:
             #raise Exception('deprecated')
             h5_name = config['%s_pref'%animal] + '%s_sweep_alpha_days_models_set%d.h5' %(animal, model_set_number)
@@ -65,21 +66,30 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
 
     if fit_intercept:
         if within_bin_shuffle:
-            pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'wb'))
+            sff = '_shuff'
         else:
-            pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'wb'))
+            sff = ''
+
+        if normalize_ridge_vars: 
+            sff1 = '_ridge_norm'
+        else:
+            sff1 = ''
+
+        if keep_bin_spk_zsc:
+            sff2 = '_zsc'
+        else:
+            sff2 = ''
+
+        pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d%s%s%s.pkl' %(model_set_number, sff, sff1, sff2), 'wb'))
         
-        if normalize_ridge_vars:
-            pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_ridge_norm.pkl' %model_set_number, 'wb'))
-        else:
-            pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'wb'))
     else:
         pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'wb'))
+    
     print('Done with max_alphas_ridge')
 
 def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1, 
     model_set_number = 1, ndays=None, fit_intercept = True, within_bin_shuffle = False,
-    normalize_ridge_vars = False):
+    normalize_ridge_vars = False, keep_bin_spk_zsc = False):
     """Summary
     
     Args:
@@ -152,7 +162,7 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
             order_d = order_dict[i_d]
 
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
-            day, order_d, history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle)
+            day, order_d, history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle, keep_bin_spk_zsc = keep_bin_spk_zsc)
 
         KG = util_fcns.get_decoder(animal, i_d)
 
@@ -333,7 +343,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     task_demean = False,
     gen_demean = False,
     alpha_always_zero = False,
-    latent_dim = 'full'):
+    latent_dim = 'full', 
+    keep_bin_spk_zsc = False):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -480,9 +491,13 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             order_d = [order_dict[i_d]]
         else:
             order_d = order_dict[i_d]
-        # Get spike data from data fcn
+
+        if animal != 'home':
+            assert(not keep_bin_spk_zsc)
+
+        ### By default returns standard binned spike counts
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
-            order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle,
+            order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle, keep_bin_spk_zsc = keep_bin_spk_zsc,
             day_ix = i_d)
         
         print('R2 again, %.2f' %generate_models_utils.quick_reg(sub_spikes, sub_push_all))
@@ -846,6 +861,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     else: 
         sff7 = ''
 
+    if keep_bin_spk_zsc: 
+        sff8 = '_zsc'
+    else:
+        sff8 = ''
+
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
         pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
@@ -860,7 +880,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec%s%s.pkl' %(model_set_number, sff2, sff3), 'wb'))
         
         else:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5, sff7), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5, sff7, sff8), 'wb'))
 
 def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full',
     nshuffs = 1000, shuff_type = 'beh_maint'):
