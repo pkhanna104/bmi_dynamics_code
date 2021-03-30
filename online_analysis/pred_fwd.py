@@ -10,7 +10,7 @@ import pickle
 
 
 def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
-    nshuffs = 20, plot_action = False, nshuffs_roll = 100):
+    nshuffs = 20, plot_action = False, nshuffs_roll = 100, keep_bin_spk_zsc = False):
 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
@@ -19,7 +19,7 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
     col[True] = 'red'
     col[False] = analysis_config.blue_rgb; 
 
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['home']):#grom', 'jeev']):
 
         pooled = dict(r2 = [], r2_shuff = [], r2_shuff_roll=[])
 
@@ -27,23 +27,28 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
 
             ### Load data ###
             dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
-                model_set_number = model_set_number, nshuffs=nshuffs, nshuffs_roll=nshuffs_roll)
+                model_set_number = model_set_number, nshuffs=nshuffs, nshuffs_roll=nshuffs_roll,
+                keep_bin_spk_zsc = keep_bin_spk_zsc)
             dataObj.load()
-            dataObj.load_null_roll_pot_shuff()
+
+            if nshuffs_roll > 0:
+                dataObj.load_null_roll_pot_shuff()
+    
             valid_ix = dataObj.valid_analysis_ix
             print('ix valid: %d' %(len(valid_ix)))
 
             ### Get analysis for the push --> eliminate transitions to and from command bin 4; 
-            com_rolled = dataObj.rolled_push_comm_bins
-            com_rolled_tm1 = dataObj.rolled_push_comm_bins_tm1
+            if nshuffs_roll > 0:
+                com_rolled = dataObj.rolled_push_comm_bins
+                com_rolled_tm1 = dataObj.rolled_push_comm_bins_tm1
 
-            ### Valid ix 
-            valid_ix_rolled = np.nonzero(np.logical_and(com_rolled[:, 0] < 4, com_rolled_tm1[:, 0] < 4))[0]
-            print('ix valid: %d' %(len(valid_ix_rolled)))
+                ### Valid ix 
+                valid_ix_rolled = np.nonzero(np.logical_and(com_rolled[:, 0] < 4, com_rolled_tm1[:, 0] < 4))[0]
+                print('ix valid: %d' %(len(valid_ix_rolled)))
             
-            ### Intersecton of these: 
-            valid_ix_rolled = np.array([i for i in valid_ix_rolled if i in valid_ix])
-            print('ix valid: %d' %(len(valid_ix_rolled)))
+                ### Intersecton of these: 
+                valid_ix_rolled = np.array([i for i in valid_ix_rolled if i in valid_ix])
+                print('ix valid: %d' %(len(valid_ix_rolled)))
             
 
             if plot_action:
@@ -57,19 +62,20 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
                     r2_shuff.append(util_fcns.get_R2(np.dot(KG, dataObj.spks[valid_ix, :].T).T, 
                         np.dot(KG, dataObj.pred_spks_shuffle[valid_ix, :, n].T).T))
 
-                r2_null_roll = []
-                true_command_bins = util_fcns.commands2bins([dataObj.push[np.ix_(valid_ix, [3, 5])]], mag_boundaries, animal, day_ix, 
-                    vel_ix = [0, 1], ndiv=8)[0]
+                if nshuffs_roll > 0:
+                    r2_null_roll = []
+                    true_command_bins = util_fcns.commands2bins([dataObj.push[np.ix_(valid_ix, [3, 5])]], mag_boundaries, animal, day_ix, 
+                        vel_ix = [0, 1], ndiv=8)[0]
 
-                for n in range(nshuffs_roll):
-                    shuff_command_bins = util_fcns.commands2bins([0.1*np.dot(KG, dataObj.null_roll_pot_beh_true[valid_ix, :, n].T).T],
-                        mag_boundaries, animal, day_ix, vel_ix = [0, 1], ndiv=8)[0]
+                    for n in range(nshuffs_roll):
+                        shuff_command_bins = util_fcns.commands2bins([0.1*np.dot(KG, dataObj.null_roll_pot_beh_true[valid_ix, :, n].T).T],
+                            mag_boundaries, animal, day_ix, vel_ix = [0, 1], ndiv=8)[0]
 
-                    if animal == 'grom':
-                        assert(np.allclose(true_command_bins, shuff_command_bins))
+                        if animal == 'grom':
+                            assert(np.allclose(true_command_bins, shuff_command_bins))
 
-                    r2_null_roll.append(util_fcns.get_R2(np.dot(KG, dataObj.null_roll_pot_beh_true[valid_ix_rolled, :, n].T).T, 
-                        np.dot(KG, dataObj.null_roll_pot_beh_pred[valid_ix_rolled, :, n].T).T))
+                        r2_null_roll.append(util_fcns.get_R2(np.dot(KG, dataObj.null_roll_pot_beh_true[valid_ix_rolled, :, n].T).T, 
+                            np.dot(KG, dataObj.null_roll_pot_beh_pred[valid_ix_rolled, :, n].T).T))
             else:
                 ### get predictions ###
                 r2_true = util_fcns.get_R2(dataObj.spks[valid_ix, :], dataObj.pred_spks[valid_ix, :])
@@ -79,10 +85,11 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
                     r2_shuff.append(util_fcns.get_R2(dataObj.spks[valid_ix, :], 
                         dataObj.pred_spks_shuffle[valid_ix, :, n]))
 
-                r2_null_roll = []
-                for n in range(nshuffs_roll):
-                    r2_null_roll.append(util_fcns.get_R2(dataObj.null_roll_pot_beh_true[valid_ix_rolled, :, n], 
-                        dataObj.null_roll_pot_beh_pred[valid_ix_rolled, :, n]))
+                if nshuffs_roll > 0:
+                    r2_null_roll = []
+                    for n in range(nshuffs_roll):
+                        r2_null_roll.append(util_fcns.get_R2(dataObj.null_roll_pot_beh_true[valid_ix_rolled, :, n], 
+                            dataObj.null_roll_pot_beh_pred[valid_ix_rolled, :, n]))
 
             ### Plot the r2 ###
             xpos = i_a*10 + day_ix
@@ -93,40 +100,44 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
 
             beige = np.array([196, 154, 108])/255.
             util_fcns.draw_plot(xpos, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
-            util_fcns.draw_plot(xpos, r2_null_roll, 'deeppink', np.array([1., 1., 1., 0.]), ax)
-            #print('pink shuffle mean r2 act %s %s %d = %.3f' %(str(plot_action), animal, day_ix, np.mean(r2_null_roll)))
+        
+            if nshuffs_roll > 0:
+                util_fcns.draw_plot(xpos, r2_null_roll, 'deeppink', np.array([1., 1., 1., 0.]), ax)
+                #print('pink shuffle mean r2 act %s %s %d = %.3f' %(str(plot_action), animal, day_ix, np.mean(r2_null_roll)))
 
-            _, pv = scipy.stats.ks_2samp(r2_shuff, r2_null_roll)
-            print('KS test distributions: mn shuff %.3f, mn roll %.3f, pv ks test: %.5f' %(np.mean(r2_shuff), 
-                np.mean(r2_null_roll), pv))
+                _, pv = scipy.stats.ks_2samp(r2_shuff, r2_null_roll)
+                print('KS test distributions: mn shuff %.3f, mn roll %.3f, pv ks test: %.5f' %(np.mean(r2_shuff), 
+                    np.mean(r2_null_roll), pv))
 
-            pooled['r2'].append(r2_true)
-            pooled['r2_shuff'].append(r2_shuff)
-            pooled['r2_shuff_roll'].append(r2_null_roll)
+                pooled['r2_shuff_roll'].append(r2_null_roll)
 
-            for i_r, (r2shuffi, shuffnm) in enumerate(zip([r2_shuff, r2_null_roll], ['std','roll'])):
-                ix = np.nonzero(np.hstack((r2shuffi)) >= r2_true)[0]
-                pv = float(len(ix))/float(len(r2shuffi))
-                print('%s, %d: shuffled: %s, pv = %.5f, r2 = %.3f, shuff=[%.3f,%3f]' %(animal, 
-                    day_ix, shuffnm, pv, r2_true, np.mean(r2shuffi), np.percentile(r2shuffi, 95)))
+                for i_r, (r2shuffi, shuffnm) in enumerate(zip([r2_shuff, r2_null_roll], ['std','roll'])):
+                    ix = np.nonzero(np.hstack((r2shuffi)) >= r2_true)[0]
+                    pv = float(len(ix))/float(len(r2shuffi))
+                    print('%s, %d: shuffled: %s, pv = %.5f, r2 = %.3f, shuff=[%.3f,%3f]' %(animal, 
+                        day_ix, shuffnm, pv, r2_true, np.mean(r2shuffi), np.percentile(r2shuffi, 95)))
             
+            pooled['r2'].append(r2_true)
+            pooled['r2_shuff'].append(r2_shuff)               
 
         #### Pooled ####
         for i_r, (key, shuffnm, nsh) in enumerate(zip(['r2_shuff', 'r2_shuff_roll'], ['std','roll'], [nshuffs, nshuffs_roll])):
             
             mean_r2 = np.mean(pooled['r2'])
-            mean_shuff = np.mean(np.vstack((pooled[key])), axis=0)
-            assert(len(mean_shuff) == nsh)
 
-            ix = np.nonzero(np.hstack((mean_shuff)) >= mean_r2)[0]
-            pv = float(len(ix))/float(len(mean_shuff))
-            print('POOLED %s: shuffled: %s, pv = %.5f, r2 = %.3f, shuff=[%.3f,%3f]' %(animal, 
-                shuffnm, pv, mean_r2, np.mean(mean_shuff), np.percentile(mean_shuff, 95)))
+            if shuffnm == 'roll' and nshuffs_roll > 0:
+                mean_shuff = np.mean(np.vstack((pooled[key])), axis=0)
+                assert(len(mean_shuff) == nsh)
+
+                ix = np.nonzero(np.hstack((mean_shuff)) >= mean_r2)[0]
+                pv = float(len(ix))/float(len(mean_shuff))
+                print('POOLED %s: shuffled: %s, pv = %.5f, r2 = %.3f, shuff=[%.3f,%3f]' %(animal, 
+                    shuffnm, pv, mean_r2, np.mean(mean_shuff), np.percentile(mean_shuff, 95)))
         
 
     ax.set_xlim([-1, 14])
     f.tight_layout()
-    util_fcns.savefig(f, 'fwd_pred_action%s'%(str(plot_action)))
+    #util_fcns.savefig(f, 'fwd_pred_action%s'%(str(plot_action)))
 
 def plot_R2_model_fig4_mn_maint_shuff(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 10):
