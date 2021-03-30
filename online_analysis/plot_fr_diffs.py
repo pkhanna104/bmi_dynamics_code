@@ -731,6 +731,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
             perc_sig[animal, day_ix, 'nneur'] = nneur
             
             ### For each command get: ###
+            mag_cnt = 0
             for mag in range(4):
                 
                 for ang in range(8): 
@@ -740,7 +741,8 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
                     ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, mag=mag, ang=ang,
                                            animal=animal, day_ix=day_ix, min_bin_num=min_bin_indices,
                                            min_rev_bin_num=min_bin_indices)
-                    
+                    mag_cnt += len(ix_com)
+
                     ix_com_global = []
                     global_comm_indices = {}
 
@@ -835,7 +837,9 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0):
                             ### Fraction difference; 
                             perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist/nneur, dist/np.linalg.norm(global_mean_FR)), dtype=dtype_pop)
 
-                                
+                print('Mag Cnt, mag = %d, monk = %s, day = %d, cnt = %d' %(mag, animal, day_ix, mag_cnt))
+                mag_cnt = 0
+                                  
     return perc_sig, perc_sig_vect, niter2match, pooled_stats
 
 def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
@@ -1476,7 +1480,7 @@ def print_pv_from_pooled_stats(stats):
     pv_day = float(len(np.nonzero(shuff >= dpsth)[0]))/float(len(shuff))
     return pv_day, dpsth, shuff
 
-def plot_distribution_of_nmov_per_command(): 
+def plot_distribution_of_nmov_per_command(min_obs = 15): 
     """
     Plot distribution of number of movements per command as boxplot
     """
@@ -1499,7 +1503,7 @@ def plot_distribution_of_nmov_per_command():
                                                vel_ix=[3, 5])[0]
             mov_per_com = []
             mov_per_com_array = np.zeros((4, 8))
-
+            mag_cnt = 0
             for mag in range(4):
 
                 for ang in range(8): 
@@ -1511,6 +1515,8 @@ def plot_distribution_of_nmov_per_command():
 
                     ### For all movements --> figure otu which ones to keep in the global distribution ###
                     movements = 0
+                    #print('Mag %d, Ang %d, # = %d' %(mag, ang, len(ix_com)))
+                    mag_cnt += len(ix_com)
 
                     for mov in np.unique(move[ix_com]):
 
@@ -1521,13 +1527,18 @@ def plot_distribution_of_nmov_per_command():
                         ix_mc_all = ix_com[ix_mc] 
 
                         ### If enough of these then proceed; 
-                        if len(ix_mc) >= 15:
+                        if len(ix_mc) >= min_obs:
                             movements += 1
                             mov_per_com_array[mag, ang] += 1
 
                     ### Add to list: 
                     if movements >= 2:
                         mov_per_com.append(movements)
+
+                #####
+
+                print('Animal %s, Day %d, MAG %d: %d '%(animal, day_ix, mag, mag_cnt))
+                mag_cnt = 0
 
             ### Plot distribution ###
             util_fcns.draw_plot(i_a*10 + day_ix, mov_per_com, 'k', 'w', ax)
