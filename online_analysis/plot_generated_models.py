@@ -1834,7 +1834,7 @@ def plot_r2_bar_model_dynamics_only(min_obs = 15,
     util_fcns.savefig(fax_r2, 'ax_r2_dyn_cond_act_shuff_n%d.svg' %(nshuffs))
     return pooled_stats
 
-def cond_act_on_psh(animal, i_d, KG=None, dat=None):
+def cond_act_on_psh(animal, i_d, KG=None, dat=None, keep_bin_spk_zsc = False):
     """
     estimate neural activity y_t | a_t "most likely" 
     
@@ -1848,7 +1848,14 @@ def cond_act_on_psh(animal, i_d, KG=None, dat=None):
 
     ### Load the data from elements; 
     if dat is None:
-        dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl' %(animal, i_d), 'rb'))
+        if animal == 'home':
+            if keep_bin_spk_zsc:
+                zstr = 'zsc'
+            else:
+                zstr = ''
+            dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_%s_shuff_ix.pkl' %(animal, i_d, zstr), 'rb'))
+        else:
+            dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl' %(animal, i_d), 'rb'))
     
         ### Get push / spks; 
         tm0ix, _ = generate_models.get_temp_spks_ix(dat['Data'])
@@ -2082,20 +2089,25 @@ def shuff_vs_gen_frac_sig(pred_Y, true_Y, i_d, animal, model_name,
 
     return float(cnt_sig)/float(cnt_tot), r2_true_pop, r2_shuff_pop
 
-def get_shuffled_data_v2_super_stream(animal, day_ix, shuffle_num):
+def get_shuffled_data_v2_super_stream(animal, day_ix, shuffle_num, keep_bin_spk_zsc = False):
     pref = analysis_config.config['shuff_fig_dir']
 
-    dat = sio.loadmat(os.path.join(pref, '%s_%s_predY_wc_shuff%d.mat'%(animal, day_ix, shuffle_num)))
+    if animal == 'home' and keep_bin_spk_zsc:
+        dat = sio.loadmat(os.path.join(pref, '%s_%s_%s_predY_wc_shuff%d.mat'%(animal, day_ix, 'zsc',shuffle_num)))
+    else:
+        dat = sio.loadmat(os.path.join(pref, '%s_%s_predY_wc_shuff%d.mat'%(animal, day_ix, shuffle_num)))
     return dat['pred']
 
-def get_shuffled_data_v2_super_stream_nocond(animal, day_ix, shuffle_num):
+def get_shuffled_data_v2_super_stream_nocond(animal, day_ix, shuffle_num, keep_bin_spk_zsc = False):
     pref = analysis_config.config['shuff_fig_dir']
-
-    dat = sio.loadmat(os.path.join(pref, '%s_%s_predY_no_cond_shuff%d.mat'%(animal, day_ix, shuffle_num)))
+    if animal == 'home' and keep_bin_spk_zsc:
+        dat = sio.loadmat(os.path.join(pref, '%s_%s_%s_predY_no_cond_shuff%d.mat'%(animal, day_ix, 'zsc', shuffle_num)))
+    else:
+        dat = sio.loadmat(os.path.join(pref, '%s_%s_predY_no_cond_shuff%d.mat'%(animal, day_ix, shuffle_num)))
     return dat['pred']
 
 def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, test_ix, shuffle_num,
-    KG, former_shuff_ix, now_shuff_ix, t0):
+    KG, former_shuff_ix, now_shuff_ix, t0, keep_bin_spk_zsc = False):
     """Summary
     
     Parameters
@@ -2140,7 +2152,14 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, 
     pref = analysis_config.config['shuff_fig_dir']
     shuff_str = str(shuffle_num)
     shuff_str = shuff_str.zfill(3)
-    model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, 'hist_1pos_0psh_2spksm_1_spksp_0'))
+    zstr = ''
+    if animal == 'home' and keep_bin_spk_zsc:
+        zstr = 'zsc'
+
+    if animal == 'home':
+        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_%s_models.mat' %(animal, day, shuff_str, 'hist_1pos_0psh_2spksm_1_spksp_0', zstr))
+    else:
+        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, 'hist_1pos_0psh_2spksm_1_spksp_0'))
 
     ##### Deal with the shuffling indices ###
     shuff_x = []
@@ -2208,7 +2227,7 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, 
     return pred_Y
 
 def get_shuffled_data_v2_streamlined_no_cond(animal, day, spks_tm1, tm0ix, test_ix, shuffle_num,
-    KG, former_shuff_ix, now_shuff_ix, t0):
+    KG, former_shuff_ix, now_shuff_ix, t0, keep_bin_spk_zsc = False):
     """Summary
     
     Parameters
@@ -2250,7 +2269,15 @@ def get_shuffled_data_v2_streamlined_no_cond(animal, day, spks_tm1, tm0ix, test_
     pref = analysis_config.config['shuff_fig_dir']
     shuff_str = str(shuffle_num)
     shuff_str = shuff_str.zfill(3)
-    model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, 'hist_1pos_0psh_0spksm_1_spksp_0'))
+    if animal == 'home':
+        if keep_bin_spk_zsc:
+            zstr = 'zsc'
+        else:
+            zstr = ''
+
+        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_%s_models.mat' %(animal, day, shuff_str, 'hist_1pos_0psh_0spksm_1_spksp_0', zstr))
+    else:
+        model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day, shuff_str, 'hist_1pos_0psh_0spksm_1_spksp_0'))
 
     ##### Deal with the shuffling indices ###
     shuff_x = []
@@ -2359,8 +2386,15 @@ def get_shuffled_data_v2(animal, day, model_name, nshuffs = 10, shuff_num = None
     elif within_mov:
         data_file = pickle.load(open(pref + '%s_%d_shuff_ix_within_mov_shuff.pkl' %(animal, day)))
     else:
-        data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day)))
-    
+        if animal == 'home':
+            zstr = ''
+            if keep_bin_spk_zsc:
+                zstr = 'zsc'
+
+            data_file = pickle.load(open(pref + '%s_%d_%s_shuff_ix.pkl' %(animal, day, zstr)))
+        else:
+            data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day)))
+
     full_spks = data_file['Data']['spks']
     full_push = data_file['Data']['push']
     full_bin_num = data_file['Data']['bin_num']
