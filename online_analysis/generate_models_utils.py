@@ -37,7 +37,8 @@ class Model_Table(tables.IsDescription):
 #### Methods to get data needed for spike models ####
 def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False, 
     within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = False,
-    within_mov_bin_shuffle = False, shuffix = None, nshuffs = 1, **kwargs):
+    within_mov_bin_shuffle = False, shuffix = None, nshuffs = 1, keep_bin_spk_zsc = False,
+    **kwargs):
 
     if full_shuffle:
         assert(within_bin_shuffle == False)
@@ -104,6 +105,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
     ### Lists used to append ####
     spks = []
+    spks_z = []
     vel = []
     push = []
     pos = []
@@ -161,8 +163,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                     update_bmi_ix = update_bmi_ix, animal = animal,
                     drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
                     reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, **dict(kalman_gain=KG, dec=decoder,
-                        te_num = te_num))
-
+                        te_num = te_num, keep_bin_spk_zsc = keep_bin_spk_zsc))
+                
                 ### Make sure targ_i_all changes and targ_ix changes are at the same time; 
                 ############################
                 ######## TESTING ###########
@@ -361,6 +363,12 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             # Add to list: 
             ### Stack up the binned spikes; 
             spks.append(np.vstack(([bin_spk[x] for x in ix_mod])))
+
+            ### Keep track of spks_z for non-zscored binned spikes ####
+            if animal == 'home' and not keep_bin_spk_zsc: 
+                for x in ix_mod:
+                    spks_z.append(np.vstack(( (bin_spk[x] - decoder.mFR[np.newaxis, :]) / decoder.sdFR[np.newaxis, :] )))
+                    
             bin_num.append([np.arange(bin_spk[x].shape[0]) for x in ix_mod])
             
             # We need the real velocity: 
@@ -399,6 +407,9 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     trl = np.hstack((trl))
     pos = np.vstack((pos))
     target = np.hstack((target))
+
+    if animal == 'home' and not keep_bin_spk_zsc:
+        spks_z = np.vstack((spks_z))
     
     assert(spks.shape[0] == vel.shape[0] == push.shape[0] == tsk.shape[0] == trl.shape[0] == pos.shape[0] == target.shape[0])
     assert(len(trg_trl) == len(np.unique(trl)) == len(trg_trl_pos) == len(trl_order_ix))
@@ -422,6 +433,12 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
         assert(np.allclose(np.dot(KG[[3, 5], :], spks.T).T, push[:, [3, 5]]))
     elif animal == 'jeev':
         assert(quick_reg(np.dot(KG[[3, 5], :], spks.T).T, push[:, [3, 5]]) > .99)
+    elif animal == 'home':
+        if keep_bin_spk_zsc:
+            assert(np.allclose(np.dot(KG[[3, 5], :], spks.T).T, push[:, [3, 5]]))
+        else:
+            assert(np.allclose(np.dot(KG[[3, 5], :], spks_z.T).T, push[:, [3, 5]]))
+            assert(not np.allclose(np.dot(KG[[3, 5], :], spks.T).T, push[:, [3, 5]]))
 
     for nsi in range(nshuffs):
 
