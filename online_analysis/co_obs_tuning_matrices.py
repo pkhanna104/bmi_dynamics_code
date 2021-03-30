@@ -1073,8 +1073,14 @@ def extract_radial_bin_edges_grom_jeev(make_last_bin_95th = False):
             
                 # For each task entry
                 for i, te in enumerate(task_te):
-                    print('Task ix: %d' %i_t)
-                    day_dict.append(get_spks(animal, te))
+                    tmp = get_spks(animal, te)
+                    try:
+                        print('Task ix: %d, %d, N=%d' %(i, te, tmp.shape[0]))
+                    except:
+                        print('Task ix: %d, %s, N=%d' %(i, te, tmp.shape[0]))
+
+                    day_dict.append(tmp)
+
                     
             # Squish all bins into an array: 
             day_dict = np.array(np.vstack((day_dict)))
@@ -1128,13 +1134,16 @@ def get_spks(animal, te, keep_trls_sep = False):
 
         bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all = pa.extract_trials_all(hdf, rew_ix, update_bmi_ix=update_bmi_ix,
             drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True, animal=animal,
-            reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, **dict(kalman_gain=KG, dec=decoder))
+            reach_tm_is_hdf_cursor_pos=False, reach_tm_is_kg_vel=True, **dict(kalman_gain=KG, dec=decoder, te_num = te))
 
         print('# unique trials %d' %(len(np.unique(trial_ix_all))))
         for trg in np.unique(targ_ix):
 
             trg_ix = np.nonzero(targ_ix == trg)[0]
-            print('Targ %d, N = %d' %(trg, len(np.unique(trial_ix_all[trg_ix]))))
+            try:
+                print('Targ %d, N = %d' %(trg, len(np.unique(trial_ix_all[trg_ix]))))
+            except:
+                print('Targ %s, N = %d' %(trg, len(np.unique(trial_ix_all[trg_ix]))))
 
     elif animal == 'jeev':
         bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, unbinned, exclude = ppf_pa.get_jeev_trials_from_task_data(te, binsize=.1)
@@ -1192,6 +1201,7 @@ def make_co_obs_dict_homer(run_cursor_state = False):
             co_obs_dict_te['decoder_state'] = R.dec_state_mn['all'].copy()
             co_obs_dict_te['cursor'] = R.cursor_pos.copy()
             co_obs_dict_te['cursor_vel'] = R.cursor_vel.copy()
+            co_obs_dict_te['neural_push'] = R.neural_push.copy()
 
             ### Savethis; 
             pickle.dump(co_obs_dict_te, open(pref + 'te_%d_cursor.pkl'%te, 'wb'))
