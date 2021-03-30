@@ -46,11 +46,12 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
         alphas.append((2./4.)*10**i)
         alphas.append((3./4.)*10**i)
         alphas.append(1.*10**i)
+
     
 
     ndays = dict(grom=9, jeev=4, home=5) # for testing only; 
 
-    for animal in ['home']:#, 'jeev', 'grom']:
+    for animal in ['home', 'jeev', 'grom']:
         if run_alphas:
             h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, 
                 ndays = ndays[animal], fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle,
@@ -450,6 +451,19 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
                 else:   
                     ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+
+                ##### HOMER specific alphas #########
+                if keep_bin_spk_zsc: 
+                    if within_bin_shuffle:
+                        homer_ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff_zsc.pkl' %model_set_number, 'rb'))
+                    else:
+                        homer_ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_zsc.pkl' %model_set_number, 'rb'))
+                else:
+                    if within_bin_shuffle:
+                        homer_ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb'))
+                    else:
+                        homer_ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+
             else:
                 ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'rb')); 
 
@@ -510,7 +524,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         if animal == 'grom':
             KG, KG_null_proj, KG_potent_orth = get_KG_decoder_grom(i_d)
         elif animal == 'home':
-            KG, KG_null_proj, KG_potent_orth = get_KG_decoder_home(i_d)
+            KG, KG_null_proj, KG_potent_orth, dec_mFR, dec_sdFR = get_KG_decoder_home(i_d)
         elif animal == 'jeev':
             KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
 
@@ -691,6 +705,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 alpha_spec = 0.
                             else:
                                 alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+
+                                if animal == 'home':
+                                    alpha_spec = homer_ridge_dict[animal][0][i_d, model_nm]
+                                    print('Homer alpha %.1f' %(alpha_spec))
 
                             if alpha_always_zero:
                                 alpha_spec = 0.
@@ -883,7 +901,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5, sff7, sff8), 'wb'))
 
 def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full',
-    nshuffs = 1000, shuff_type = 'beh_maint'):
+    nshuffs = 1000, shuff_type = 'beh_maint', keep_bin_spk_zsc = False):
     '''
     general model tuning curves for shuffled data
     
@@ -909,6 +927,8 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
         "null_roll_pot_beh_maint" --> shuffle for figure 6; roll null w.r.t potent 
             -- each shuffle is random roll intenger samples from 100 - T
             -- plus behavior maintaining potent shuffle; 
+    keep_bin_spk_zsc: only matters for homer
+        if true --> then load (for homer) the alphas associated with zsc. 
     Raises
     ------
     Exception
@@ -948,7 +968,7 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
     ### Get the ridge dict:
     else:   
         ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
-    
+
     for obj in gc.get_objects():   # Browse through ALL objects
         if isinstance(obj, tables.File):   # Just HDF5 files
             try:
@@ -957,6 +977,12 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                 pass #
 
     for animal in ['home', 'grom', 'jeev']:
+
+        if animal == 'home':
+            if keep_bin_spk_zsc:
+                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff_zsc.pkl' %model_set_number, 'rb'))
+                print('loading zscore shuff dict for homer')
+
         order_dict = analysis_config.data_params['%s_ordered_input_type'%animal]
         input_type = analysis_config.data_params['%s_input_type'%animal]
 
@@ -977,41 +1003,44 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                     KG, KG_null_proj, KG_potent_orth = get_KG_decoder_jeev(i_d)
                     ord_d = order_dict[i_d]
                 elif animal == 'home': 
-                    KG, KG_null_proj, KG_potent_orth = get_KG_decoder_home(i_d)
+                    KG, KG_null_proj, KG_potent_orth, dec_mFR, dec_sdFR = get_KG_decoder_home(i_d)
                     day = [day]
                     ord_d = [order_dict[i_d]]
+
                 
                 # Get spike data from data fcn
                 if shuff_type == 'beh_maint':
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        ord_d, history_bins_max, within_bin_shuffle = True, 
+                        ord_d, history_bins_max, within_bin_shuffle = True, keep_bin_spk_zsc = keep_bin_spk_zsc,
                         day_ix = i_d, nshuffs = nshuffs)
 
                 elif shuff_type == 'mn_diff_maint':
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = True, 
+                        ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = True, keep_bin_spk_zsc = keep_bin_spk_zsc,
                         day_ix = i_d, nshuffs = nshuffs)
                 
                 elif shuff_type ==  'within_mov_shuff':
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False,
+                        ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, keep_bin_spk_zsc = keep_bin_spk_zsc,
                         within_mov_bin_shuffle = True, 
                         day_ix = i_d, nshuffs = nshuffs)
                 
                 elif shuff_type == 'null_roll': 
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
                         ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
+                        keep_bin_spk_zsc = keep_bin_spk_zsc,
                         day_ix = i_d, nshuffs = nshuffs)
 
                 elif shuff_type == 'null_roll_pot_beh_maint':
                     ### Ge the rolling indices ######
                     Data, Data_temp, Sub_spikes, Sub_spk_temp_all, Sub_push, Shuff_ix_roll = generate_models_utils.get_spike_kinematics(animal, day, 
                         ord_d, history_bins_max, within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = True,
+                        keep_bin_spk_zsc = keep_bin_spk_zsc,
                         day_ix = i_d, nshuffs = nshuffs)
 
                     #### Get the behavior maintaining indices ####
                     _, _, _, _, _, Shuff_ix = generate_models_utils.get_spike_kinematics(animal, day, 
-                        ord_d, history_bins_max, within_bin_shuffle = True, 
+                        ord_d, history_bins_max, within_bin_shuffle = True, keep_bin_spk_zsc = keep_bin_spk_zsc,
                         day_ix = i_d, nshuffs = nshuffs)
 
                     #### For each shuffle add teh shuff_ix_roll to the shuff_ix: 
@@ -1021,10 +1050,18 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                 print('Animal %s, Day %d data extraction done' %(animal, i_d))
 
                 #### Save shuffle indices ####### 
-                if shuff_type == 'beh_maint':
-                    shuff_ix_fname = save_directory + '%s_%d_shuff_ix.pkl' %(animal, i_d)
+                if animal == 'home':
+                    if keep_bin_spk_zsc:
+                        zstr = 'zsc'
+                    else:
+                        zstr = ''
                 else:
-                    shuff_ix_fname = save_directory + '%s_%d_shuff_ix_%s.pkl' %(animal, i_d, shuff_type)
+                    zstr = ''
+
+                if shuff_type == 'beh_maint':
+                    shuff_ix_fname = save_directory + '%s_%d_%s_shuff_ix.pkl' %(animal, i_d, zstr)
+                else:
+                    shuff_ix_fname = save_directory + '%s_%d_%s_shuff_ix_%s.pkl' %(animal, i_d, zstr, shuff_type)
 
                 ### Re make data to be smaller 
                 Data2 = dict(spks=Data['spks'], push=Data['push'], bin_num=Data['bin_num'], targ=Data['targ'], task=Data['tsk'])
@@ -1084,6 +1121,12 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                     elif animal == 'jeev':
                         assert(generate_models_utils.quick_reg(  np.array(np.dot(KG, sub_spikes.T).T), 
                             np.array(sub_push[:, [3, 5]])) > .98)
+                    elif animal == 'home':
+                        if keep_bin_spk_zsc:
+                            assert(np.allclose(sub_push[:, [3, 5]], np.dot(KG, sub_spikes.T).T))
+                        else:
+                            sub_spks_z = (sub_spikes - dec_mFR[np.newaxis, :]) / dec_sdFR[np.newaxis, :]
+                            assert(np.allclose(sub_push[:, [3, 5]], np.dot(KG, sub_spks_z.T).T))
 
                     ### Now make sure the discretized version are ok: 
                     assert(np.allclose(command_bins_disc, shuff_com_bins_disc))
@@ -1225,17 +1268,21 @@ def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, late
                         else:
                             save_dat['shuff_num'] = shuffle
 
-                            if shuff_type == 'beh_maint':
-                                sio.savemat(save_directory+'%s_%d_shuff%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm), save_dat)
+                            if animal == 'home':
+                                if keep_bin_spk_zsc:
+                                    zstr = 'zsc'
+                                else:
+                                    zstr = ''
                             else:
-                                sio.savemat(save_directory+'%s_%d_shuff%s_%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm, shuff_type), save_dat)
+                                zstr = ''
 
-                        if shuff_type == 'beh_maint':
-                            fname = save_directory+'%s_%d_shuff%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm)
-                        else:
-                            fname = save_directory+'%s_%d_shuff%s_%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm, shuff_type)
-                            
-                        print('file %s' %(fname))
+                            if shuff_type == 'beh_maint':
+                                fname = save_directory+'%s_%d_shuff%s_%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm, zstr)
+                            else:
+                                fname = save_directory+'%s_%d_shuff%s_%s_%s_%s_models.mat' %(animal, i_d, shuff_str, model_nm, shuff_type, zstr)
+
+                            sio.savemat(fname, save_dat)                        
+                            print('file %s' %(fname))
 
 def get_temp_spks_ix(Data2):
     ##### Shuffles and get trial starts #####
@@ -2375,7 +2422,10 @@ def get_KG_decoder_grom(day_ix, animal='grom'):
     Va[:2, :] = Vh[:2, :]
     KG_potent_orth = np.dot(Va.T, Va)
 
-    return KG_potent, KG_null_proj, KG_potent_orth
+    if animal == 'grom':
+        return KG_potent, KG_null_proj, KG_potent_orth
+    elif animal == 'home':
+        return KG_potent, KG_null_proj, KG_potent_orth, decoder.mFR, decoder.sdFR
 
 def generate_KG_decoder_jeev():
     KG_approx = dict() 
