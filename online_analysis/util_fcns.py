@@ -327,8 +327,15 @@ def get_decoder(animal, day_ix):
         _, KG = get_home_decoder(day_ix)
         return KG[[3, 5], :]
 
-def get_data_from_shuff(animal, day_ix, w_intc = True):
-    dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
+def get_data_from_shuff(animal, day_ix, w_intc = True, keep_bin_spk_zsc = False):
+    zstr = ''
+    if animal == 'home' and keep_bin_spk_zsc:
+        zstr = 'zsc'
+
+    if animal == 'home':
+        dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_%s_shuff_ix.pkl'%(animal, day_ix, zstr), 'rb'))
+    else:
+        dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
     
     #### Extract the data ####
     spks = dat['Data']['spks']
