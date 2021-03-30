@@ -21,7 +21,7 @@ import scipy.io as sio
 #### Load mag_boundaries ####
 mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
-def predict_shuffles_v2_with_cond(nshuffs=1000):
+def predict_shuffles_v2_with_cond(nshuffs=1000, keep_bin_spk_zsc = False):
     """
     Method to run the shuffles once and for all 
     then can use the methdo plot_generated_models.get_shuffled_data_v2_super_stream
@@ -33,20 +33,26 @@ def predict_shuffles_v2_with_cond(nshuffs=1000):
         Description
     """
     model_set_number = 6 
-    for i_a, animal in enumerate(['grom', 'jeev']):
-        for day_ix in range(1, analysis_config.data_params['%s_ndays'%animal]):
+    for i_a, animal in enumerate(['home']): #grom', 'jeev']):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             print('Starting %s, Day = %d' %(animal, day_ix))
             KG = util_fcns.get_decoder(animal, day_ix)
 
             ### Load the true data ###
             spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
-                day_ix, return_tm0=True)
+                day_ix, return_tm0=True, keep_bin_spk_zsc = keep_bin_spk_zsc)
 
             #### gearing up for shuffles #####
             now_shuff_ix = np.arange(tempN)
             pref = analysis_config.config['shuff_fig_dir']
-            shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
+            if animal == 'home': 
+                zstr = ''
+                if keep_bin_spk_zsc:
+                    zstr = 'zsc'
+                shuffle_data_file = pickle.load(open(pref + '%s_%d_%s_shuff_ix.pkl' %(animal, day_ix, zstr)))
+            else:
+                shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
             test_ix = shuffle_data_file['test_ix']
             t0 = time.time()
 
@@ -57,10 +63,16 @@ def predict_shuffles_v2_with_cond(nshuffs=1000):
                     print('Shuff %d, tm = %.3f' %(i, time.time() - t0))
 
                 ### offset was meant for 
+                mult = 10.
+
+                ### never was multiplied by 10, so no need to divide by 10
+                if animal == 'home' and keep_bin_spk_zsc:
+                    mult = 1.0
+
                 pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_wc(animal, 
-                    day_ix, spks_sub_tm1*.1, push_true, 
-                    tm0ix, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0)
-                pred_spks_shuffle = pred_spks_shuffle*10
+                    day_ix, spks_sub_tm1/mult, push_true, 
+                    tm0ix, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0, keep_bin_spk_zsc = keep_bin_spk_zsc)
+                pred_spks_shuffle = pred_spks_shuffle*mult
                 
                 assert(pred_spks_shuffle.shape[0] == tempN)
                 assert(pred_spks_shuffle.shape[1] == spks_true.shape[1])
@@ -69,12 +81,16 @@ def predict_shuffles_v2_with_cond(nshuffs=1000):
                 #assert(np.allclose(pred_spks_shuffle, x['pred'][:len(tm0ix), :]))
 
                 #### Save this 
-                sio.savemat(os.path.join(pref, '%s_%s_predY_wc_shuff%d.mat'%(animal, day_ix, i)), dict(pred=pred_spks_shuffle))
+                if animal == 'home' and keep_bin_spk_zsc:
+                    sio.savemat(os.path.join(pref, '%s_%s_zsc_predY_wc_shuff%d.mat'%(animal, day_ix, i)), dict(pred=pred_spks_shuffle))
+                else:
+                    sio.savemat(os.path.join(pref, '%s_%s_predY_wc_shuff%d.mat'%(animal, day_ix, i)), dict(pred=pred_spks_shuffle))
+                
 
                 if np.mod(i, 100) == 0:
                     print("done w/ shuff %d, %.1f" %(i, time.time() - t0))
 
-def predict_shuffles_v2_no_cond(nshuffs=1000):
+def predict_shuffles_v2_no_cond(nshuffs=1000, keep_bin_spk_zsc = False):
     """
     Method to run the shuffles once and for all 
     then can use the methdo plot_generated_models.get_shuffled_data_v2_super_stream
@@ -87,7 +103,14 @@ def predict_shuffles_v2_no_cond(nshuffs=1000):
     """
     model_set_number = 6 
 
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['home']):#, 'grom', 'jeev']):
+        mult = 10. 
+        if animal == 'home' and keep_bin_spk_zsc:
+            mult = 1.
+            zstr = 'zsc'
+        else:
+            zstr = ''
+
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             print('Starting %s, Day = %d' %(animal, day_ix))
@@ -95,12 +118,15 @@ def predict_shuffles_v2_no_cond(nshuffs=1000):
 
             ### Load the true data ###
             spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
-                day_ix, return_tm0=True)
+                day_ix, return_tm0=True, keep_bin_spk_zsc=keep_bin_spk_zsc)
 
             #### gearing up for shuffles #####
             now_shuff_ix = np.arange(tempN)
             pref = analysis_config.config['shuff_fig_dir']
-            shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
+            if animal == 'home':
+                shuffle_data_file = pickle.load(open(pref + '%s_%d_%s_shuff_ix.pkl' %(animal, day_ix, zstr)))
+            else:
+                shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
             test_ix = shuffle_data_file['test_ix']
             t0 = time.time()
 
@@ -112,15 +138,19 @@ def predict_shuffles_v2_no_cond(nshuffs=1000):
 
                 ### offset was meant for 
                 pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_no_cond(animal, 
-                    day_ix, spks_sub_tm1*.1, 
-                    tm0ix, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0)
-                pred_spks_shuffle = pred_spks_shuffle*10
+                    day_ix, spks_sub_tm1/mult, 
+                    tm0ix, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0, keep_bin_spk_zsc = keep_bin_spk_zsc)
+                pred_spks_shuffle = pred_spks_shuffle*mult
                 
                 assert(pred_spks_shuffle.shape[0] == len(tm0ix))
                 assert(pred_spks_shuffle.shape[1] == spks_true.shape[1])
 
                 #### Save this 
-                sio.savemat(os.path.join(pref, '%s_%s_predY_no_cond_shuff%d.mat'%(animal, day_ix, i)), 
+                if animal == 'home' and keep_bin_spk_zsc:
+                    sio.savemat(os.path.join(pref, '%s_%s_zsc_predY_no_cond_shuff%d.mat'%(animal, day_ix, i)),
+                        dict(pred=pred_spks_shuffle))
+                else:
+                    sio.savemat(os.path.join(pref, '%s_%s_predY_no_cond_shuff%d.mat'%(animal, day_ix, i)), 
                     dict(pred=pred_spks_shuffle))
 
                 if np.mod(i, 100) == 0:
@@ -129,7 +159,7 @@ def predict_shuffles_v2_no_cond(nshuffs=1000):
 class DataExtract(object):
 
     def __init__(self, animal, day_ix, model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0',
-        nshuffs = 1000, nshuffs_roll=None, ridge_norm = False):
+        nshuffs = 1000, nshuffs_roll=None, ridge_norm = False, keep_bin_spk_zsc = False):
 
         ### Make sure the model_nm is in the model set number 
         model_var_list, _, _, _ = generate_models_list.get_model_var_list(model_set_number)
@@ -148,11 +178,17 @@ class DataExtract(object):
 
         self.loaded = False
         self.ridge_norm = ridge_norm
+        self.keep_bin_spk_zsc=keep_bin_spk_zsc
 
     def load(self): 
         spks0, push0, tsk0, trg0, bin_num0, rev_bin_num0, move0, dat = util_fcns.get_data_from_shuff(self.animal, 
-            self.day_ix)
-        spks0 = 10*spks0; 
+            self.day_ix, keep_bin_spk_zsc=self.keep_bin_spk_zsc)
+        if self.animal == 'home' and self.keep_bin_spk_zsc:
+            mult = 1.
+        else:
+            mult = 10.
+
+        spks0 = mult*spks0; 
 
         #### Get subsampled
         tm0, tm1 = generate_models.get_temp_spks_ix(dat['Data'])
@@ -195,15 +231,19 @@ class DataExtract(object):
             model_fname = analysis_config.config[self.animal+'_pref']+'tuning_models_'+self.animal+'_model_set'+str(self.model_set_number)+'_ridge_norm.pkl'
         else:
             model_fname = analysis_config.config[self.animal+'_pref']+'tuning_models_'+self.animal+'_model_set'+str(self.model_set_number)+'_.pkl'
+        
+        if self.animal == 'home' and self.keep_bin_spk_zsc:
+            model_fname = analysis_config.config[self.animal+'_pref']+'tuning_models_'+self.animal+'_model_set'+str(self.model_set_number)+'__zsc.pkl'
+
         model_dict = pickle.load(open(model_fname, 'rb'))
         pred_spks = model_dict[self.day_ix, self.model_nm]
-        self.pred_spks = 10*pred_spks; 
+        self.pred_spks = mult*pred_spks; 
 
         if self.model_set_number == 12:
             self.model_dict = model_dict # keep it
 
         ### Make sure spks and sub_spks match -- using the same time indices ###
-        assert(np.allclose(self.spks, 10*model_dict[self.day_ix, 'spks']))
+        assert(np.allclose(self.spks, mult*model_dict[self.day_ix, 'spks']))
         
         ###############################################
         ###### Get shuffled prediction of  spikes  ####
@@ -214,7 +254,7 @@ class DataExtract(object):
                 nT = self.spks.shape[0]
                 for i in range(self.nshuffs):
                     shuffi = plot_generated_models.get_shuffled_data_v2_super_stream(self.animal,
-                        self.day_ix, i)
+                        self.day_ix, i, keep_bin_spk_zsc=self.keep_bin_spk_zsc)
                     assert(np.all(shuffi[nT:, :] == 0))
                     pred_spks_shuffle.append(shuffi[:nT, :])
                 pred_spks_shuffle = np.dstack((pred_spks_shuffle))
@@ -224,7 +264,7 @@ class DataExtract(object):
                 nT = self.spks.shape[0]
                 for i in range(self.nshuffs):
                     shuffi = plot_generated_models.get_shuffled_data_v2_super_stream_nocond(self.animal,
-                        self.day_ix, i)
+                        self.day_ix, i, keep_bin_spk_zsc=self.keep_bin_spk_zsc)
                     pred_spks_shuffle.append(shuffi)
                 pred_spks_shuffle = np.dstack((pred_spks_shuffle))
 
@@ -294,9 +334,12 @@ def cc(x, y):
     _,_,rv,_,_ = scipy.stats.linregress(x, y)
     return rv
 
-def get_spks(animal, day_ix, return_tm0 = False):
-    spks0, push, _, _, _, _, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
-    spks0 = 10*spks0; 
+def get_spks(animal, day_ix, return_tm0 = False, keep_bin_spk_zsc = False):
+    spks0, push, _, _, _, _, move, dat = util_fcns.get_data_from_shuff(animal, day_ix, keep_bin_spk_zsc = keep_bin_spk_zsc)
+    if animal == 'home' and keep_bin_spk_zsc:
+        pass
+    else:
+        spks0 = 10*spks0; 
 
      #### Get subsampled
     tm0, tm1 = generate_models.get_temp_spks_ix(dat['Data'])
