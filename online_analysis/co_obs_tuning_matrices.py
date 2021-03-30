@@ -1061,7 +1061,7 @@ def extract_radial_bin_edges_grom_jeev(make_last_bin_95th = False):
 
     boundaries = {}
 
-    for animal in ['home', 'grom', 'jeev']:
+    for animal in ['home']:#, 'grom', 'jeev']:
         inp = input_type2[animal]
 
         for i_d, day in enumerate(inp):
@@ -1090,8 +1090,17 @@ def extract_radial_bin_edges_grom_jeev(make_last_bin_95th = False):
             print('Mag size = %d' %mag.shape[0])
             if make_last_bin_95th: 
                 boundaries[animal, i_d] = [np.percentile(mag, 23.75), np.percentile(mag, 47.5), np.percentile(mag, 71.25), np.percentile(mag, 95)]
+                for i in range(4):
+                    if i == 0:
+                        ixmag = np.nonzero(mag < boundaries[animal, i_d][0])[0]
+                    else:
+                        ixmag = np.nonzero(np.logical_and(mag>= boundaries[animal, i_d][i-1], mag < boundaries[animal, i_d][i]))[0]
+                    print('mag %d, len %d' %(i, len(ixmag)))
+
             else:
                 boundaries[animal, i_d] = [np.percentile(mag, 25), np.percentile(mag, 50), np.percentile(mag, 75)]
+
+
 
     pref = analysis_config.config['grom_pref']
 
