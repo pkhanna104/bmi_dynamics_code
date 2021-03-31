@@ -297,12 +297,14 @@ def get_grom_decoder(day_ix, animal='grom'):
     decix = dec.rfind('/')
     decoder = pickle.load(open(analysis_config.config['%s_pref'%animal]+dec[decix:]))
     F, KG = decoder.filt.get_sskf()
-    return F, KG
+    if animal == 'home':
+        return F, KG, decoder.mFR, decoder.sdFR
+    else:
+        return F, KG
 
 def get_home_decoder(day_ix):
     return get_grom_decoder(day_ix, animal='home') 
-
-
+    
 def get_jeev_decoder(day_ix):
     kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'))
     KG = kgs[day_ix]
@@ -324,8 +326,8 @@ def get_decoder(animal, day_ix):
     elif animal == 'jeev':
         return get_jeev_decoder(day_ix)
     elif animal == 'home':
-        _, KG = get_home_decoder(day_ix)
-        return KG[[3, 5], :]
+        _, KG, mFR, sdFR = get_home_decoder(day_ix)
+        return KG[[3, 5], :], mFR, sdFR
 
 def get_data_from_shuff(animal, day_ix, w_intc = True, keep_bin_spk_zsc = False):
     zstr = ''
