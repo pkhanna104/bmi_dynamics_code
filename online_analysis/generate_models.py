@@ -164,8 +164,13 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
 
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
             day, order_d, history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle, keep_bin_spk_zsc = keep_bin_spk_zsc)
+        if animal == 'home':
+            KG, dec_mFR, dec_sdFR = util_fcns.get_decoder(animal, i_d)
+        else:
+            dec_mFR = None 
+            dec_sdFR = None
+            KG = util_fcns.get_decoder(animal, i_d)
 
-        KG = util_fcns.get_decoder(animal, i_d)
 
         #### Assertion to match length #####
         assert(len(data_temp) == len(sub_spikes) == len(sub_spk_temp_all) == len(sub_push_all))
@@ -226,7 +231,8 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
                         ##### data_temp_dict_test 
                         h5file, model_, _ = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=name, 
                             test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key = predict_key, KG = KG,
-                            fit_intercept = fit_intercept)
+                            fit_intercept = fit_intercept, keep_bin_spk_zsc=keep_bin_spk_zsc, decoder_params=dict(dec_mFR=dec_mFR,
+                                dec_sdFR = dec_sdFR))
 
     h5file.close()
     print 'H5 File Done: ', hdf_filename
@@ -521,6 +527,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             models_to_include.append(m[1])
 
         ### Get kalman gain etc. 
+        dec_sdFR = None
+        dec_mFR = None
         if animal == 'grom':
             KG, KG_null_proj, KG_potent_orth = get_KG_decoder_grom(i_d)
         elif animal == 'home':
@@ -718,7 +726,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
                                 fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
                                 fit_intercept = fit_intercept, model_nm = model_nm, nneur=nneur, 
-                                normalize_vars = normalize_ridge_vars)
+                                normalize_vars = normalize_ridge_vars, keep_bin_spk_zsc=keep_bin_spk_zsc)
                         
                         save_model = True
 
@@ -742,7 +750,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
                                 only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, KG = KG,
                                 fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
-                                fit_intercept = fit_intercept)
+                                fit_intercept = fit_intercept, keep_bin_spk_zsc = keep_bin_spk_zsc, decoder_params = dict(dec_mFR=dec_mFR,
+                                    dec_sdFR=dec_sdFR))
 
                         ### Save models, make predictions ####
                         ### Need to figure out which spikes are where:
@@ -1726,7 +1735,7 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
     only_potent_predictor = False, KG_pot = None, 
     fit_task_specific_model_test_task_spec = False,
     fit_intercept = True, model_nm=None, nneur=None,
-    normalize_vars = False):
+    normalize_vars = False, keep_bin_spk_zsc = False):
 
     ''' fit Ridge regression using alpha = ridge parameter
         only_potent_predictor --> multiply KG_pot -- which I think should be N x N by data;  '''
@@ -1803,7 +1812,7 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
                 model_2.normalize_vars_std = stX
 
             if 'psh_2' in model_nm:
-                ###### Conditioning needs a covariance; 
+                ###### Conditioning needs an error covariance; 
                 pred_x = model_2.predict(X)
                 W = np.cov(y_train.T - pred_x.T)
                 model_2.W = W 
