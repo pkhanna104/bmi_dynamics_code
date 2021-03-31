@@ -1351,7 +1351,7 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
         _, KG = util_fcns.get_grom_decoder(day_ix)
         
     elif animal == 'home':
-        _, KG = util_fcns.get_home_decoder(day_ix)
+        _, KG, _, _ = util_fcns.get_home_decoder(day_ix)
 
     elif animal == 'jeev':
         KG_imp = util_fcns.get_jeev_decoder(day_ix)
@@ -1537,14 +1537,16 @@ def chk_mov_map(mag, ang, com_ix, commands, shuff_ix, mov_map, movements):
 
 def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=None, 
     fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, 
-    KG_pot = None, KG = None, fit_task_specific_model_test_task_spec = False, fit_intercept = True):
+    KG_pot = None, KG = None, fit_task_specific_model_test_task_spec = False, fit_intercept = True,
+    keep_bin_spk_zsc = False, decoder_params = None):
 
     ##### Ridge Models ########
     if type(model_v) is sklearn.linear_model.ridge.Ridge or type(model_v[0]) is sklearn.linear_model.ridge.Ridge:
         
         # CLF/RIDGE models: 
         model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
-            KG, fit_task_specific_model_test_task_spec, fit_intercept = fit_intercept, model_nm = model_nm)
+            KG, fit_task_specific_model_test_task_spec, fit_intercept = fit_intercept, model_nm = model_nm, 
+            keep_bin_spk_zsc = keep_bin_spk_zsc, decoder_params = decoder_params)
         
         if type(model_v) is list:
             nneurons = model_v[0].nneurons
@@ -1674,12 +1676,16 @@ def getonehotvar(var):
 
 def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
     KG_pot = None, KG = None, fit_task_specific_model_test_task_spec = False, testY = None, fit_intercept = True,
-    model_nm = None):
+    model_nm = None, keep_bin_spk_zsc = False, decoder_params = None):
     
     # Called from h5_add_model: 
     # model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
     #     fit_task_specific_model_test_task_spec)
     
+    animal = None 
+    if 'dec_mFR' in decoder_params.keys():
+        animal ='home'
+
     X = aggX_pred(test_data, x_var_names, model)
     
     if testY is None:
@@ -1747,11 +1753,29 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
         ## y  ~ N (Ayt+b, W)
         ## a  ~ N (K(Ayt+b), KWK') 
         ## E(y_t | a_t) = (Ayt + b) + WK'()
-        cov = model.W; 
-        cov12 = np.dot(KG, cov).T
-        cov21 = np.dot(KG, cov)
-        cov22 = np.dot(KG, np.dot(cov, KG.T))
-        cov22I = np.linalg.inv(cov22)
+
+        # for z-scored data 
+        # y ~ N(Ayt+b, W)
+        # a ~ N(KS(Ayt+b) - KS*m, KS*W*KS')
+        # E(y_t | a_t) = (Ayt + b) + W'*KS'()(a_t - (KSy_t - KS*m))
+
+        #### Do this for NON-zscored data 
+        if animal == 'home' and not keep_bin_spk_zsc: 
+            cov = model.W; 
+            S = np.diag(1./decoder_params['dec_sdFR'])
+            KGS = np.dot(KG, S)
+
+            cov12 = np.dot(KGS, cov).T
+            cov22 = np.dot(KGS, np.dot(cov, KGS.T))
+            cov22I = np.linalg.inv(cov22)
+
+        #### if homer and z-scored, then decoder is same as others
+        else:
+            cov = model.W; 
+            cov12 = np.dot(KG, cov).T
+            cov21 = np.dot(KG, cov)
+            cov22 = np.dot(KG, np.dot(cov, KG.T))
+            cov22I = np.linalg.inv(cov22)
 
         T = A.shape[0]
 
@@ -1762,7 +1786,15 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
             mu1_i = pred[i_t, :].T
 
             ### Get predicted value of action; 
-            mu2_i = np.dot(KG, mu1_i)
+            if animal == 'home' and not keep_bin_spk_zsc:                
+                mu2_i = np.dot(KGS, mu1_i) - np.dot(KGS, np.mat(decoder_params['dec_mFR']).T)
+
+                ### check same as zscoring ###
+                pred_z = np.array(mu1_i - np.mat(decoder_params['dec_mFR']).T)[:, 0]/decoder_params['dec_sdFR']
+                assert(np.allclose(np.array(mu2_i), np.dot(KG, pred_z[:, np.newaxis])))
+                
+            else:
+                mu2_i = np.dot(KG, mu1_i)
 
             ### Actual action; 
             a_i = A[i_t, :][:, np.newaxis]
@@ -1771,7 +1803,10 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
             mu1_2_i = mu1_i + np.dot(cov12, np.dot(cov22I, a_i - mu2_i))
 
             ### Make sure it matches; 
-            assert(np.allclose(np.dot(KG, mu1_2_i), a_i))
+            if animal == 'home' and not keep_bin_spk_zsc:
+                assert(np.allclose(np.array(np.dot(KGS, mu1_2_i) - np.dot(KGS, decoder_params['dec_mFR'][:, np.newaxis])), a_i))
+            else:
+                assert(np.allclose(np.dot(KG, mu1_2_i), a_i))
 
             pred_w_cond.append(np.squeeze(np.array(mu1_2_i)))
 
