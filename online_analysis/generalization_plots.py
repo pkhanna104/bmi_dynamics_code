@@ -37,7 +37,12 @@ def predict_shuffles_v2_with_cond(nshuffs=1000, keep_bin_spk_zsc = False):
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             print('Starting %s, Day = %d' %(animal, day_ix))
-            KG = util_fcns.get_decoder(animal, day_ix)
+            if animal == 'home':
+                KG, dec_mFR, dec_sdFR = util_fcns.get_decoder(animal, day_ix)
+            else:
+                dec_mFR = None 
+                dec_sdFR = None
+                KG = util_fcns.get_decoder(animal, day_ix)
 
             ### Load the true data ###
             spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
@@ -71,7 +76,9 @@ def predict_shuffles_v2_with_cond(nshuffs=1000, keep_bin_spk_zsc = False):
 
                 pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_wc(animal, 
                     day_ix, spks_sub_tm1/mult, push_true, 
-                    tm0ix, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0, keep_bin_spk_zsc = keep_bin_spk_zsc)
+                    tm0ix, test_ix, i, KG, former_shuff_ix, now_shuff_ix,t0, keep_bin_spk_zsc = keep_bin_spk_zsc,
+                    decoder_params = dict(dec_mFR=dec_mFR, dec_sdFR=dec_sdFR))
+
                 pred_spks_shuffle = pred_spks_shuffle*mult
                 
                 assert(pred_spks_shuffle.shape[0] == tempN)
