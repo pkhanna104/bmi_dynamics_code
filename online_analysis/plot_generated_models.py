@@ -1865,7 +1865,10 @@ def cond_act_on_psh(animal, i_d, KG=None, dat=None, keep_bin_spk_zsc = False):
         tm0ix = np.arange(dat['Data']['spks'].shape[0])
 
     if KG is None: 
-        KG = util_fcns.get_decoder(animal, i_d)
+        if animal == 'home':
+            KG, dec_mFR, dec_sdFR = util_fcns.get_decoder(animal, i_d)
+        else:
+            KG = util_fcns.get_decoder(animal, i_d)
 
 
     spks = dat['Data']['spks'][tm0ix, :]
@@ -1874,22 +1877,41 @@ def cond_act_on_psh(animal, i_d, KG=None, dat=None, keep_bin_spk_zsc = False):
     else:
         act = dat['Data']['push'][tm0ix, :]
 
-    ### Estiamte covariance; 
-    mu = np.mean(spks, axis=0)
-    cov = np.cov(spks.T)
+    if animal == 'home' and not keep_bin_spk_zsc:
+        mu = np.mean(spks, axis=0)
+        cov = np.cov(spks.T)
+        S = np.diag(1./dec_sdFR)
+        KGS = np.dot(KG, S)
+        cov12 = np.dot(KGS, cov).T
+        cov22 = np.dot(KGS, np.dot(cov, KGS.T))
+        cov22I = np.linalg.inv(cov22)
+        
+        MU = np.zeros_like(spks)
+        MU[:] = mu 
+        assert(np.all(np.diff(MU, axis=0) == 0.))
 
-    cov12 = np.dot(KG, cov).T
-    cov21 = np.dot(KG, cov)
-    cov22 = np.dot(KG, np.dot(cov, KG.T))
-    cov22I = np.linalg.inv(cov22)
+        mu2_i = np.array(np.dot(KGS, MU.T).T) - np.array(np.dot(KGS, dec_mFR[:, np.newaxis])).T
+        assert(np.allclose(mu2_i, np.dot(KG, ((MU - dec_mFR[np.newaxis, :])/dec_sdFR[np.newaxis, :]).T).T))
+        pred_w_cond = MU + np.dot(cov12, np.dot(cov22I, (act - mu2_i).T)).T
+        assert(np.allclose(np.dot(KGS, pred_w_cond.T).T - np.dot(KGS, dec_mFR[:,np.newaxis]).T, act))
+    else:
+        ### Estiamte covariance; 
+        mu = np.mean(spks, axis=0)
+        cov = np.cov(spks.T)
 
-    MU = np.zeros_like(spks)
-    MU[:] = mu 
-    assert(np.all(np.diff(MU, axis=0) == 0.))
+        cov12 = np.dot(KG, cov).T
+        cov21 = np.dot(KG, cov)
+        cov22 = np.dot(KG, np.dot(cov, KG.T))
+        cov22I = np.linalg.inv(cov22)
 
-    mu2_i = np.dot(KG, MU.T).T
-    pred_w_cond = MU + np.dot(cov12, np.dot(cov22I, (act - mu2_i).T)).T
-    assert(np.allclose(np.dot(KG, pred_w_cond.T).T, act))
+        MU = np.zeros_like(spks)
+        MU[:] = mu 
+        assert(np.all(np.diff(MU, axis=0) == 0.))
+
+        mu2_i = np.dot(KG, MU.T).T
+        pred_w_cond = MU + np.dot(cov12, np.dot(cov22I, (act - mu2_i).T)).T
+        assert(np.allclose(np.dot(KG, pred_w_cond.T).T, act))
+    
     return pred_w_cond
 
 def test_cond_act_on_psh(): 
@@ -2143,7 +2165,9 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, 
     ### Get model variables 
     #### setup pred_Y to be accurate 
     nneur = KG.shape[1]
-    
+    dec_mFR = decoder_params.pop('dec_mFR', None)
+    dec_sdFR = decoder_params.pop('dec_sdFR', None)
+
     ##### This is correct -- but we did everything wrong ###
     #pred_Y = np.zeros((len(tm0ix), nneur))
     pred_Y = np.zeros((len(now_shuff_ix), nneur))
@@ -2209,8 +2233,8 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, 
 
         ### Pre-assemble these to avoid the stupid re-assembly in pred_w_cond ####
         kwargs = dict(A_preassembled = push_tm0[np.ix_(test_ix_fold_current, [3, 5])], 
-                      X_preassembled = spks_tm1[test_ix_fold_current, :], dec_mFR = decoder_params.pop('dec_mFR', None),
-                      dec_sdFR = decoder_params.pop('dec_sdFR', None), keep_bin_spk_zsc = keep_bin_spk_zsc, animal=animal)
+                      X_preassembled = spks_tm1[test_ix_fold_current, :], dec_mFR = dec_mFR,
+                      dec_sdFR = dec_sdFR, keep_bin_spk_zsc = keep_bin_spk_zsc, animal=animal)
 
         ### Make the predictions 
         pred_wc = pred_w_cond(coef, intc, None,
@@ -2220,8 +2244,15 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, 
         pred_Y[test_ix_fold_current, :] = pred_wc.copy()
 
         #### Make sure the push actuall matches intended push: #### 
-        assert(np.allclose(np.dot(KG, pred_wc.T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
-        assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold_current, :].T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
+        if animal == 'home' and not keep_bin_spk_zsc:
+            pred_wc_z = (pred_wc - dec_mFR[np.newaxis, :]) / dec_sdFR[np.newaxis, :]
+            pred_Y_z = (pred_Y - dec_mFR[np.newaxis, :]) / dec_sdFR[np.newaxis, :]
+
+            assert(np.allclose(np.dot(KG, pred_wc_z.T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
+            assert(np.allclose(np.dot(KG, pred_Y_z[test_ix_fold_current, :].T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
+        else:
+            assert(np.allclose(np.dot(KG, pred_wc.T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
+            assert(np.allclose(np.dot(KG, pred_Y[test_ix_fold_current, :].T).T, push_tm0[np.ix_(test_ix_fold_current, [3, 5])]))
 
     if np.all(pred_Y == 0):
         import pdb; pdb.set_trace()
@@ -2905,7 +2936,7 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
 
     #### Ge prediction: T x N 
     if animal == 'home' and not keep_bin_spk_zsc:
-        mu2_i = np.array(np.dot(KGS, pred.T).T) - np.array(np.dot(KGS, dec_mFR[:, np.newaxis]))
+        mu2_i = np.array(np.dot(KGS, pred.T).T) - np.array(np.dot(KGS, dec_mFR[:, np.newaxis])).T
         assert(np.allclose(mu2_i, np.dot(KG, ((pred - dec_mFR[np.newaxis, :])/dec_sdFR[np.newaxis, :]).T).T))
     else:
         mu2_i = np.dot(KG, pred.T).T                
@@ -2916,7 +2947,7 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
         pass
     else:
         if animal == 'home' and not keep_bin_spk_zsc:
-            assert(np.allclose(np.dot(KG, ((pred_w_cond - dec_mFR[np.newaxis, :])/dec_sdFR[np.newaxis, :]).T), A))
+            assert(np.allclose(np.dot(KG, ((pred_w_cond - dec_mFR[np.newaxis, :])/dec_sdFR[np.newaxis, :]).T).T, A))
         else:
             assert(np.allclose(np.dot(KG, pred_w_cond.T).T, A))
     return pred_w_cond

@@ -270,7 +270,10 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10, keep_bin_spk
 
             ### Both should be conditioned
             if cond_on_act:
-                assert(np.allclose(np.dot(KG, cond.T).T, np.dot(KG, pred.T).T))
+                if animal == 'home' and not keep_bin_spk_zsc:
+                    pass
+                else:   
+                    assert(np.allclose(np.dot(KG, cond.T).T, np.dot(KG, pred.T).T))
 
             r2_pred = util_fcns.get_R2(spks[valid_ix, :], pred[valid_ix, :])
 
@@ -1248,7 +1251,9 @@ def get_data_EVs(keep_bin_spk_zsc = False):
         if animal == 'home': 
             if keep_bin_spk_zsc:
                 zstr = 'zsc'
-            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_%s.pkl' %(model_set_number, zstr), 'rb')); 
+                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_%s.pkl' %(model_set_number, zstr), 'rb')); 
+            else:
+                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %(model_set_number), 'rb')); 
         else:
             ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
 

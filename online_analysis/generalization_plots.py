@@ -121,7 +121,10 @@ def predict_shuffles_v2_no_cond(nshuffs=1000, keep_bin_spk_zsc = False):
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             print('Starting %s, Day = %d' %(animal, day_ix))
-            KG = util_fcns.get_decoder(animal, day_ix)
+            if animal == 'home':
+                KG, _, _ = util_fcns.get_decoder(animal, day_ix)
+            else:
+                KG = util_fcns.get_decoder(animal, day_ix)
 
             ### Load the true data ###
             spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 

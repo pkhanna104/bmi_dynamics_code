@@ -1684,7 +1684,8 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
     
     animal = None 
     if 'dec_mFR' in decoder_params.keys():
-        animal ='home'
+        if decoder_params['dec_mFR'] is not None:
+            animal ='home'
 
     X = aggX_pred(test_data, x_var_names, model)
     

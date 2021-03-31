@@ -52,7 +52,10 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
             
 
             if plot_action:
-                KG = util_fcns.get_decoder(animal, day_ix)
+                if animal == 'home':
+                    KG, _, _ = util_fcns.get_decoder(animal, day_ix)
+                else:
+                    KG = util_fcns.get_decoder(animal, day_ix)
 
                 r2_true = util_fcns.get_R2(np.dot(KG, dataObj.spks[valid_ix, :].T).T, 
                     np.dot(KG, dataObj.pred_spks[valid_ix, :].T).T)
