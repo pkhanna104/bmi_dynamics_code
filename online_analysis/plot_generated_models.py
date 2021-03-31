@@ -2107,7 +2107,7 @@ def get_shuffled_data_v2_super_stream_nocond(animal, day_ix, shuffle_num, keep_b
     return dat['pred']
 
 def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, test_ix, shuffle_num,
-    KG, former_shuff_ix, now_shuff_ix, t0, keep_bin_spk_zsc = False):
+    KG, former_shuff_ix, now_shuff_ix, t0, keep_bin_spk_zsc = False, decoder_params = None):
     """Summary
     
     Parameters
@@ -2209,7 +2209,8 @@ def get_shuffled_data_v2_streamlined_wc(animal, day, spks_tm1, push_tm0, tm0ix, 
 
         ### Pre-assemble these to avoid the stupid re-assembly in pred_w_cond ####
         kwargs = dict(A_preassembled = push_tm0[np.ix_(test_ix_fold_current, [3, 5])], 
-                      X_preassembled = spks_tm1[test_ix_fold_current, :])
+                      X_preassembled = spks_tm1[test_ix_fold_current, :], dec_mFR = decoder_params.pop('dec_mFR', None),
+                      dec_sdFR = decoder_params.pop('dec_sdFR', None), keep_bin_spk_zsc = keep_bin_spk_zsc, animal=animal)
 
         ### Make the predictions 
         pred_wc = pred_w_cond(coef, intc, None,
@@ -2877,11 +2878,22 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
     ## y  ~ N (Ayt+b, W)
     ## a  ~ N (K(Ayt+b), KWK') 
     ## E(y_t | a_t) = (Ayt + b) + WK'()
+    keep_bin_spk_zsc = kwargs.pop('keep_bin_spk_zsc', False)
+    dec_mFR = kwargs.pop('dec_mFR', None)
+    dec_sdFR = kwargs.pop('dec_sdFR', None)
+    animal = kwargs.pop('animal', None)
 
     cov = model.W; 
-    cov12 = np.dot(KG, cov).T
-    cov21 = np.dot(KG, cov)
-    cov22 = np.dot(KG, np.dot(cov, KG.T))
+
+    if animal == 'home' and not keep_bin_spk_zsc:
+        S = np.diag(1./dec_sdFR)
+        KGS = np.dot(KG, S)
+        cov12 = np.dot(KGS, cov).T
+        cov22 = np.dot(KGS, np.dot(cov, KGS.T))
+    else:
+        cov12 = np.dot(KG, cov).T
+        cov21 = np.dot(KG, cov)
+        cov22 = np.dot(KG, np.dot(cov, KG.T))
 
     try:
         cov22I = np.linalg.inv(cov22)
@@ -2892,13 +2904,21 @@ def pred_w_cond(coef_, intc_, data_temp_dict, test_ix_fold, variable_names, nneu
         testing_mode = True
 
     #### Ge prediction: T x N 
-    mu2_i = np.dot(KG, pred.T).T                
+    if animal == 'home' and not keep_bin_spk_zsc:
+        mu2_i = np.array(np.dot(KGS, pred.T).T) - np.array(np.dot(KGS, dec_mFR[:, np.newaxis]))
+        assert(np.allclose(mu2_i, np.dot(KG, ((pred - dec_mFR[np.newaxis, :])/dec_sdFR[np.newaxis, :]).T).T))
+    else:
+        mu2_i = np.dot(KG, pred.T).T                
+    
     pred_w_cond = pred + np.dot(cov12, np.dot(cov22I, (A - mu2_i).T)).T
 
     if testing_mode:
         pass
     else:
-        assert(np.allclose(np.dot(KG, pred_w_cond.T).T, A))
+        if animal == 'home' and not keep_bin_spk_zsc:
+            assert(np.allclose(np.dot(KG, ((pred_w_cond - dec_mFR[np.newaxis, :])/dec_sdFR[np.newaxis, :]).T), A))
+        else:
+            assert(np.allclose(np.dot(KG, pred_w_cond.T).T, A))
     return pred_w_cond
       
 #### Deprecated shuffles #### 
