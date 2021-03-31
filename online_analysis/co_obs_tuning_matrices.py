@@ -1191,6 +1191,10 @@ def make_co_obs_dict_homer(run_cursor_state = False):
         decoder = pickle.load(open(pref+dec[decix:]))
         print('Starting TE %d' %te)
         
+        try:
+            assert(np.all(hdf.root.task[1:]['kinarm_curs'][:, [0, 2]]!=0.))
+        except:
+            import pdb; pdb.set_trace()
         if run_cursor_state:
             R = resim.RerunDecoding(hdf, decoder, task='bmi_resetting', center = np.array([5., 0., -1.]))
             sc = hdf.root.task[:]['spike_counts']
