@@ -70,9 +70,14 @@ data_params['jbins'] = np.linspace(-9., 9., 40)
 ##### Monkey H 
 data_params['home_input_type'] = [[3471, 3472, 3473, 3474], 
 								  [3481, 3482, 3483],
-								  [3516, 3517, 3519, 3521, 3522],
-								  [3562, 3563, 3564, 3565, 3566],
-								  [3590, 3591, 3592, 3593, 3594]]
+								  [3516, 3517, 3519, 3521, 3522], ### No kinarm, no video 
+								  [3562, 3563, 3564, 3565, 3566], 
+								  [3590, 3591, 3592, 3593, 3594]] ### No kinarm, no video
+### could also use data from 3/10 --> (3455, 3456, 3457), no to video (162 BMI rew)
+### could also use data from 3/17 --> (3545, 3546, 3547), yes to video (218 BMI rew)
+
+
+
 data_params['home_ordered_input_type'] = [[0, 1,2, 3], [0, 1, 2], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
 
 data_params['home_names'] = ['3-11', '3-12', '3-16', '3-18', '3-19']
