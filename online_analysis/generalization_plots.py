@@ -1849,12 +1849,12 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
     if plot_r2_by_lo_cat:
         f3, ax3 = plt.subplots(ncols = 3, figsize=(6, 3))
 
-    for i_a, animal in enumerate(['grom']):#, 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
         r2_stats = []
         r2_stats_shuff = []
 
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             if plot_eig:
                 fmn, axmn = plt.subplots()
@@ -1901,6 +1901,10 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             com_true_tm1 = com_true_tm1[an_ind]
             mov_true = mov_true[an_ind]
 
+            ######## add just conditioning ####
+            spks_cond = 10*plot_generated_models.cond_act_on_psh(animal, day_ix)
+            spks_cond = spks_cond[an_ind, :]
+
             ### Load shuffled dynamics --> same as shuffled, not with left out shuffled #####
             ### Go through the items that have been held out: 
             left_outters = LOO_dict.keys()
@@ -1910,6 +1914,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             lo_true_all = []
             lo_pred_all = []
             nlo_pred_all = []
+            cond_all = []
             shuff_pred_all = []
 
             r2_stats_spec = []; 
@@ -1930,7 +1935,6 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                     #### CRUCIAL : make sure this is np.unique(lo_ix)
                     ### KEep 
                     lo_ix = np.unique(lo_ix_og)
-
                     tmp_lo_ix = list(lo_ix_og)
                     lo_keep_ix = np.array([tmp_lo_ix.index(l) for l in lo_ix])
                     assert(np.allclose(lo_ix, lo_ix_og[lo_keep_ix]))
@@ -1961,6 +1965,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                         lo_pred_all.append(lo_pred[lo_keep_ix, :])
                         lo_true_all.append(spks_true[lo_ix, :])
                         nlo_pred_all.append(spks_pred[lo_ix, :])
+                        cond_all.append(spks_cond[lo_ix, :])
                         #shuff_pred_all.append(pred_spks_shuffle[lo_ix, :, :])
                         
                         #### r2 stats specific ####
@@ -2029,6 +2034,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             lo_true_all = np.vstack((lo_true_all))
             lo_pred_all = np.vstack((lo_pred_all))
             nlo_pred_all = np.vstack((nlo_pred_all))
+            cond_all = np.vstack((cond_all))
 
             try:
                 lo_ix_all = np.hstack((lo_ix_all))
@@ -2037,6 +2043,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
             r2_pred_lo, _ = yfcn(lo_true_all, lo_pred_all)
             r2_pred_nlo, _ = yfcn(lo_true_all, nlo_pred_all)
+            r2_cond, _ = yfcn(lo_true_all, cond_all)
 
             r2_shuff = []
             # N_tmp = len(tm0ix)
@@ -2096,6 +2103,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=color, markersize=10)
             ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='m',
                 mec='purple', mew=1., markersize=10)
+            ax.plot(i_a*10 + day_ix, r2_cond, '^', color='gray', markersize=10)
             util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
             mn = np.min([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
             mx = np.max([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
