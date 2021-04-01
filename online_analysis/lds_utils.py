@@ -54,72 +54,72 @@ def plot_example_x0(A, nEx = 10, nT = 100, x1lim = (-5, 5), x2lim = (-5, 5), tit
     ax.set_ylabel('$x^1$', fontsize=14)
     ax.set_title(title, fontsize=14)
 
-def eigenspec(*args, labels=None, dt = 0.01, xlim = None, ylim = None, axi = None, skip_legend=False):
-    ''' 
-    Method to plot the time decay (seconds) vs. frequency (hz) of eigenvalues of A for 
-    each A in args
-    '''
+# def eigenspec(*args, labels=None, dt = 0.01, xlim = None, ylim = None, axi = None, skip_legend=False):
+#     ''' 
+#     Method to plot the time decay (seconds) vs. frequency (hz) of eigenvalues of A for 
+#     each A in args
+#     '''
 
-    if labels is not None:
-        assert(len(labels) == len(args))
+#     if labels is not None:
+#         assert(len(labels) == len(args))
     
-    ### Setup distinct colors for each A matrix
-    N = len(args)
-    colors = pl.cm.viridis(np.linspace(0,1,N))
+#     ### Setup distinct colors for each A matrix
+#     N = len(args)
+#     colors = pl.cm.viridis(np.linspace(0,1,N))
 
-    ### Setup plot
-    if axi is None:
-      f, ax = plt.subplots()
-    else:
-      ax = axi
-      skip_legend = True
+#     ### Setup plot
+#     if axi is None:
+#       f, ax = plt.subplots()
+#     else:
+#       ax = axi
+#       skip_legend = True
 
-    L = []; 
-    D = []; 
-    for ia, A in enumerate(args):
+#     L = []; 
+#     D = []; 
+#     for ia, A in enumerate(args):
 
-        ### Make sure square matrix 
-        assert(A.shape[0] == A.shape[1])
+#         ### Make sure square matrix 
+#         assert(A.shape[0] == A.shape[1])
 
-        ### Get eigenvalues: 
-        ev, _ = np.linalg.eig(A)
+#         ### Get eigenvalues: 
+#         ev, _ = np.linalg.eig(A)
 
-        ### Get R / theta values
-        R = np.abs(ev)
-        Th = np.angle(ev)
+#         ### Get R / theta values
+#         R = np.abs(ev)
+#         Th = np.angle(ev)
 
-        ## Get time decay
-        TD = -1/np.log(R)*dt 
+#         ## Get time decay
+#         TD = -1/np.log(R)*dt 
 
-        ## Get Hz: 
-        Hz = np.array(Th / (2*np.pi*dt))
+#         ## Get Hz: 
+#         Hz = np.array(Th / (2*np.pi*dt))
 
-        ix_mx = np.nonzero(np.round(Hz*1000)/1000.==(0.5/dt))[0]
-        Hz[ix_mx] = 0
+#         ix_mx = np.nonzero(np.round(Hz*1000)/1000.==(0.5/dt))[0]
+#         Hz[ix_mx] = 0
 
-        if labels is None:
-            lab = 'A%d'%(ia+1)
-        else:
-            lab = labels[ia]
-        lines = ax.vlines(Hz, 0, TD, color=colors[ia])
-        dots = ax.plot(Hz, TD, '.', color=colors[ia], label=lab, markersize=20)
-        L.append(lines)
-        D.append(dots)
+#         if labels is None:
+#             lab = 'A%d'%(ia+1)
+#         else:
+#             lab = labels[ia]
+#         lines = ax.vlines(Hz, 0, TD, color=colors[ia])
+#         dots = ax.plot(Hz, TD, '.', color=colors[ia], label=lab, markersize=20)
+#         L.append(lines)
+#         D.append(dots)
 
-    if skip_legend:
-        pass
-    else:
-        f.legend()
+#     if skip_legend:
+#         pass
+#     else:
+#         f.legend()
         
-    if xlim is not None:
-        ax.set_xlim(xlim)
-    if ylim is not None:
-        ax.set_ylim(ylim)
+#     if xlim is not None:
+#         ax.set_xlim(xlim)
+#     if ylim is not None:
+#         ax.set_ylim(ylim)
 
-    ax.set_ylabel('Time Decay (sec)')
-    ax.set_xlabel('Frequency (Hz)')
+#     ax.set_ylabel('Time Decay (sec)')
+#     ax.set_xlabel('Frequency (Hz)')
 
-    return L, D
+#     return L, D
 
 ###### PLOTTING TOP DIM #####
 def flow_field_plot_top_dim(A, X, dt, dim0 = 0, dim1 = 1, cmax = .1,
