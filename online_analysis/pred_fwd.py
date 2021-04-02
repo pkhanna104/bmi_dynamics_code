@@ -199,9 +199,12 @@ def plot_R2_model_fig4_mn_maint_shuff(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_
 def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 1000):
 
-    f, ax = plt.subplots(figsize=(2, 3))
+    fcc, axcc = plt.subplots(figsize=(2, 3))
+    fcom, axcom = plt.subplots(figsize=(2, 3))
+
     for i_a, animal in enumerate(['grom', 'jeev']):
-        frac_sig_animal = []
+        frac_sig_animal_cc = []
+        frac_sig_animal_com = []
 
         pooled_data = dict(err = [], shuff_err = [])
 
@@ -217,13 +220,21 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
             sig_mc = 0; 
             all_mc = 0; 
 
+            sig_com = 0; 
+            all_com = 0; 
+
             ### For each move / command is pred closer than shuffle 
             for mag in range(4):
                 for ang in range(8): 
+
+                    com_data = dict(err = [], shuff_err = [])
+                    assess_command = False
+                    
                     for mov in np.unique(dataObj.move):
                         ix = np.nonzero((dataObj.command_bins_tm1[:, 0] == mag) & (dataObj.command_bins_tm1[:, 1] == ang) & (dataObj.move_tm1 == mov))[0]
 
                         if len(ix) >= 15: 
+                            assess_command = True
 
                             #### Get true next MC; 
                             true_next_action = np.mean(np.dot(KG, dataObj.spks[ix, :].T).T, axis=0)
@@ -239,17 +250,38 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
                             day_data['err'].append(pred_dist)
                             day_data['shuff_err'].append(np.hstack((shuff_next_action_dist)))
 
+                            com_data['err'].append(pred_dist)
+                            com_data['shuff_err'].append(np.hstack((shuff_next_action_dist)))
+
                             p = np.nonzero(shuff_next_action_dist <= pred_dist)[0]
                             pv = float(len(p))/float(nshuffs)
 
                             if pv < 0.05:
                                 sig_mc += 1
                             all_mc += 1
-            frac_sig = float(sig_mc)/float(all_mc)
-            frac_sig_animal.append(frac_sig)
-            ax.plot(i_a, frac_sig, 'k.')
 
-            ### stats
+                    if assess_command: 
+                        #### test if command is sig; 
+                        mn_dist = np.mean(com_data['err'])
+                        mn_shuff = np.mean(np.vstack((com_data['shuff_err'])), axis=0)
+                        assert(len(mn_shuff) == nshuffs)
+                        p = np.nonzero(mn_shuff <= mn_dist)[0]
+                        pv = float(len(p))/float(nshuffs)
+                        if pv < 0.05: 
+                            sig_com += 1
+                        all_com += 1
+
+            ##### Sig comm-doncs 
+            frac_sig = float(sig_mc)/float(all_mc)
+            frac_sig_animal_cc.append(frac_sig)
+            axcc.plot(i_a, frac_sig, 'k.')
+
+            frac_sig = float(sig_com)/float(all_com)
+            frac_sig_animal_com.append(frac_sig)
+            axcom.plot(i_a, frac_sig, 'k.')
+            
+
+            ### stats pooled 
             mn_err = np.mean(day_data['err'])
             mn_shuf = np.mean(np.vstack((day_data['shuff_err'])), axis=0)
             assert(len(mn_shuf) == nshuffs)
@@ -261,7 +293,9 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
             pooled_data['err'].append(mn_err)
             pooled_data['shuff_err'].append(mn_shuf)
 
-        ax.bar(i_a, np.mean(frac_sig_animal), width=0.8, color='k', alpha=0.2)
+        axcc.bar(i_a, np.mean(frac_sig_animal_cc), width=0.8, color='k', alpha=0.2)
+        axcom.bar(i_a, np.mean(frac_sig_animal_com), width=0.8, color='k', alpha=0.2)
+
 
         mn_err = np.mean(pooled_data['err'])
         mn_shuf = np.mean(np.vstack((pooled_data['shuff_err'])), axis=0)
@@ -271,12 +305,14 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
         print('Animal %s, POOLED: pv = %.5f, mn_err = %.3f, mn_shuf = [%.3f, %.3f]' %(animal, 
             pv, mn_err, np.mean(mn_shuf), np.percentile(mn_shuf, 5)))
 
-    ax.set_xticks([0, 1])
-    ax.set_ylim([0., 1.])
-    ax.set_xticklabels(['G', 'J'])
-    ax.set_ylabel('Frac Mov-Commands with\nSig. Next Command Prediction', fontsize=10)
-    f.tight_layout()
-    util_fcns.savefig(f, 'frac_mc_w_sig_next_comm_pred')
+    for _, (ax, ylab, lab) in enumerate(zip([axcc, axcom], ['Frac Command-Conditions with\nSig. Next Command Prediction',
+        'Frac Commands with\nSig. Next Command Prediction'], ['com_cond', 'com'])): 
+        ax.set_xticks([0, 1])
+        ax.set_ylim([0., 1.])
+        ax.set_xticklabels(['G', 'J'])
+        ax.set_ylabel(ylab, fontsize=10)
+        f.tight_layout()
+        util_fcns.savefig(f, 'frac_%s_w_sig_next_comm_pred'%lab)
 
 def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6, nshuffs = 2,
     mag_eg=0, ang_eg=7):
