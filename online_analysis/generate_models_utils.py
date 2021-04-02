@@ -37,7 +37,7 @@ class Model_Table(tables.IsDescription):
 #### Methods to get data needed for spike models ####
 def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False, 
     within_bin_shuffle = False, mn_maint_within_bin_shuffle = False, roll_shuff = False,
-    within_mov_bin_shuffle = False, shuffix = None, nshuffs = 1, keep_bin_spk_zsc = False,
+    within_mov_bin_shuffle = False, shuffix = None, nshuffs = 1, keep_bin_spk_zsc = False, null = False,
     **kwargs):
 
     if full_shuffle:
@@ -440,6 +440,24 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             assert(np.allclose(np.dot(KG[[3, 5], :], spks_z.T).T, push[:, [3, 5]]))
             assert(not np.allclose(np.dot(KG[[3, 5], :], spks.T).T, push[:, [3, 5]]))
 
+    ##### If you only want null spks patterns ######
+    if null:
+        print('Nullifying spikes')
+        KG_potent = KG[[3, 5], :]
+        KG_null = scipy.linalg.null_space(KG_potent) # N x (N-2)
+        KG_null_proj = np.dot(KG_null, KG_null.T) # N x N
+        spks_null  = np.dot(KG_null_proj, spks.T).T
+
+        assert(np.allclose(np.zeros_like(push[:, [3, 5]]), np.dot(KG_potent, spks_null.T).T))
+        if animal in 'grom':
+            assert(np.allclose(push[:, [3, 5]], np.dot(KG_potent, (spks - spks_null).T).T))
+        elif animal == 'jeev':
+            assert(quick_reg(push[:, [3, 5]], np.dot(KG_potent, (spks - spks_null).T).T) > 0.99)
+        elif animal == 'home':
+            raise Exception('not yet implemented')
+            
+        spks = spks_null.copy()
+
     for nsi in range(nshuffs):
 
         ################## INIT the shuffle seed #################
@@ -493,7 +511,10 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     temp_tune['day_bin_ix_shuff'] = []
 
     if animal == 'grom':
-        assert(np.allclose(np.dot(KG, spks.T).T, push))
+        if null: 
+            assert(np.allclose(np.dot(KG, spks.T).T, np.zeros_like(push)))
+        else:
+            assert(np.allclose(np.dot(KG, spks.T).T, push))
 
     ########################################
     ######### For each trial ###############
@@ -1299,6 +1320,16 @@ def quick_reg(bin_spk, decoder_all):
     clf = Ridge(alpha=0.)
     clf.fit(DA, BS);
     est = clf.predict(DA)
+    return util_fcns.get_R2(BS, est) 
+
+def quick_reg_dyn(bin_spk, bin_spk_tm1):
+    BS = np.vstack((bin_spk))
+    BS_tm1 = np.vstack((bin_spk_tm1))
+    assert(BS.shape == BS_tm1.shape)
+
+    clf = Ridge(alpha=0.)
+    clf.fit(BS_tm1, BS);
+    est = clf.predict(BS_tm1)
     return util_fcns.get_R2(BS, est) 
 
 ###########################################
