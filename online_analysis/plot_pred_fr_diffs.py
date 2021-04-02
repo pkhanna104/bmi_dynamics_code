@@ -6,8 +6,8 @@ from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 
 import analysis_config
-from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs
-from online_analysis import generalization_plots
+from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs, lds_utils
+#from online_analysis import generalization_plots
 from util_fcns import get_color
 
 from sklearn.linear_model import Ridge
@@ -599,6 +599,63 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     fpca.tight_layout()
     util_fcns.savefig(fpca,'fig4_eg_pca')
 
+    fdyn, axdyn = plt.subplots(figsize=(6, 3), ncols = 2)
+    ### Make these axes teh dynamics axes 
+    #model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] 
+    model = model_dict[day_ix, model_nm, 0, 0, 'model']
+
+    A = model.coef_
+    b = model.intercept_
+    dim0 = 0; 
+    dim1 = 1; 
+
+    ### High dim axis in dominant dynamics dimensions: 
+    assert(A.shape[0] == A.shape[1])
+    
+    ### Get the eigenvalue / eigenvectors: 
+    T, evs = lds_utils.get_sorted_realized_evs(A)
+    T_inv = np.linalg.pinv(T)
+
+    ### Linear transform of A matrix
+    Za = np.real(np.dot(T_inv, np.dot(A, T)))
+
+    ### Which eigenvalues are these adn what are their properties? 
+    dt = 0.1
+    td = -1/np.log(np.abs(evs[[dim0, dim1]]))*dt; 
+    hz0 = np.angle(evs[dim0])/(2*np.pi*dt)
+    hz1 = np.angle(evs[dim1])/(2*np.pi*dt)
+    print('TIme decay %s'%(str(td)))
+    print('Hz %.3f, %.3f'%(hz0, hz1))
+
+    #### For true data, plot the coordinates: 
+    for m in mFR_vect.keys(): 
+
+        ### Project data and plot ###
+        trans_true = np.dot(T_inv, mFR_vect[m][:, np.newaxis])
+        axdyn[0].plot(trans_true[0, 0], trans_true[1, 0], '.', color=get_color(m), markersize=20)
+
+        ### PLot the predicted data : 
+        trans_pred = np.dot(T_inv, pred_mFR_vect[m][:, np.newaxis])
+        axdyn[1].plot(trans_pred[0, 0], trans_pred[1, 0], '*', color=get_color(m), markersize=20)
+        
+        ### PLot the shuffled: Shuffles x 2 
+        trans_shuff = np.dot(T_inv, shuff_mFR_vect[m])
+        e = confidence_ellipse(trans_shuff[0, :], trans_shuff[1, :], axdyn[1], n_std=3.0,
+            facecolor = get_color(m, alpha=1.0))
+    
+    ### Add the global FR command ####
+    global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
+    trans_global = np.dot(T_inv, global_mFR[:, np.newaxis])
+    #axdyn[0].plot(trans_global[0, 0], trans_global[1, 0], 'k.', markersize=10)
+    #axdyn[1].plot(trans_global[0, 0], trans_global[1, 0], 'k.', markersize=10)
+    
+    for axi in axdyn:
+        axi.set_xlabel('Dim 1')
+        axi.set_ylabel('Dim 2')
+    fdyn.tight_layout()
+    util_fcns.savefig(fdyn,'fig4_eg_dyn')
+
+
 def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
     """
     Create a plot of the covariance confidence ellipse of *x* and *y*.
@@ -650,6 +707,294 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
 
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
+
+def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0, 
+    model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', only_sig_cc=False):
+    '''
+    goal: 
+        1. fraction of command/conditions sig. diff (population)
+        2. fraction of commands           sig. diff (population, pooled over conditions)
+        3. fraction of neurons            sig. diff (single neurons, pooled over command/conditions)
+        4. fraction distance from condition-pooled (population)
+    '''
+
+    #### Each plot ####
+    f_fracCC, ax_fracCC = plt.subplots(figsize=(2, 3))
+
+    f_fracCom, ax_fracCom = plt.subplots(figsize=(2, 3))
+    f_fracN, ax_fracN = plt.subplots(figsize=(2, 3))
+    f_r2, ax_r2 = plt.subplots(figsize=(2, 3))
+    
+    ylabels = dict()
+    ylabels['fracCC'] = 'frac. (command,condition) \nsig. predicted'
+    ylabels['fracCom']= 'frac. (command) \nsig. predicted'
+    ylabels['fracN']  = 'frac. (neuron)  \nsig. predicted'
+    ylabels['r2'] = 'r2 of condition-specific \ncomponent of command'
+    ylabels['r2_shuff'] = 'r2 of condition-specific \ncomponent of command'
+
+    for ia, animal in enumerate(['grom', 'jeev']):
+        bar_dict = dict(fracCC=[], fracCom=[], fracN=[], r2=[], r2_shuff=[])
+        
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            ################################
+            ###### Extract real data #######
+            ################################
+            spks0, push0, tsk0, trg0, bin_num0, rev_bin_num0, move0, dat = util_fcns.get_data_from_shuff(animal, day_ix)
+            spks0 = 10*spks0; 
+
+            #### Get subsampled
+            tm0, _ = generate_models.get_temp_spks_ix(dat['Data'])
+
+            ### Get subsampled 
+            spks_sub = spks0[tm0, :]
+            push_sub = push0[tm0, :]
+            move_sub = move0[tm0]
+            bin_num_sub = bin_num0[tm0]
+            rev_bin_num_sub = rev_bin_num0[tm0]
+
+            ### Get number of neurons 
+            nneur = spks_sub.shape[1]
+    
+            ###############################################
+            ###### Get predicted spikes from the model ####
+            ###############################################
+            model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
+            model_dict = pickle.load(open(model_fname, 'rb'))
+            pred_spks = model_dict[day_ix, model_nm]
+            pred_spks = 10*pred_spks; 
+            cond_spks = 10*plot_generated_models.cond_act_on_psh(animal, day_ix)
+
+            ### Make sure spks and sub_spks match -- using the same time indices ###
+            assert(np.allclose(spks_sub, 10*model_dict[day_ix, 'spks']))
+            assert(np.all(bin_num0[tm0] > 0))
+
+            ###############################################
+            ###### Get shuffled prediction of  spikes  ####
+            ###############################################
+            pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
+                testing_mode = False)
+            pred_spks_shuffle = 10*pred_spks_shuffle; 
+        
+            ##############################################
+            ########## SETUP the plots ###################
+            ##############################################
+            ### Get command bins 
+            mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+            command_bins = util_fcns.commands2bins([push_sub], mag_boundaries, animal, day_ix, 
+                                               vel_ix=[3, 5])[0]
+
+
+            ####### Metrics ##########
+            nCC=0; nCC_sig=0; 
+            nCom=0; nCom_sig=0;
+            nNeur=0; nNeur_sig=0; 
+            nneur = pred_spks_shuffle.shape[1]
+            r2_ = []
+            r2_shuff = []
+
+            neur_com_mov = dict(vals = [], shuffs = [])
+            mFR_for_r2 = []; mFR_for_r2_shuff = []
+
+            for mag in range(4):
+
+                for ang in range(8): 
+
+                    ### Return indices for the command ### 
+                    ix_com = plot_fr_diffs.return_command_indices(bin_num_sub, rev_bin_num_sub, push_sub, 
+                                            mag_boundaries, animal=animal, 
+                                            day_ix=day_ix, mag=mag, ang=ang, min_bin_num=min_bin_indices,
+                                            min_rev_bin_num=min_bin_indices)
+
+                    ###############################################
+                    ########### COllect movements ################
+                    ###############################################
+                    ### For all movements --> figure otu which ones to keep in the global distribution ###
+                    global_comm_indices = {}
+                    ix_com_global = []
+
+                    for mov in np.unique(move_sub[ix_com]):
+
+                        ### Movement specific command indices 
+                        ix_mc = np.nonzero(move_sub[ix_com] == mov)[0]
+                        
+                        ### Which global indices used for command/movement 
+                        ix_mc_all = ix_com[ix_mc] 
+
+                        ### If enough of these then proceed; 
+                        if len(ix_mc) >= 15:    
+                            global_comm_indices[mov] = ix_mc_all
+                            ix_com_global.append(ix_mc_all)
+
+                    if len(ix_com_global) > 0: 
+
+                        ix_com_global = np.hstack((ix_com_global))
+                        global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
+
+                        com_mov = dict(vals=[], shuffs=[])
+
+                        #### now that have all the relevant movements - proceed 
+                        for mov in global_comm_indices.keys(): 
+
+                            ### FR for neuron ### 
+                            ix_mc_all = global_comm_indices[mov]
+
+                            #### Get true FR ###
+                            mFR = np.mean(spks_sub[ix_mc_all, :], axis=0) # N x 1
+                            pred_mFR = np.mean(pred_spks[ix_mc_all, :], axis=0) # N x 1
+                            shuff_mFR = np.mean(pred_spks_shuffle[ix_mc_all, :, :], axis=0) # N x nshuffs
+                            cond_mFR = np.mean(cond_spks[ix_mc_all, :], axis=0)
+
+                            true_dist = np.linalg.norm(mFR - global_mFR)
+                            pred_dist = np.linalg.norm(pred_mFR - global_mFR)
+                            shuff_dist = np.linalg.norm(shuff_mFR - global_mFR[:, np.newaxis], axis=0)
+                            assert(len(shuff_dist) == nshuffs)
+
+                            ##### test sig fo command/movement #####
+                            err_pred = np.linalg.norm(mFR - pred_mFR)
+                            err_shuff = np.linalg.norm(mFR[:, np.newaxis] - shuff_mFR, axis=0)
+                            
+                            ##### Test p-value of com/mov ####
+                            n_err_lte = len(np.nonzero(err_shuff <= err_pred)[0])
+                            pv = float(n_err_lte)/float(nshuffs)
+                            if pv < 0.05: 
+                                nCC_sig += 1
+                            nCC += 1
+
+
+                            if only_sig_cc: 
+                                if pv < 0.05: 
+                                    ##### Add to list ####
+                                    com_mov['vals'].append(err_pred)
+                                    com_mov['shuffs'].append(err_shuff)
+
+                                    neur_com_mov['vals'].append(np.abs(mFR - pred_mFR))
+                                    neur_com_mov['shuffs'].append(np.abs(mFR[:, np.newaxis] - shuff_mFR))
+
+                                    #mFR_for_r2.append(util_fcns.get_R2(mFR, pred_mFR))
+                                    #r2_sh = []
+                                    #for s in range(nshuffs):
+                                        #r2_sh.append(util_fcns.get_R2(mFR, shuff_mFR[:, s]))
+                                        #r2_sh.append(shuff_mFR[:, s]))
+                                    mFR_for_r2.append([mFR-cond_mFR, pred_mFR-cond_mFR])
+                                    mFR_for_r2_shuff.append(shuff_mFR-cond_mFR[:, np.newaxis])                        
+                            else:
+                                ##### Add to list ####
+                                com_mov['vals'].append(err_pred)
+                                com_mov['shuffs'].append(err_shuff)
+
+                                neur_com_mov['vals'].append(np.abs(mFR - pred_mFR))
+                                neur_com_mov['shuffs'].append(np.abs(mFR[:, np.newaxis] - shuff_mFR))
+                                mFR_for_r2.append([mFR-cond_mFR, pred_mFR-cond_mFR])
+                                mFR_for_r2_shuff.append(shuff_mFR-cond_mFR[:, np.newaxis])  
+                                # mFR_for_r2.append(util_fcns.get_R2(mFR[np.newaxis, :], pred_mFR[np.newaxis, :]))
+                                # r2_sh = []
+                                # for s in range(nshuffs):
+                                #     r2_sh.append(util_fcns.get_R2(mFR, shuff_mFR[:, s]))
+                                # mFR_for_r2_shuff.append(np.mean(np.hstack((r2_sh))))
+
+
+                        #### p-value of com/cond ####
+                        try:
+                            val_pool_mv = np.mean(com_mov['vals'])
+                            shuf_pool_mv = np.mean(np.vstack((com_mov['shuffs'])), axis=0)
+                            assert(len(shuf_pool_mv) == nshuffs)
+                            n_err_lte = len(np.nonzero(shuf_pool_mv <= val_pool_mv)[0])
+                            pv = float(n_err_lte)/float(nshuffs)
+                            if pv < 0.05:
+                                nCom_sig += 1
+                            nCom += 1
+                        except:
+                            pass
+                            print('PASSING ON COMMAND Mag %d Ang %d '%(mag, ang))
+                            print("ANIMAL %s Day %d" %(animal, day_ix))
+
+
+            ######## Neuron sig #########
+            neur_com_mov_vals = np.vstack((neur_com_mov['vals']))
+            assert(neur_com_mov_vals.shape[1] == nneur)
+
+            neur_com_mov_shuffs = np.dstack((neur_com_mov['shuffs']))
+            assert(neur_com_mov_shuffs.shape[0] == nneur)
+            assert(neur_com_mov_shuffs.shape[2] == neur_com_mov_vals.shape[0])
+            assert(neur_com_mov_shuffs.shape[1] == nshuffs)
+
+            if only_sig_cc: 
+                assert(neur_com_mov_vals.shape[0] == nCC_sig)
+            else:
+                assert(neur_com_mov_vals.shape[0] == nCC)     
+
+            for n in range(nneur): 
+
+                vls = np.mean(neur_com_mov_vals[:, n])
+                shf = np.mean(neur_com_mov_shuffs[n, :, :], axis=1)
+                assert(len(shf) == nshuffs)
+
+                n_lte = len(np.nonzero(shf <= vls)[0])
+                pv = float(n_lte)/float(nshuffs)
+                if pv < 0.05: 
+                    nNeur_sig += 1
+                nNeur += 1
+
+            #### Plot the dots 
+            ax_fracCC.plot(ia, float(nCC_sig)/float(nCC), 'k.')
+            bar_dict['fracCC'].append(float(nCC_sig)/float(nCC))
+
+            ax_fracCom.plot(ia, float(nCom_sig)/float(nCom), 'k.')
+            bar_dict['fracCom'].append(float(nCom_sig)/float(nCom))
+
+            ax_fracN.plot(ia, float(nNeur_sig)/float(nNeur), 'k.')
+            bar_dict['fracN'].append(float(nNeur_sig)/float(nNeur))
+            
+            ##### do r2 -- condition-varitions for a given command ####
+            mfr_true = np.vstack(([m[0] for m in mFR_for_r2]))
+            mfr_pred = np.vstack(([m[1] for m in mFR_for_r2]))
+            r2_ = util_fcns.get_R2(mfr_true, mfr_pred)
+
+            mFR_for_r2_shuff = np.dstack((mFR_for_r2_shuff)) # N x nshuff x nCC
+            r2_sh = []
+            for s in range(nshuffs):
+                r2_sh.append(util_fcns.get_R2(mfr_true, mFR_for_r2_shuff[:, s, :].T))
+            
+            ax_r2.plot(ia, r2_, 'k.')
+            bar_dict['r2'].append(r2_)
+
+            ax_r2.plot(ia+.4, np.mean(r2_sh), '.', color='w', mec='k', mew=.5)
+            bar_dict['r2_shuff'].append(np.mean(r2_sh))
+
+            ax_r2.plot([ia, ia+.4], [r2_, np.mean(r2_sh)], 'k-', linewidth=.25)
+
+        #### Plot bar plots 
+        for _, (key, ax, wid, offs, alpha) in enumerate(zip(
+            ['fracCC', 'fracCom', 'fracN', 'r2', 'r2_shuff'], 
+            [ax_fracCC, ax_fracCom, ax_fracN, ax_r2, ax_r2], 
+            [.8, .8, .8, .4, .4, ], 
+            [0,   0,  0,  0, .4, ],
+            [.2, .2, .2, .2, .1, ])):
+
+            ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, alpha=alpha, color='k')
+            ax.set_ylabel(ylabels[key], fontsize=8)
+            ax.set_xticks([0, 1])
+            ax.set_xticklabels(['G', 'J'])
+            ax.set_xlim([-1, 2])
+
+            if 'r2' in key:
+                pass
+            else:
+                ax.set_yticks([0., 0.2, .4, .6, .8, 1.0])
+                ax.set_ylim([0., 1.05])
+            
+            #### Remove spines 
+            for side in ['right', 'top']:
+                spine_side = ax.spines[side]
+                spine_side.set_visible(False)
+
+        
+    for _, (f, yl) in enumerate(zip([f_fracCC, f_fracCom, f_fracN, f_r2],
+        ['pred_fracCC', 'pred_fracCom', 'pred_fracN', 'pred_r2'])):
+        
+        f.tight_layout()
+        util_fcns.savefig(f, yl)
 
 def perc_sig_neuron_comm_predictions(nshuffs = 10, min_bin_indices = 0, 
     model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'):
