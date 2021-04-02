@@ -25,7 +25,8 @@ import sklearn.decomposition as skdecomp
 ######### STEP 1 -- Get alpha value #########
 def sweep_alpha_all(run_alphas=True, model_set_number = 3,
     fit_intercept = True, within_bin_shuffle = False,
-    normalize_ridge_vars = False, keep_bin_spk_zsc = False):
+    normalize_ridge_vars = False, keep_bin_spk_zsc = False, 
+    null = False):
 
     """ Sweep different alphas for Ridge regression --> see which one is best
     
@@ -51,17 +52,17 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
 
     ndays = dict(grom=9, jeev=4, home=5) # for testing only; 
 
-    for animal in ['home', 'jeev', 'grom']:
+    for animal in ['jeev', 'grom']: #home
         if run_alphas:
             h5_name = sweep_ridge_alpha(animal=animal, alphas = alphas, model_set_number = model_set_number, 
                 ndays = ndays[animal], fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle,
-                normalize_ridge_vars = normalize_ridge_vars, keep_bin_spk_zsc = keep_bin_spk_zsc)
+                normalize_ridge_vars = normalize_ridge_vars, keep_bin_spk_zsc = keep_bin_spk_zsc, null=null)
         else:
             #raise Exception('deprecated')
             h5_name = config['%s_pref'%animal] + '%s_sweep_alpha_days_models_set%d.h5' %(animal, model_set_number)
 
         max_alpha = plot_sweep_alpha(animal, alphas=alphas, model_set_number=model_set_number, ndays=ndays[animal],
-            fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle)
+            fit_intercept = fit_intercept, within_bin_shuffle = within_bin_shuffle, null=null)
         
         max_alphas[animal].append(max_alpha)
 
@@ -81,7 +82,12 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
         else:
             sff2 = ''
 
-        pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d%s%s%s.pkl' %(model_set_number, sff, sff1, sff2), 'wb'))
+        if null: 
+            sff3 = '_null'
+        else:
+            sff3 = ''
+
+        pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d%s%s%s%s.pkl' %(model_set_number, sff, sff1, sff2, sff3), 'wb'))
         
     else:
         pickle.dump(max_alphas, open(config['grom_pref'] + 'max_alphas_ridge_model_set%d_no_intc.pkl' %model_set_number, 'wb'))
@@ -90,7 +96,7 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
 
 def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1, 
     model_set_number = 1, ndays=None, fit_intercept = True, within_bin_shuffle = False,
-    normalize_ridge_vars = False, keep_bin_spk_zsc = False):
+    normalize_ridge_vars = False, keep_bin_spk_zsc = False, null = False):
     """Summary
     
     Args:
@@ -163,7 +169,9 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
             order_d = order_dict[i_d]
 
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
-            day, order_d, history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle, keep_bin_spk_zsc = keep_bin_spk_zsc)
+            day, order_d, history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle, 
+            keep_bin_spk_zsc = keep_bin_spk_zsc, null = null)
+        
         if animal == 'home':
             KG, dec_mFR, dec_sdFR = util_fcns.get_decoder(animal, i_d)
         else:
@@ -351,7 +359,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     gen_demean = False,
     alpha_always_zero = False,
     latent_dim = 'full', 
-    keep_bin_spk_zsc = False):
+    keep_bin_spk_zsc = False, 
+    null_predictor = False):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -411,7 +420,6 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         else:
             hdf_filename = pref + animal + hdf_filename + '_model_set%d' %model_set_number
 
-
         if full_shuffle:
             hdf_filename = hdf_filename + '_full_shuff%d' %shuff_id
         
@@ -428,6 +436,9 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
         if alpha_always_zero:
             hdf_filename = hdf_filename + '_alphazero'
+
+        if null_predictor: 
+            hdf_filename = hdf_filename + '_null'
 
         if fit_intercept:
             hdf_filename = hdf_filename + '.h5'
@@ -456,7 +467,12 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                 if within_bin_shuffle:
                     ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
                 else:   
-                    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+                    if null_predictor: 
+                        print(' Load null dict')
+                        ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_null.pkl' %model_set_number, 'rb')); 
+                        #ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+                    else:
+                        ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
 
                 ##### HOMER specific alphas #########
                 if keep_bin_spk_zsc: 
@@ -518,9 +534,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         ### By default returns standard binned spike counts
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
             order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle, keep_bin_spk_zsc = keep_bin_spk_zsc,
-            day_ix = i_d)
+            day_ix = i_d, null = null_predictor)
         
         print('R2 again, %.2f' %generate_models_utils.quick_reg(sub_spikes, sub_push_all))
+        print('R2 est spks dyn, %.2f' %generate_models_utils.quick_reg(sub_spikes[1:, :], sub_push_all[:-1, :]))
 
         models_to_include = []
         for m in model_var_list:
@@ -531,6 +548,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         dec_mFR = None
         if animal == 'grom':
             KG, KG_null_proj, KG_potent_orth = get_KG_decoder_grom(i_d)
+            if null_predictor:
+                assert(np.allclose(np.zeros_like(sub_push_all), np.dot(KG, sub_spikes.T).T))
         elif animal == 'home':
             KG, KG_null_proj, KG_potent_orth, dec_mFR, dec_sdFR = get_KG_decoder_home(i_d)
         elif animal == 'jeev':
@@ -696,149 +715,153 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     ### These are teh params; 
                     _, model_nm, _, _, _ = model_var_list_i
 
-                    ## Store the params; 
-                    model_data[model_nm, 'variables'] = variables
+                    if 'psh_2' in model_nm and null_predictor:
+                        print('SKIPPING %s, null=%s'%(model_nm, str(null_predictor)))
+                    else: 
 
-                    if ridge:
-                        if model_nm in ['identity_dyn']:
-                            pass
-                        
-                        elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS': 
-                            assert(fit_intercept == False)
-                            assert(only_potent_predictor == False)
-                            model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = ndims)
+                        ## Store the params; 
+                        model_data[model_nm, 'variables'] = variables
 
-                        else:
-                            if model_nm == 'diagonal_dyn':
-                                alpha_spec = 0.
+                        if ridge:
+                            if model_nm in ['identity_dyn']:
+                                pass
+                            
+                            elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS': 
+                                assert(fit_intercept == False)
+                                assert(only_potent_predictor == False)
+                                model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = ndims)
+
                             else:
-                                alpha_spec = ridge_dict[animal][0][i_d, model_nm]
-
-                                if animal == 'home':
-                                    alpha_spec = homer_ridge_dict[animal][0][i_d, model_nm]
-                                    print('Homer alpha %.1f' %(alpha_spec))
-
-                            if alpha_always_zero:
-                                alpha_spec = 0.
-                                print('alpha zero')
-
-                            model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
-                                only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
-                                fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
-                                fit_intercept = fit_intercept, model_nm = model_nm, nneur=nneur, 
-                                normalize_vars = normalize_ridge_vars, keep_bin_spk_zsc=keep_bin_spk_zsc)
-                        
-                        save_model = True
-
-                    else:
-                        raise Exception('Need to figure out teh stirng business again -- removed for clarity')
-                        model_ = ols(st, data_temp_dict).fit()
-                        save_model = False
-
-                    if save_model:
-                        if model_nm == 'identity_dyn':
-                            pred_Y = identity_dyn(data_temp_dict_test, nneur)
-
-                        elif model_nm == 'diagonal_dyn': 
-                            pred_Y = pred_diag_cond(data_temp_dict_test, model_, nneur, KG)
-
-                        elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
-                            pred_Y, test_ix = pred_LDS(data_temp, model_, variables, trl_test_ix[i_fold], i_fold)
-                            test_confirm[type_of_model_index].append(test_ix[i_fold])
-                        else:
-                            h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
-                                test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
-                                only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, KG = KG,
-                                fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
-                                fit_intercept = fit_intercept, keep_bin_spk_zsc = keep_bin_spk_zsc, decoder_params = dict(dec_mFR=dec_mFR,
-                                    dec_sdFR=dec_sdFR))
-
-                        ### Save models, make predictions ####
-                        ### Need to figure out which spikes are where:
-                        if fit_task_specific_model_test_task_spec:
-                            ix0 = np.nonzero(data_temp_dict_test['tsk'] == 0)[0]
-                            ix1 = np.nonzero(data_temp_dict_test['tsk'] == 1)[0]
-                            
-                            model_data[i_d, model_nm][test_ix[i_fold][ix0], :] = np.squeeze(np.array(pred_Y[0]))
-                            model_data[i_d, model_nm][test_ix[i_fold][ix1], :] = np.squeeze(np.array(pred_Y[1]))
-                        
-                        elif fit_task_spec_and_general:
-                            model_data[i_d, model_nm][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
-                            
-                            if model_nm == 'prespos_0psh_1spksm_0_spksp_0':
-                                r2tmp = util_fcns.get_R2(data_temp_dict_test['spks'], np.squeeze(np.array(pred_Y)))
-                                print('R2 from model: %.4f' %(r2tmp))
-
-                        elif fit_condition_spec_no_general:
-                            ### List the indices and the prediction and the fold: 
-                            model_data[i_d, model_nm][type_of_model_index, 'ix'].append(test_ix[i_fold])
-                            model_data[i_d, model_nm][type_of_model_index, 'pred'].append(np.squeeze(np.array(pred_Y)))
-                            
-                        else:
-                            model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
-                            
-                        ### Save model -- for use later.
-                        
-                        if add_model_to_datafile:
-                            if model_nm != 'identity_dyn':
-                                if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
-                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelA'] = model_.A;
-                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelW'] = model_.sigma_states;
-                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelC'] = model_.C;
-                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelQ'] = model_.sigma_obs; 
-                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelkeepix'] = model_.keep_ix; 
-                                    
+                                if model_nm == 'diagonal_dyn':
+                                    alpha_spec = 0.
                                 else:
-                                    print('Adding model and test_indices') 
-                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
-                                    model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
+                                    alpha_spec = ridge_dict[animal][0][i_d, model_nm]
+
+                                    if animal == 'home':
+                                        alpha_spec = homer_ridge_dict[animal][0][i_d, model_nm]
+                                        print('Homer alpha %.1f' %(alpha_spec))
+
+                                if alpha_always_zero:
+                                    alpha_spec = 0.
+                                    print('alpha zero')
+
+                                model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
+                                    only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
+                                    fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
+                                    fit_intercept = fit_intercept, model_nm = model_nm, nneur=nneur, 
+                                    normalize_vars = normalize_ridge_vars, keep_bin_spk_zsc=keep_bin_spk_zsc)
                             
-                        #### Add / null potent? 
-                        if include_null_pot:
+                            save_model = True
 
-                            ### Get predictors together: 
-                            x_test = [];
-                            for vr in variables:
-                                x_test.append(data_temp_dict_test[vr][: , np.newaxis])
-                            X = np.mat(np.hstack((x_test)))
+                        else:
+                            raise Exception('Need to figure out teh stirng business again -- removed for clarity')
+                            model_ = ols(st, data_temp_dict).fit()
+                            save_model = False
 
-                            ### Get null and potent -- KG_null_proj, KG_potent_orth
-                            X_null = np.dot(KG_null_proj, X.T).T
-                            X_pot =  np.dot(KG_potent_orth, X.T).T
+                        if save_model:
+                            if model_nm == 'identity_dyn':
+                                pred_Y = identity_dyn(data_temp_dict_test, nneur)
 
-                            assert np.allclose(X, X_null + X_pot)
+                            elif model_nm == 'diagonal_dyn': 
+                                pred_Y = pred_diag_cond(data_temp_dict_test, model_, nneur, KG)
 
-                            ### Need to divide the intercept into null / potent: 
-                            intc = model_.intercept_
-                            intc_null = np.dot(KG_null_proj, intc)
-                            intc_pot = np.dot(KG_potent_orth, intc)
+                            elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
+                                pred_Y, test_ix = pred_LDS(data_temp, model_, variables, trl_test_ix[i_fold], i_fold)
+                                test_confirm[type_of_model_index].append(test_ix[i_fold])
+                            else:
+                                h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
+                                    test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
+                                    only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, KG = KG,
+                                    fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
+                                    fit_intercept = fit_intercept, keep_bin_spk_zsc = keep_bin_spk_zsc, decoder_params = dict(dec_mFR=dec_mFR,
+                                        dec_sdFR=dec_sdFR))
 
-                            assert np.allclose(np.sum(np.abs(np.dot(KG, intc_null))), 0)
-                            assert np.allclose(np.sum(np.abs(np.dot(KG, X_null.T))), 0)
-
-                            pred_null = np.mat(X_null)*np.mat(model_.coef_).T + intc_null[np.newaxis, :]
-                            pred_pot = np.mat(X_pot)*np.mat(model_.coef_).T + intc_pot[np.newaxis, :]
-                            
-                            assert np.allclose(pred_Y, pred_null + pred_pot)
-
-                            ### This just propogates the identity; 
-                            # model_data[i_d, giant_model_name][test_ix[i_fold], :] = X.copy()
-                            if fit_condition_spec_no_general:
-                                model_data[i_d, model_nm, 'null'][type_of_model_index, 'ix'].append(test_ix[i_fold])
-                                model_data[i_d, model_nm, 'pot'][type_of_model_index, 'ix'].append(test_ix[i_fold])
-
-                                ### Save the null / potent predictions 
-                                model_data[i_d, model_nm, 'null'][type_of_model_index, 'pred'].append(pred_null)
-                                model_data[i_d, model_nm, 'pot'][type_of_model_index, 'pred'].append(pred_pot)
+                            ### Save models, make predictions ####
+                            ### Need to figure out which spikes are where:
+                            if fit_task_specific_model_test_task_spec:
+                                ix0 = np.nonzero(data_temp_dict_test['tsk'] == 0)[0]
+                                ix1 = np.nonzero(data_temp_dict_test['tsk'] == 1)[0]
+                                
+                                model_data[i_d, model_nm][test_ix[i_fold][ix0], :] = np.squeeze(np.array(pred_Y[0]))
+                                model_data[i_d, model_nm][test_ix[i_fold][ix1], :] = np.squeeze(np.array(pred_Y[1]))
                             
                             elif fit_task_spec_and_general:
-                                model_data[i_d, model_nm, 'null'][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_null))
-                                model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_pot))
-                            
+                                model_data[i_d, model_nm][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_Y))
+                                
+                                if model_nm == 'prespos_0psh_1spksm_0_spksp_0':
+                                    r2tmp = util_fcns.get_R2(data_temp_dict_test['spks'], np.squeeze(np.array(pred_Y)))
+                                    print('R2 from model: %.4f' %(r2tmp))
+
+                            elif fit_condition_spec_no_general:
+                                ### List the indices and the prediction and the fold: 
+                                model_data[i_d, model_nm][type_of_model_index, 'ix'].append(test_ix[i_fold])
+                                model_data[i_d, model_nm][type_of_model_index, 'pred'].append(np.squeeze(np.array(pred_Y)))
+                                
                             else:
-                                model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
-                                model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
+                                model_data[i_d, model_nm][test_ix[i_fold], :] = np.squeeze(np.array(pred_Y))
+                                
+                            ### Save model -- for use later.
                             
+                            if add_model_to_datafile:
+                                if model_nm != 'identity_dyn':
+                                    if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
+                                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelA'] = model_.A;
+                                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelW'] = model_.sigma_states;
+                                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelC'] = model_.C;
+                                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelQ'] = model_.sigma_obs; 
+                                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelkeepix'] = model_.keep_ix; 
+                                        
+                                    else:
+                                        print('Adding model and test_indices') 
+                                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] = model_; 
+                                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'test_ix'] = test_ix[i_fold]; 
+                                
+                            #### Add / null potent? 
+                            if include_null_pot:
+
+                                ### Get predictors together: 
+                                x_test = [];
+                                for vr in variables:
+                                    x_test.append(data_temp_dict_test[vr][: , np.newaxis])
+                                X = np.mat(np.hstack((x_test)))
+
+                                ### Get null and potent -- KG_null_proj, KG_potent_orth
+                                X_null = np.dot(KG_null_proj, X.T).T
+                                X_pot =  np.dot(KG_potent_orth, X.T).T
+
+                                assert np.allclose(X, X_null + X_pot)
+
+                                ### Need to divide the intercept into null / potent: 
+                                intc = model_.intercept_
+                                intc_null = np.dot(KG_null_proj, intc)
+                                intc_pot = np.dot(KG_potent_orth, intc)
+
+                                assert np.allclose(np.sum(np.abs(np.dot(KG, intc_null))), 0)
+                                assert np.allclose(np.sum(np.abs(np.dot(KG, X_null.T))), 0)
+
+                                pred_null = np.mat(X_null)*np.mat(model_.coef_).T + intc_null[np.newaxis, :]
+                                pred_pot = np.mat(X_pot)*np.mat(model_.coef_).T + intc_pot[np.newaxis, :]
+                                
+                                assert np.allclose(pred_Y, pred_null + pred_pot)
+
+                                ### This just propogates the identity; 
+                                # model_data[i_d, giant_model_name][test_ix[i_fold], :] = X.copy()
+                                if fit_condition_spec_no_general:
+                                    model_data[i_d, model_nm, 'null'][type_of_model_index, 'ix'].append(test_ix[i_fold])
+                                    model_data[i_d, model_nm, 'pot'][type_of_model_index, 'ix'].append(test_ix[i_fold])
+
+                                    ### Save the null / potent predictions 
+                                    model_data[i_d, model_nm, 'null'][type_of_model_index, 'pred'].append(pred_null)
+                                    model_data[i_d, model_nm, 'pot'][type_of_model_index, 'pred'].append(pred_pot)
+                                
+                                elif fit_task_spec_and_general:
+                                    model_data[i_d, model_nm, 'null'][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_null))
+                                    model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :, type_of_model_index] = np.squeeze(np.array(pred_pot))
+                                
+                                else:
+                                    model_data[i_d, model_nm, 'null'][test_ix[i_fold], :] = pred_null.copy()
+                                    model_data[i_d, model_nm, 'pot'][test_ix[i_fold], :] = pred_pot.copy()
+                                
         #### Confirm test_confirm matches ####
         if model_set_number == 11:
             for k in test_confirm.keys():
@@ -893,6 +916,11 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     else:
         sff8 = ''
 
+    if null_predictor:
+        sff9 = '_null'
+    else:
+        sff9 = ''
+
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
         pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
@@ -907,7 +935,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_cond_spec%s%s.pkl' %(model_set_number, sff2, sff3), 'wb'))
         
         else:
-            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5, sff7, sff8), 'wb'))
+            pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_%s%s%s%s%s%s%s.pkl' %(model_set_number, sff2, sff3, sff4, sff5, sff7, sff8, sff9), 'wb'))
 
 def model_ind_cell_tuning_SHUFFLE(fit_intercept = True, latent_LDS = False, latent_dim = 'full',
     nshuffs = 1000, shuff_type = 'beh_maint', keep_bin_spk_zsc = False):
@@ -2278,7 +2306,7 @@ def return_variables_associated_with_model_var(model_var_list, include_action_la
     return variables_list
 
 def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, skip_plots = True, 
-    r2_ind_or_pop = 'pop', fit_intercept = True, within_bin_shuffle = False):
+    r2_ind_or_pop = 'pop', fit_intercept = True, within_bin_shuffle = False, null = False):
 
     ##### Removed the list of model_var_list ######
     model_var_list, _, _, _ = generate_models_list.get_model_var_list(model_set_number)
@@ -2356,7 +2384,11 @@ def plot_sweep_alpha(animal, alphas = None, model_set_number = 1, ndays=None, sk
                             ### Only take the first value -- all are the same; 
                             tmp = tbl[day_index]['r2_pop']
                             mn = np.mean(tmp)
-                            assert(np.allclose(tmp-mn, np.zeros((len(tmp), 1))))
+
+                            if null and 'psh_2' in model_nm:
+                                pass
+                            else:
+                                assert(np.allclose(tmp-mn, np.zeros((len(tmp), 1))))
                             alp_i.append(mn)
 
                     ### plot alpha vs. mean day: 
