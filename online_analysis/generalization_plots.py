@@ -1832,7 +1832,15 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
 def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False,
     tsk_spec_alphas = False, yval='r2', nshuffs = 1000, n_folds = 5, plot_eig = False,
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', return_trans_from_lo = False,
-    plot_r2_by_lo_cat = False): 
+    plot_r2_by_lo_cat = False, plot_action = False):
+
+    if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0': 
+        if return_trans_from_lo:
+            pass
+        else:
+            raise Exception("Analysis for predicting next command from left out command should set return trans from lo!!!") 
+
+    plot_RED = np.array([237, 28, 36])/256.
     '''
     For each model type lets plot the held out data vs real data correlations 
     ''' 
@@ -1853,8 +1861,16 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
         r2_stats = []
         r2_stats_shuff = []
-
+        
+        if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0': 
+            NULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6__null.pkl'%animal), 'rb'))
+                
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            print('##################')
+            print('Starting Animal %s Day %d' %(animal, day_ix))
+            print('##################')
+            
 
             if plot_eig:
                 fmn, axmn = plt.subplots()
@@ -1888,11 +1904,39 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
                 day_ix, return_tm0=True)
 
+
+            if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                #null_spks_pred = 10*NULL_dict[day_ix, model_nm] ## Predicted 
+                #null_model_fold0 = NULL_dict[day_ix, model_nm, 0, 0., 'model']
+                #null_spks_pred = null_model_fold0.predict(spks_sub_tm1)
+
+                ### Predicitons from the null model 
+                null_spks_pred = NULL_dict[day_ix, model_nm]
+
+
             ### Only for matching commands ###
             if 'analyze_indices' in LOO_dict.keys():
                 an_ind = LOO_dict['analyze_indices']
             else:
                 an_ind = np.arange(len(spks_true))
+
+            if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                assert(null_spks_pred.shape[0] == spks_true.shape[0]) 
+                null_spks_pred = null_spks_pred[an_ind, :]
+                
+                #### Get true null spikes ####
+                if animal == 'grom':
+                    KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_grom(day_ix)
+                elif animal == 'home':
+                    KG, KG_null_proj, KG_potent_orth, _, _ = generate_models.get_KG_decoder_home(day_ix)
+                    raise Exception('not sure how to deal with zscoring here, not yet implemented')
+                elif animal == 'jeev':
+                    KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_jeev(day_ix)
+
+                var_spks = np.trace(np.cov(spks_true[an_ind, :].T))
+                null_spks_true = np.dot(KG_null_proj, spks_true[an_ind, :].T).T
+                var_null = np.trace(np.cov(null_spks_true.T))
+                print('Var spks %.3f, var null %.3f, frac var = %.3f' %(var_spks, var_null, var_null/var_spks))
 
             ######## re index #####
             spks_true = spks_true[an_ind, :]
@@ -1915,6 +1959,8 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             lo_pred_all = []
             nlo_pred_all = []
             cond_all = []
+            null_pred = []
+            null_true = []
             shuff_pred_all = []
 
             r2_stats_spec = []; 
@@ -1975,41 +2021,40 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                         tmp2,_=yfcn(spks_true[lo_ix, :], lo_pred[lo_keep_ix, :])
                         r2_stats_spec.append([left_out, tmp2])
                     
-                        ###### PLot R2 by different categories; ######
-                        #### What fraction of the data is this left out data point ? #####
-                        #axlo[1].plot(left_out, float(len(lo_ix))/float(spks_pred.shape[0]), 'k.')
-                        # tmp3 = float(len(lo_ix))/float(len(an_ind))
-                        # print('Len lo_ix %d, len_overall %d = %.1f' %(len(lo_ix), len(an_ind), tmp3))
-                        # axlo[1].plot(left_out, float(len(lo_ix))/float(len(an_ind)), 'k.')
-                        # axlo[0].set_title('%s, %d' %(animal, day_ix))
-                        # axlo[0].plot(left_out, tmp, '.', color=analysis_config.blue_rgb)
-                        # axlo[0].plot(left_out, tmp2, '.', color='purple')
-                        # tmp3 = []
-                        # for i in range(nshuffs):
-                        #     t, _ = yfcn(spks_true[lo_ix, :], pred_spks_shuffle[lo_ix, :, i])
-                        #     tmp3.append(t)
-                        # util_fcns.draw_plot(left_out, tmp3, 'k', np.array([1.,1.,1.,0.]), axlo[0])
-                        #axlo[0].set_xlim([-1, np.max(left_outters)+1])
-
                     elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0': 
+                        
                         ### want to plot "next action" 
                         ### Here theses are all predictions of tm0 | tm1, NOT conditioned on action 
                         ### Lets see how accurate the action is; 
-                        lo_pred_all.append(np.dot(KG, 0.1*lo_pred[lo_keep_ix, :].T).T)
-                        lo_true_all.append(push_true[np.ix_(lo_ix, [3, 5])])
-                        nlo_pred_all.append(np.dot(KG, 0.1*spks_pred[lo_ix, :].T).T)
+                        if plot_action: 
+                            lo_pred_all.append(np.dot(KG, 0.1*lo_pred[lo_keep_ix, :].T).T)
+                            lo_true_all.append(push_true[np.ix_(lo_ix, [3, 5])])
+                            nlo_pred_all.append(np.dot(KG, 0.1*spks_pred[lo_ix, :].T).T)
+                            null_pred.append(np.dot(KG, 0.1*null_spks_pred[lo_ix, :].T).T)
 
-                        if animal == 'grom':
-                            assert(np.allclose(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*spks_true[lo_ix, :].T).T))
-                        # shuff_act = []
-                        # for n in range(nshuffs):
-                        #     shuff_act.append(np.dot(KG, 0.1*pred_spks_shuffle[lo_ix, :, n].T).T)
-                        # shuff_pred_all.append(np.dstack((shuff_act)))
-                        tmp, _ = yfcn(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*lo_pred[lo_keep_ix, :].T).T)
-                        r2_stats_spec.append([left_out, tmp])
+                            if animal == 'grom':
+                                assert(np.allclose(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*spks_true[lo_ix, :].T).T))
+                        else: 
+                            lo_pred_all.append(lo_pred[lo_keep_ix, :])
+                            lo_true_all.append(spks_true[lo_ix, :])
+                            nlo_pred_all.append(spks_pred[lo_ix, :])
+                            null_pred.append(null_spks_pred[lo_ix, :])                            
+                            null_true.append(null_spks_true[lo_ix, :])
 
-                        tmp,_=yfcn(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*spks_pred[lo_ix, :].T).T)
-                        r2_stats_spec_nlo.append([left_out, tmp])
+                        #### Get R2; 
+                        if plot_action:
+                            tmp, _ = yfcn(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*lo_pred[lo_keep_ix, :].T).T)
+                            r2_stats_spec.append([left_out, tmp])
+
+                            tmp,_=yfcn(push_true[np.ix_(lo_ix, [3, 5])], np.dot(KG, 0.1*spks_pred[lo_ix, :].T).T)
+                            r2_stats_spec_nlo.append([left_out, tmp])
+                        
+                        else:
+                            tmp, _ = yfcn(spks_true[lo_ix, :], lo_pred[lo_keep_ix, :])
+                            r2_stats_spec.append([left_out, tmp])
+
+                            tmp,_=yfcn(spks_true[lo_ix, :], spks_pred[lo_ix, :])
+                            r2_stats_spec_nlo.append([left_out, tmp])                            
 
                     if plot_eig:
                         for i_fold in range(n_folds):
@@ -2034,7 +2079,23 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             lo_true_all = np.vstack((lo_true_all))
             lo_pred_all = np.vstack((lo_pred_all))
             nlo_pred_all = np.vstack((nlo_pred_all))
-            cond_all = np.vstack((cond_all))
+
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                cond_all = np.vstack((cond_all))
+
+            elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                null_pred = np.vstack((null_pred))
+                
+                ##### Add average potent #####
+                if plot_action:
+                    mean_pot = np.mean(lo_true_all, axis=0)
+                    null_pred = null_pred + mean_pot[np.newaxis, :]
+                else:
+                    mean_pot = np.mean(np.dot(KG_potent_orth, lo_true_all.T).T, axis=0)
+                    null_pred = null_pred + mean_pot[np.newaxis, :]; 
+
+                if not plot_action:
+                    null_true = np.vstack((null_true))
 
             try:
                 lo_ix_all = np.hstack((lo_ix_all))
@@ -2043,7 +2104,19 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
 
             r2_pred_lo, _ = yfcn(lo_true_all, lo_pred_all)
             r2_pred_nlo, _ = yfcn(lo_true_all, nlo_pred_all)
-            r2_cond, _ = yfcn(lo_true_all, cond_all)
+
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                r2_cond, _ = yfcn(lo_true_all, cond_all)
+            else:
+                #if plot_action:
+                r2_null, _ = yfcn(lo_true_all, null_pred)
+                print('r2 of null predicting full: %.4f'%(r2_null))
+                #else:
+                if not plot_action:
+                    r2_null2, _ = yfcn(null_true, null_pred)
+                    print('r2 of null predicting null: %.4f'%(r2_null2))
+
+                
 
             r2_shuff = []
             # N_tmp = len(tm0ix)
@@ -2075,7 +2148,12 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                         day_ix, i)
                     assert(spks_true.shape[0] == pred_spks_shuffle.shape[0])
                     color = 'maroon'
-                    tmp,_ = yfcn(lo_true_all, np.dot(KG, 0.1*pred_spks_shuffle[lo_ix_all, :].T).T)
+
+                    if plot_action:
+                        tmp,_ = yfcn(lo_true_all, np.dot(KG, 0.1*pred_spks_shuffle[lo_ix_all, :].T).T)
+                    else:
+                        tmp,_ = yfcn(lo_true_all, pred_spks_shuffle[lo_ix_all, :])
+                    
                     r2_shuff.append(tmp)
 
                     if plot_r2_by_lo_cat:
@@ -2100,10 +2178,25 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             r2_stats.append(r2_pred_lo)
             r2_stats_shuff.append(np.hstack((r2_shuff)))
 
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                color = analysis_config.blue_rgb
+            
+            elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                if plot_action:
+                    color = plot_RED
+                else:
+                    color = analysis_config.blue_rgb
+
             ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=color, markersize=10)
             ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='purple', markersize=10)
-            ax.plot(i_a*10 + day_ix, r2_cond, '^', color='gray', markersize=10)
+            
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                ax.plot(i_a*10 + day_ix, r2_cond, '^', color='gray', markersize=10)
+            elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                ax.plot(i_a*10 + day_ix, r2_null, '.', color='deeppink', markersize=10)
+
             util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+            
             mn = np.min([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
             mx = np.max([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
             ax.plot([i_a*10 + day_ix, i_a*10 + day_ix], [mn, mx], 'k-', linewidth=0.5)
@@ -2166,33 +2259,23 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
         tmp_ix = np.nonzero(r2_shuff_mn >= r2_mn)[0]
         pv = float(len(tmp_ix)) / float(len(r2_shuff_mn))
 
-        print('Animal POOLED %s, pv = %.5f, r2_ = %.3f, shuff = [%.3f, %.3f]' %(animal, pv, r2_mn, np.mean(r2_shuff_mn), np.percentile(r2_shuff_mn, 95)))
-
-        ### Vstack r2_stats ####
-#         if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
-#             r2_stats = np.vstack((r2_stats))
-# #           assert(r2_stats.shape[0] == len(range(analysis_config.data_params['%s_ndays'%animal])))
-#             assert(r2_stats.shape[1] == 2)
-
-#             r2_stats = np.mean(r2_stats, axis=0)
-#             assert(len(r2_stats) == 2)
-#             # ax.bar(3*i_a, r2_stats[0], width=0.8, color='k', alpha=.2)
-#             # ax.bar((3*i_a)+1, r2_stats[1], width=0.8, color='k', alpha=.2)
-
-#             #### Plot task-specific ####
-#             #ax_spec[i_a].set_ylabel(yval)
-#             #ax_spec[i_a].set_xlabel('Diff %s s'%(cat))
+        print('Animal POOLED %s, pv = %.5f, r2_ = %.3f, shuff = [%.3f, %.3f], r2_null %.3f' %(animal, 
+            pv, r2_mn, np.mean(r2_shuff_mn), np.percentile(r2_shuff_mn, 95), r2_null))
 
     ### Set the title ####
-    ax.set_title('Cat: %s' %cat)
+    if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+        ax.set_title('Cat: %s' %cat)
+    else:
+        ax.set_title('Cat: %s, Com %s'%(cat, str(plot_action)))
+    
     ax.set_ylabel(yval)
     ax.set_xlim([-1, 14])
     ax.set_xticks([])
     f.tight_layout()
-    #f_spec.tight_layout()
-    util_fcns.savefig(f, 'held_out_cat%s_%s'%(cat, model_nm))
-    f.tight_layout()
-    util_fcns.savefig(f, 'r2_heldout_cat%s'%(cat))
+    if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+        util_fcns.savefig(f, 'lo_cat%s_%s'%(cat, model_nm))
+    else:
+        util_fcns.savefig(f, 'lo_cat%s_%s_act%s'%(cat, model_nm, str(plot_action)))
 
 ######## Plot whether the move-speicfic command activity has the right structure #####
 def plot_pop_dist_corr_COMMAND(nshuffs=10, min_commands = 15): 
