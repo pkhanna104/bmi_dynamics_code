@@ -2066,7 +2066,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                         day_ix, i)
                     pred_spks_shuffle = pred_spks_shufflei[:nT, :]
                     assert(np.all(pred_spks_shufflei[nT:, :] == 0))
-                    color = 'cyan'
+                    color = analysis_config.blue_rgb
                     tmp,_ = yfcn(lo_true_all, pred_spks_shuffle[lo_ix_all, :])
                     r2_shuff.append(tmp)
                 
@@ -2101,8 +2101,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
             r2_stats_shuff.append(np.hstack((r2_shuff)))
 
             ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=color, markersize=10)
-            ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='m',
-                mec='purple', mew=1., markersize=10)
+            ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='purple', markersize=10)
             ax.plot(i_a*10 + day_ix, r2_cond, '^', color='gray', markersize=10)
             util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
             mn = np.min([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
