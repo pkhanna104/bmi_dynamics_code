@@ -1911,7 +1911,7 @@ def plot_loo_r2_overall(cat='tsk', mean_sub_tsk_spec = False, zero_alpha = False
                 #null_spks_pred = null_model_fold0.predict(spks_sub_tm1)
 
                 ### Predicitons from the null model 
-                null_spks_pred = NULL_dict[day_ix, model_nm]
+                null_spks_pred = 10*NULL_dict[day_ix, model_nm]
 
 
             ### Only for matching commands ###
