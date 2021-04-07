@@ -7,7 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
 import pickle
+from online_analysis import plot_actions
 
+from collections import defaultdict
+import seaborn
+seaborn.set(font='Arial',context='talk',font_scale=1.25, style='white')
 
 def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 20, plot_action = False, nshuffs_roll = 100, keep_bin_spk_zsc = False):
@@ -201,10 +205,13 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
 
     fcc, axcc = plt.subplots(figsize=(2, 3))
     fcom, axcom = plt.subplots(figsize=(2, 3))
+    fccw, axccw= plt.subplots()
+    fccw2, axccw2= plt.subplots(figsize=(2, 3))
 
     for i_a, animal in enumerate(['grom', 'jeev']):
         frac_sig_animal_cc = []
         frac_sig_animal_com = []
+        frac_sig_dir = []
 
         pooled_data = dict(err = [], shuff_err = [])
 
@@ -217,11 +224,19 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
                 model_set_number = model_set_number, nshuffs=nshuffs)
             dataObj.load()
             KG = util_fcns.get_decoder(animal, day_ix)
+
             sig_mc = 0; 
             all_mc = 0; 
 
             sig_com = 0; 
             all_com = 0; 
+
+            cw_ccw_corr = 0; 
+            cw_ccw_all =0
+
+            shuff_cw_ccw = {}
+            for n in range(nshuffs):
+                shuff_cw_ccw[n] = [0, 0]
 
             ### For each move / command is pred closer than shuffle 
             for mag in range(4):
@@ -260,6 +275,24 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
                                 sig_mc += 1
                             all_mc += 1
 
+
+                            ######## CW/CCW assessment for significant command/conditions ############
+                            if pv < 0.05: 
+                                current_command = np.mean(np.dot(KG, dataObj.spks_tm1[ix, :].T).T, axis=0)
+                                cp_true = np.sign(np.cross(current_command, true_next_action))
+                                cp_pred = np.sign(np.cross(current_command, pred_next_action))
+
+                                if cp_true == cp_pred: 
+                                    cw_ccw_corr += 1
+                                cw_ccw_all += 1
+
+                                for i in range(nshuffs): 
+                                    tmp_act = np.mean(np.dot(KG, dataObj.pred_spks_shuffle[ix, :, i].T).T, axis=0)
+                                    cp_pred = np.sign(np.cross(current_command, tmp_act))
+                                    if cp_true == cp_pred: 
+                                        shuff_cw_ccw[i][0] += 1
+                                    shuff_cw_ccw[i][1] += 1
+
                     if assess_command: 
                         #### test if command is sig; 
                         mn_dist = np.mean(com_data['err'])
@@ -279,7 +312,17 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
             frac_sig = float(sig_com)/float(all_com)
             frac_sig_animal_com.append(frac_sig)
             axcom.plot(i_a, frac_sig, 'k.')
+
+            frac_corr = float(cw_ccw_corr)/float(cw_ccw_all)
+            shuff_frac_corr = []
+            for i in range(nshuffs):
+                shuff_frac_corr.append(float(shuff_cw_ccw[i][0])/float(shuff_cw_ccw[i][1]))
             
+            axccw.plot(i_a*10 + day_ix, frac_corr, 'r.')
+            util_fcns.draw_plot(i_a*10 + day_ix, shuff_frac_corr, 'k', np.array([1., 1., 1., 0.]), axccw)
+
+            axccw2.plot(i_a, frac_corr, 'k.')
+            frac_sig_dir.append(frac_corr)
 
             ### stats pooled 
             mn_err = np.mean(day_data['err'])
@@ -295,7 +338,7 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
 
         axcc.bar(i_a, np.mean(frac_sig_animal_cc), width=0.8, color='k', alpha=0.2)
         axcom.bar(i_a, np.mean(frac_sig_animal_com), width=0.8, color='k', alpha=0.2)
-
+        axccw2.bar(i_a, np.mean(frac_sig_dir), width=0.8, color='k', alpha=0.2)
 
         mn_err = np.mean(pooled_data['err'])
         mn_shuf = np.mean(np.vstack((pooled_data['shuff_err'])), axis=0)
@@ -305,16 +348,23 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
         print('Animal %s, POOLED: pv = %.5f, mn_err = %.3f, mn_shuf = [%.3f, %.3f]' %(animal, 
             pv, mn_err, np.mean(mn_shuf), np.percentile(mn_shuf, 5)))
 
-    for _, (ax, f, ylab, lab) in enumerate(zip([axcc, axcom], [fcc, fcom], ['Frac (command, condition)\n with sig. pred. next command',
-        'Frac (command) with\nsig. pred. next command'], ['com_cond', 'com'])): 
+    for _, (ax, f, ylab, lab) in enumerate(zip([axcc, axcom, axccw2], [fcc, fcom, fccw2], 
+        ['Frac (command, condition)\n with sig. pred. next command','Frac (command) with\nsig. pred. next command', ' (Com-cond) w sig. pred. next command\nfrac. corr. dir'], 
+        ['com_cond', 'com', 'sig_com_cond_frac_corr_dir'])): 
         ax.set_xticks([0, 1])
         ax.set_ylim([0., 1.05])
         ax.set_xticklabels(['G', 'J'])
+        ax.set_yticks([0., .25, .50, .75, 1.0])
+        ax.set_yticklabels([0., .25, .50, .75, 1.0])
         ax.set_ylabel(ylab, fontsize=10)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         f.tight_layout()
         util_fcns.savefig(f, 'frac_%s_w_sig_next_comm_pred'%lab)
+
+    axccw.set_xlim([-1, 14])
+    axccw.set_ylabel('Frac. sig. command-movs predicting \nnext command in correct direction ')
+    fccw.tight_layout()
 
 def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6, nshuffs = 2,
     mag_eg=0, ang_eg=7):
@@ -535,6 +585,298 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     ax_pw.set_xlabel('Movement Pairs', rotation=180)
     
     util_fcns.savefig(f_pw, 'pw_plot_next_action')
+
+def perc_corr_pred_next_command_mov_com2com(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6, nshuffs = 2, 
+    min_obs = 15, min_obs_next_command = 8, only_pairwise_com = False, exclude_same_dir = False):
+
+    perc_corr = {}
+    shuf_corr = {}
+    plot_RED = np.array([237, 28, 36])/256.
+    
+    fang, axang = plt.subplots()
+    fmag, axmag = plt.subplots()
+
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        bar = dict(pc_ang = [], pc_mag = [])
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+            perc_corr[animal, day_ix] = dict(corr=[], incorr=[], corr_mag=[], incorr_mag=[])
+            
+            for n in range(nshuffs):
+                shuf_corr[animal, day_ix, n] = dict(corr=[], incorr=[], corr_mag=[], incorr_mag=[])
+
+            ### Load data ###
+            dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
+                model_set_number = model_set_number, nshuffs=nshuffs)
+            dataObj.load()
+
+            KG = util_fcns.get_decoder(animal, day_ix)
+
+            #### multipy by 0.1 so that pred_push is correct magnitude
+            pred_push = np.dot(KG, 0.1*dataObj.pred_spks.T).T
+            
+            ### For each move / command is pred closer than shuffle 
+            for mag in range(4):
+
+                for ang in range(8): 
+
+                    ##### Get all the relevant commands 
+                    if only_pairwise_com:
+                        mv = [np.nan]
+                    else:
+                        mv =  np.unique(dataObj.move)
+                    for mov in mv:
+
+                        if only_pairwise_com:
+                            ix = np.nonzero((dataObj.command_bins_tm1[:, 0] == mag) & (dataObj.command_bins_tm1[:, 1] == ang))[0]
+                        else:
+                            ix = np.nonzero((dataObj.command_bins_tm1[:, 0] == mag) & (dataObj.command_bins_tm1[:, 1] == ang) & (dataObj.move_tm1 == mov))[0]
+                        
+                        if len(ix) >= 15: 
+
+                            ##### What command does this movement transiton to? #######
+                            if exclude_same_dir:
+                                ang_ok = np.array([x for x in range(8) if x!=ang])
+                            else:
+                                ang_ok = np.arange(8)
+                            
+                            for mag2 in range(4):
+                                for ang2 in ang_ok: 
+                                    for mov2 in mv: 
+                                        if only_pairwise_com:
+                                            ix2 = np.nonzero((dataObj.command_bins[ix, 0] == mag2) & (dataObj.command_bins[ix, 1] == ang2))[0]
+                                        else:
+                                            ix2 = np.nonzero((dataObj.command_bins[ix, 0] == mag2) & (dataObj.command_bins[ix, 1] == ang2) & (dataObj.move[ix] == mov2))[0]
+                                        
+                                        if len(ix2) >= min_obs_next_command: 
+                                            if only_pairwise_com:
+                                                pass
+                                            else:
+                                                assert(mov == mov2)
+                                            current_command = np.mean(dataObj.push_tm1[ix[ix2]], axis=0)[[3, 5]]
+                                            tru_command = np.mean(dataObj.push    [ix[ix2]], axis=0)[[3, 5]]
+                                            pred_command   = np.mean(np.dot(KG, 0.1*dataObj.pred_spks[ix[ix2]].T).T, axis=0)
+
+                                            perc_corr[animal, day_ix] = assign_to_dict(current_command, tru_command, pred_command, perc_corr[animal, day_ix])
+
+                                            ps = []
+                                            for n in range(nshuffs):
+                                                ps.append(np.mean(np.dot(KG, 0.1*dataObj.pred_spks_shuffle[ix[ix2], :, n].T).T, axis=0))
+
+                                            pred_commands_shuff = np.vstack((ps))
+                                            assert(pred_commands_shuff.shape[0] == nshuffs)
+                                            assert(pred_commands_shuff.shape[1] == 2)
+
+                                            for n in range(nshuffs):
+                                                shuf_corr[animal, day_ix, n] = assign_to_dict(current_command, tru_command, pred_commands_shuff[n, :], 
+                                                    shuf_corr[animal, day_ix, n])
+
+            ################################################
+            pcang = float(len(perc_corr[animal, day_ix]['corr']))/(float(len(perc_corr[animal, day_ix]['corr'])) + float(len(perc_corr[animal, day_ix]['incorr'])))
+            pcmag = float(len(perc_corr[animal, day_ix]['corr_mag']))/(float(len(perc_corr[animal, day_ix]['corr_mag'])) + float(len(perc_corr[animal, day_ix]['incorr_mag'])))
+            
+            axang.plot(i_a*10 + day_ix, pcang, '.', color=plot_RED)
+            axmag.plot(i_a*10 + day_ix, pcmag, '.', color=plot_RED)
+
+
+            pcang_shuff = []
+            pcmag_shuff = []
+            for n in range(nshuffs):
+                pcang_shuff.append(float(len(shuf_corr[animal, day_ix, n]['corr']))/(float(len(shuf_corr[animal, day_ix, n]['corr'])) + float(len(shuf_corr[animal, day_ix, n]['incorr']))))
+                pcmag_shuff.append(float(len(shuf_corr[animal, day_ix, n]['corr_mag']))/(float(len(shuf_corr[animal, day_ix, n]['corr_mag'])) + float(len(shuf_corr[animal, day_ix, n]['incorr_mag']))))
+
+            util_fcns.draw_plot(i_a*10 + day_ix, pcang_shuff, 'k', np.array([1., 1., 1., 0.]), axang)
+            util_fcns.draw_plot(i_a*10 + day_ix, pcmag_shuff, 'k', np.array([1., 1., 1., 0.]), axmag)
+
+            ############################################# Scatters 
+            fangscat, axangscat = plt.subplots()
+            fmagscat, axmagscat = plt.subplots()
+
+            ang_corr = np.vstack(( perc_corr[animal, day_ix]['corr'] ))
+            ang_incorr = np.vstack(( perc_corr[animal, day_ix]['incorr'] ))
+            axangscat.plot(ang_corr[:, 0], ang_corr[:, 1], 'b.', markersize=2.)
+            axangscat.plot(ang_incorr[:, 0], ang_incorr[:, 1], 'r.', markersize=2.)
+            x = np.vstack((ang_corr, ang_incorr))
+            slp,intc,rv,pv,_ = scipy.stats.linregress(x[:, 0], x[:, 1])
+            axangscat.plot(x[:, 0], slp*x[:, 0] + intc, 'b-')
+
+            mag_corr = np.vstack(( perc_corr[animal, day_ix]['corr_mag'] ))
+            mag_incorr = np.vstack(( perc_corr[animal, day_ix]['incorr_mag'] ))
+            axmagscat.plot(mag_corr[:, 0], mag_corr[:, 1], 'b.', markersize=2.)
+            axmagscat.plot(mag_incorr[:, 0], mag_incorr[:, 1], 'r.', markersize=2.)
+            x = np.vstack((mag_corr, mag_incorr))
+            slp,intc,rv,pv,_ = scipy.stats.linregress(x[:, 0], x[:, 1])
+            axmagscat.plot(x[:, 0], slp*x[:, 0] + intc, 'b-')
+
+            ####### hsuffles 
+            ang_shuff = np.vstack(( shuf_corr[animal, day_ix, 0]['corr'] ))
+            ang_shuff_in = np.vstack(( shuf_corr[animal, day_ix, 0]['incorr'] ))
+            axangscat.plot(ang_shuff[:, 0], ang_shuff[:, 1], 'k.', alpha=0.5, markersize=2.)
+            axangscat.plot(ang_shuff_in[:, 0], ang_shuff_in[:, 1], 'k.', alpha=0.5, markersize=2.)
+            x = np.vstack((ang_shuff, ang_shuff_in))
+            slp,intc,rv,pv,_ = scipy.stats.linregress(x[:, 0], x[:, 1])
+            axangscat.plot(x[:, 0], slp*x[:, 0] + intc, 'k-')
+            
+            mag_shuff =  np.vstack(( shuf_corr[animal, day_ix, 0]['corr_mag'] ))
+            mag_shuff_in = np.vstack(( shuf_corr[animal, day_ix, 0]['incorr_mag'] ))
+            axmagscat.plot(mag_shuff[:, 0], mag_shuff[:, 1], 'k.', alpha=0.5, markersize=2.)
+            axmagscat.plot(mag_shuff_in[:, 0], mag_shuff_in[:, 1], 'k.', alpha=0.5, markersize=2.)
+            x = np.vstack((mag_shuff, mag_shuff_in))
+            slp,intc,rv,pv,_ = scipy.stats.linregress(x[:, 0], x[:, 1])
+            axmagscat.plot(x[:, 0], slp*x[:, 0] + intc, 'k-')
+            
+            axangscat.set_title('ang scat')
+            axmagscat.set_title('mag scat')
+            fangscat.tight_layout()
+            fmagscat.tight_layout()
+
+    axang.set_xlim([-1, 14])
+    axmag.set_xlim([-1, 14])
+    axang.set_ylabel('Percent correct, Angle dir')
+    axmag.set_ylabel('Percent correct, Mag. dir')
+
+    fang.tight_layout()
+    fmag.tight_layout()
+
+def perc_corr_ang_pw(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6, nshuffs = 2, 
+    min_obs_next_command = 5):
+
+    perc_corr = {}
+    shuf_corr = {}
+    plot_RED = np.array([237, 28, 36])/256.
+    
+    fang, axang = plt.subplots()
+
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+        bar = dict(pc_ang = [], pc_mag = [])
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+            
+            pw_ang = dict(corr = 0, N = 0)
+            pw_ang_shuff = {}
+            for n in range(nshuffs):
+                pw_ang_shuff[n] = dict(corr=0, N=0)
+
+            ### Load data ###
+            dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
+                model_set_number = model_set_number, nshuffs=nshuffs)
+            dataObj.load()
+
+            KG = util_fcns.get_decoder(animal, day_ix)
+
+            ### For each move / command is pred closer than shuffle 
+            for mag in range(4):
+
+                for ang in range(8): 
+
+                    ##### Get all the relevant commands 
+                    ix = np.nonzero((dataObj.command_bins_tm1[:, 0] == mag) & (dataObj.command_bins_tm1[:, 1] == ang))[0]
+                       
+                    mag_ang_map = defaultdict(list)
+                    mag_ang_map_shuff = {}
+                    for n in range(nshuffs):
+                        mag_ang_map_shuff[n] = {}
+
+                    for mag2 in range(4):
+                        for ang2 in range(8):
+
+                            ### Same mag, not same angle ####
+                            ix2 = np.nonzero((dataObj.command_bins[ix, 0] == mag2) & (dataObj.command_bins[ix, 1] == ang2))[0]
+                            
+                            if len(ix2) >= min_obs_next_command:
+                                pred_command   = np.mean(np.dot(KG, 0.1*dataObj.pred_spks[ix[ix2]].T).T, axis=0)
+                                mag_ang_map[mag2, ang2] = pred_command
+
+                                for n in range(nshuffs):
+                                    mag_ang_map_shuff[n][mag2, ang2] = np.mean(np.dot(KG, 0.1*dataObj.pred_spks_shuffle[ix[ix2], :, n].T).T, axis=0)
+                    
+                    corr, N = test_pw(mag_ang_map)
+                    pw_ang['corr'] += corr; 
+                    pw_ang['N'] += N 
+
+                    for n in range(nshuffs):
+                        corr, N = test_pw(mag_ang_map_shuff[n])
+                        pw_ang_shuff[n]['corr']+= corr; 
+                        pw_ang_shuff[n]['N']+= N; 
+
+            ### Plot 
+            pc = float(pw_ang['corr']) / float(pw_ang['N'])
+            axang.plot(10*i_a + day_ix, pc, 'r.')
+            pc_shuff = []
+            for n in range(nshuffs):
+                pc_shuff.append(float(pw_ang_shuff[n]['corr']) / float(pw_ang_shuff[n]['N']))
+            util_fcns.draw_plot(10*i_a + day_ix, pc_shuff, 'k', np.array([1., 1., 1., 0.]), axang)
+    
+    axang.set_xlim([-1, 14])
+    axang.set_ylim([0., 1.])
+
+
+                                
+
+def test_pw(mag_ang_map):
+    angs = np.linspace(0, 2*np.pi, 9)
+
+    corr = 0; N = 0; 
+    for mag in range(4): 
+        mg = []
+        for _, (k, pred) in enumerate(mag_ang_map.items()):
+            if k[0] == mag: 
+                mg.append([k[1], pred])
+
+        if len(mg) > 1: 
+            ### Pairwise ###
+            for im in range(len(mg)): 
+                ang1 = np.array([np.cos(mg[im][0]), np.sin(mg[im][0])])
+                pred1 = mg[im][1]
+
+                for im2 in range(im+1, len(mg)):
+                    assert(im!=im2)
+                    ang2 = np.array([np.cos(mg[im2][0]), np.sin(mg[im2][0])])
+                    pred2 = mg[im2][1]
+
+                    true_cp = np.sign(np.cross(ang1, ang2))
+                    act_cp = np.sign(np.cross(pred1, pred2))    
+
+                    if true_cp == act_cp: 
+                        corr += 1
+                    N += 1
+    return corr, N
+
+
+
+
+def assign_to_dict(current_command, tru_command, pred_command, dict_track):
+
+    #### Get differences between true current and true next commadn 
+    dA_true, dM_true = plot_actions.get_diffs(tru_command, current_command)
+    
+    ### Sign the angle; 
+    ### As convention, we'll call CW (-) and CCW (+)
+    cp = np.sign(np.cross(current_command, tru_command))
+    dA_true = cp*dA_true
+
+
+    #### Get differences between true current and predicted next commadn 
+    dA, dM = plot_actions.get_diffs(pred_command, current_command)
+    
+    ### Sign the angle; 
+    ### As convention, we'll call CW (-) and CCW (+)
+    cp = np.sign(np.cross(current_command, pred_command))
+    dA = cp*dA
+
+    if np.sign(dA) == np.sign(dA_true): 
+        dict_track['corr'].append([ dA_true, dA])
+    else:
+        dict_track['incorr'].append([dA_true, dA])
+
+    if np.sign(dM_true) == np.sign(dM): 
+        dict_track['corr_mag'].append([ dM_true, dM])
+    else:
+        dict_track['incorr_mag'].append([ dM_true, dM])
+
+    return dict_track
 
 def plot_pw_next_action_eg(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     animal = 'grom', day_ix = 0, mag = 0, ang = 0):
