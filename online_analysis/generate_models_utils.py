@@ -887,7 +887,7 @@ def get_training_testings(n_folds, data_temp):
         tmp = np.unique(np.hstack((test_ix[i_f], train_ix[i_f])))
 
         ### Make sure that unique point is same as all data
-        assert len(tmp) == len(data_temp)
+        assert len(tmp) == len(data_temp['tsk'])
     return test_ix, train_ix 
 
 def get_training_testings_generalization_LDS_trial(n_folds, data_temp, 
@@ -1567,7 +1567,7 @@ def chk_mov_map(mag, ang, com_ix, commands, shuff_ix, mov_map, movements):
 
 
 def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=None, 
-    fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, 
+    fold = 0., xvars = None, predict_key='spks', only_potent_predictor = False, only_command = False,
     KG_pot = None, KG = None, fit_task_specific_model_test_task_spec = False, fit_intercept = True,
     keep_bin_spk_zsc = False, decoder_params = None):
 
@@ -1575,7 +1575,7 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
     if type(model_v) is sklearn.linear_model.ridge.Ridge or type(model_v[0]) is sklearn.linear_model.ridge.Ridge:
         
         # CLF/RIDGE models: 
-        model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, KG_pot,
+        model_v, predictions = sklearn_mod_to_ols(model_v, test_data, xvars, predict_key, only_potent_predictor, only_command, KG_pot,
             KG, fit_task_specific_model_test_task_spec, fit_intercept = fit_intercept, model_nm = model_nm, 
             keep_bin_spk_zsc = keep_bin_spk_zsc, decoder_params = decoder_params)
         
@@ -1706,6 +1706,7 @@ def getonehotvar(var):
     return X
 
 def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spks', only_potent_predictor=False, 
+    only_command = False,
     KG_pot = None, KG = None, fit_task_specific_model_test_task_spec = False, testY = None, fit_intercept = True,
     model_nm = None, keep_bin_spk_zsc = False, decoder_params = None):
     
@@ -1763,6 +1764,10 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
     if only_potent_predictor:
         X = np.dot(KG_pot, X.T).T
         print 'only potent predictor'
+    elif only_command:
+        X = np.dot(KG, X.T).T
+        Y = np.dot(KG, Y.T).T
+        print 'only command'
 
     if fit_intercept:
         pred = np.mat(X)*np.mat(model.coef_).T + model.intercept_[np.newaxis, :]
