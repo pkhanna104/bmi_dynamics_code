@@ -17,6 +17,8 @@ from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 
 import scipy.io as sio
+import seaborn
+seaborn.set(font='Arial',context='talk',font_scale=1.1, style='white')
 
 #### Load mag_boundaries ####
 mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
@@ -1873,7 +1875,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
     if plot_r2_by_lo_cat:
         f3, ax3 = plt.subplots(ncols = 3, figsize=(6, 3))
 
-    for i_a, animal in enumerate(['grom']):#, 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
         r2_stats = []
         r2_stats_shuff = []
@@ -1896,7 +1898,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             if include_command_corr: 
                 pass
                 
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             print('##################')
             print('Starting Animal %s Day %d' %(animal, day_ix))
@@ -2143,10 +2145,11 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
                 else:
                     color = analysis_config.blue_rgb
 
-            ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=color, markersize=10) ### Data limited full prediction (not gen. but matched data to gen)
-            ax.plot(i_a*10 +day_ix-0.2, r2_pred_full, '.', color='blue', markersize=10) ### Full model prediction (not data limited )
+            #ax.plot(i_a*10 +day_ix-0.1, r2_pred_nlo, '.', color=color, markersize=10) ### Data limited full prediction (not gen. but matched data to gen)
+            ax.plot(i_a*10 +day_ix-0.1, r2_pred_full, '.', color=color, markersize=10) ### Full model prediction (not data limited )
             ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='purple', markersize=10)### general ization 
-
+            print('r2 of full: %.4f, r2 of purple LO %.4f'%(r2_pred_full, r2_pred_lo))
+            
             ################ model-speicfic stuff ###################
             if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
                 cond_all = np.vstack((cond_all))
@@ -2171,7 +2174,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             else:
                 #if plot_action:
                 r2_null, _ = yfcn(lo_true_all, null_pred)
-                print('r2 of null predicting full: %.4f'%(r2_null))
+                print('r2 of null predicting null: %.4f'%(r2_null))
                 ax.plot(i_a*10 + day_ix, r2_null, '.', color='deeppink', markersize=10)
                 #null_plots(lo_true_all, null_pred, nlo_pred_all, animal, day_ix
 
@@ -2284,14 +2287,15 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
     else:
         if null_opt == 'nulldyn':
             ax.set_title('Cat: %s, Com %s, \nNullopt %s (%s), Potadd %s'%(cat, str(plot_action), null_opt, nulldyn_opt,
-                str(potent_addon)), fontsize=12)
+                str(potent_addon)), fontsize=6)
         else:
-            ax.set_title('Cat: %s, Com %s, \nNullopt %s, Potadd %s'%(cat, str(plot_action), null_opt, str(potent_addon)), fontsize=12)
+            ax.set_title('Cat: %s, Com %s, \nNullopt %s, Potadd %s'%(cat, str(plot_action), null_opt, str(potent_addon)), fontsize=6)
     
     ax.set_ylabel(yval)
     ax.set_xlim([-1, 14])
     ax.set_xticks([])
     f.tight_layout()
+    util_fcns.savefig(f, 'r2_cat%s_action%s_nullopt%s_potadd%s'%(cat, str(plot_action), null_opt, str(potent_addon)))
 
 def null_plots(lo_true_all, null_pred, nlo_pred_all, animal, day_ix):
     err_null = np.linalg.norm(lo_true_all - null_pred, axis=0); 
@@ -2559,11 +2563,11 @@ def test_quick_shuffle(plot_action = True, nshuffs=5, model_nm = 'hist_1pos_0psh
     f, ax = plt.subplots()
     ridge_dict = pickle.load(open(analysis_config.config['grom_pref']+'max_alphas_ridge_model_set6_shuff.pkl','rb'))
 
-    for ia, animal in enumerate(['grom','jeev']): 
+    for ia, animal in enumerate(['grom']):#,'jeev']): 
         
         nonNULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6_.pkl'%animal), 'rb'))
     
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(4, 9):#analysis_config.data_params['%s_ndays'%animal]):
             ord_d = [[0], [1, 2]]
             history_bins_max = 1
 
@@ -2633,27 +2637,28 @@ def test_quick_shuffle(plot_action = True, nshuffs=5, model_nm = 'hist_1pos_0psh
 
             ####### Streamline shuffle ########
             #### Shuffle by streamline (not superstreamline) #####
-            # r2_shuff_machine = []
-            # now_shuff_ix = np.arange(tempN)
-            # pref = analysis_config.config['shuff_fig_dir']
-            # shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
-            # test_ix = shuffle_data_file['test_ix']
+            r2_shuff_machine = []
+            now_shuff_ix = np.arange(tempN)
+            pref = analysis_config.config['shuff_fig_dir']
+            shuffle_data_file = pickle.load(open(pref + '%s_%d_shuff_ix.pkl' %(animal, day_ix)))
+            test_ix = shuffle_data_file['test_ix']
             
-            # for i in range(nshuffs):
-            #     former_shuff_ix = shuffle_data_file[i]
+            for i in range(nshuffs):
+                former_shuff_ix = shuffle_data_file[i]
 
-            #     ### offset was meant for 
-            #     t0 = 0.
-            #     pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_no_cond(animal, 
-            #         day_ix, spks_sub_tm1*.1, 
-            #         tm0ix, test_ix, i, KG, 
-            #         former_shuff_ix, now_shuff_ix,t0)
-            #     pred_act_shuff = np.dot(KG,pred_spks_shuffle.T).T
-            #     if plot_action:
-            #         tmp, _ = r2(true_act, pred_act_shuff[keep_ix, :])
-            #     else:
-            #         tmp, _ = r2(spks_true[keep_ix, :], 10*pred_spks_shuffle[keep_ix, :])
-            #     r2_shuff_machine.append(tmp)
+                ### offset was meant for 
+                t0 = 0.
+                pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_streamlined_no_cond(animal, 
+                    day_ix, spks_sub_tm1*.1, 
+                    tm0ix, test_ix, i, KG, 
+                    former_shuff_ix, now_shuff_ix,t0)
+                pred_act_shuff = np.dot(KG,pred_spks_shuffle.T).T
+                if plot_action:
+                    tmp, _ = r2(true_act, pred_act_shuff[keep_ix, :])
+                else:
+                    tmp, _ = r2(spks_true[keep_ix, :], 10*pred_spks_shuffle[keep_ix, :])
+                r2_shuff_machine.append(tmp)
+            util_fcns.draw_plot(10*ia + day_ix + 0.1, r2_shuff_machine, 'purple', np.array([1., 1., 1., 0.]), ax)
                 
             # ####### Shuffle by streamline MODEL, overfitting possible...#######
             # r2_shuff_machine_guts = {}
