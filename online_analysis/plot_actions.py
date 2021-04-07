@@ -23,8 +23,9 @@ def extract_trans_stats(include_shuffle = True, only_potent = False):
     '''
     all_stats_dict = {}
     save = False
-    model_set_number = 7
-    mod_type = 2 ### General dynamics 
+    model_set_number = 6 #7
+    #mod_type = 2 ### General dynamics 
+    mod_type = -1
     dyn_model = 'hist_1pos_0psh_0spksm_1_spksp_0'
 
     for animal in ['jeev', 'grom']:
@@ -130,6 +131,7 @@ def plot_barplots_new_shuff(all_stats_dict):
                     vals_shuff = process_pc(all_stats_dict[animal]['pc', key, 'trans_shuff'])                
                     vals = np.hstack((vals))
 
+                axR2.set_ylabel('%s, (%s)'%(key, str(pci)))
                 util_fcns.draw_plot(0+(3*i_a), np.hstack((vals_shuff)), models_colors[0], 'white', axR2, width = 0.9)
                 axR2.bar(1+(3*i_a), np.mean(vals), width=0.9, color=models_colors[1])
                 axR2.errorbar(1+(3*i_a), np.mean(vals), np.std(vals)/np.sqrt(len(vals)), marker = '|', color='k')
@@ -1769,6 +1771,7 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
         K = util_fcns.get_jeev_decoder(day)
 
     ### Open the model type ####
+    #import pdb; pdb.set_trace()
     if model_type in [0, 1, 2, 4]:
         ### Task spec vs. general
         if dat is None:     
@@ -1779,7 +1782,20 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
             
     elif model_type == -1: 
         ### Full model 
-        dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
+        try:
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d.pkl' %(model_set_number), 'rb'))
+        except:
+            dat = pickle.load(open(analysis_config.config[animal+'_pref'] + 'tuning_models_'+animal+'_model_set%d_.pkl' %(model_set_number), 'rb'))
+
+        if include_shuffle and dyn_model == 'hist_1pos_0psh_0spksm_1_spksp_0':
+            sh = []
+            for n in range(5): 
+                ### Load shuffle 
+                pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2_super_stream_nocond(animal,
+                        day, n)
+                sh.append(pred_spks_shuffle)
+            pred_spks_shuff = np.dstack((sh))
+            nShuff = pred_spks_shuff.shape[2]
 
     elif model_type == 'cond':
         ### Condition specific models; 
@@ -1802,6 +1818,8 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
         prefix = prefix + '_cond'
     elif model_type == 4:
         prefix = prefix + '_tskspec'
+    elif model_type == -1: 
+        prefix = prefix + ''
     else:
         raise Exception('no other model types yet')
 
@@ -1841,6 +1859,9 @@ def preproc(animal, model_set_number, dyn_model, day, model_type = 2, minobs = 1
 
         if include_shuffle:
             raise Exception('not yet implemented')
+
+    elif model_type == -1: 
+        pred_spks = dat[day, dyn_model]
 
     #### True spks #####
     spks = dat[day, 'spks']
