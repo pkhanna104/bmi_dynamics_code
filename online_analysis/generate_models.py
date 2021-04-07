@@ -43,10 +43,14 @@ def sweep_alpha_all(run_alphas=True, model_set_number = 3,
 
     alphas = []; 
     for i in range(-4, 7):
-        alphas.append((1./4)*10**i)
-        alphas.append((2./4.)*10**i)
-        alphas.append((3./4.)*10**i)
-        alphas.append(1.*10**i)
+        if i == 4:
+            for j in range(2, 11):
+                alphas.append(float(j)*10**3)
+        else:
+            alphas.append((1./4)*10**i)
+            alphas.append((2./4.)*10**i)
+            alphas.append((3./4.)*10**i)
+            alphas.append(1.*10**i)
 
     
 
@@ -344,6 +348,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     ndays = None,
     include_null_pot = False,
     only_potent_predictor = False,
+    only_command = False,
     fit_intercept = True,
 
     fit_task_specific_model_test_task_spec = False,
@@ -360,7 +365,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     alpha_always_zero = False,
     latent_dim = 'full', 
     keep_bin_spk_zsc = False, 
-    null_predictor = False):
+    null_predictor = False,
+    null_predictor_w_null_alpha = False):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -440,6 +446,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         if null_predictor: 
             hdf_filename = hdf_filename + '_null'
 
+        elif null_predictor_w_null_alpha:
+            hdf_filename = hdf_filename + '_null_alpha'
+
+
         if fit_intercept:
             hdf_filename = hdf_filename + '.h5'
         else:
@@ -468,9 +478,12 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_shuff.pkl' %model_set_number, 'rb')); 
                 else:   
                     if null_predictor: 
-                        print(' Load null dict')
+                        print(' SKIP Load null dict')
+                        ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+                    elif null_predictor_w_null_alpha:
+                        print('Loading null alha')
                         ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_null.pkl' %model_set_number, 'rb')); 
-                        #ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+                        
                     else:
                         ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
 
@@ -531,14 +544,16 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         if animal != 'home':
             assert(not keep_bin_spk_zsc)
 
+        null_pred = np.logical_or(null_predictor, null_predictor_w_null_alpha)
+
         ### By default returns standard binned spike counts
         data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, day, 
             order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle, keep_bin_spk_zsc = keep_bin_spk_zsc,
-            day_ix = i_d, null = null_predictor)
+            day_ix = i_d, null = null_pred)
         
         print('R2 again, %.2f' %generate_models_utils.quick_reg(sub_spikes, sub_push_all))
         print('R2 est spks dyn, %.2f' %generate_models_utils.quick_reg(sub_spikes[1:, :], sub_push_all[:-1, :]))
-
+        
         models_to_include = []
         for m in model_var_list:
             models_to_include.append(m[1])
@@ -548,7 +563,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
         dec_mFR = None
         if animal == 'grom':
             KG, KG_null_proj, KG_potent_orth = get_KG_decoder_grom(i_d)
-            if null_predictor:
+            if null_pred:
                 assert(np.allclose(np.zeros_like(sub_push_all), np.dot(KG, sub_spikes.T).T))
         elif animal == 'home':
             KG, KG_null_proj, KG_potent_orth, dec_mFR, dec_sdFR = get_KG_decoder_home(i_d)
@@ -617,6 +632,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     ### Use whatever keys are available
                     model_data[i_d, mod] = defaultdict(list)
                 
+                elif only_command: 
+                    model_data[i_d, mod] = np.zeros((sub_spikes.shape[0], 2)) 
                 else:
                     model_data[i_d, mod] = np.zeros_like(sub_spikes) 
 
@@ -715,8 +732,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                     ### These are teh params; 
                     _, model_nm, _, _, _ = model_var_list_i
 
-                    if 'psh_2' in model_nm and null_predictor:
-                        print('SKIPPING %s, null=%s'%(model_nm, str(null_predictor)))
+                    if 'psh_2' in model_nm and null_pred:
+                        print('SKIPPING %s, null=%s'%(model_nm, str(null_pred)))
+                    elif 'psh_2' in model_nm and only_command: 
+                        print('SKIPPING %s, null=%s'%(model_nm, str(only_command)))
                     else: 
 
                         ## Store the params; 
@@ -737,6 +756,16 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 else:
                                     alpha_spec = ridge_dict[animal][0][i_d, model_nm]
 
+                                    if null_predictor: 
+                                        print('Adjusting alpha by n-2 %.3f'%(float(nneur)/float(nneur-2)))
+                                        alpha_spec = alpha_spec*(float(nneur)/float(nneur-2))
+                                    
+                                    elif null_predictor_w_null_alpha: 
+                                        print('keeping null alpha')
+
+                                    elif only_command: 
+                                        alpha_spec = 0.
+
                                     if animal == 'home':
                                         alpha_spec = homer_ridge_dict[animal][0][i_d, model_nm]
                                         print('Homer alpha %.1f' %(alpha_spec))
@@ -746,7 +775,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                     print('alpha zero')
 
                                 model_ = fit_ridge(data_temp_dict[predict_key], data_temp_dict, variables, alpha=alpha_spec, 
-                                    only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, 
+                                    only_potent_predictor = only_potent_predictor, only_command = only_command, KG = KG, KG_pot = KG_potent_orth, 
                                     fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
                                     fit_intercept = fit_intercept, model_nm = model_nm, nneur=nneur, 
                                     normalize_vars = normalize_ridge_vars, keep_bin_spk_zsc=keep_bin_spk_zsc)
@@ -771,7 +800,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                             else:
                                 h5file, model_, pred_Y = generate_models_utils.h5_add_model(h5file, model_, i_d, first=i_d==0, model_nm=model_nm, 
                                     test_data = data_temp_dict_test, fold = i_fold, xvars = variables, predict_key=predict_key, 
-                                    only_potent_predictor = only_potent_predictor, KG_pot = KG_potent_orth, KG = KG,
+                                    only_potent_predictor = only_potent_predictor, only_command = only_command, KG_pot = KG_potent_orth, KG = KG,
                                     fit_task_specific_model_test_task_spec = fit_task_specific_model_test_task_spec,
                                     fit_intercept = fit_intercept, keep_bin_spk_zsc = keep_bin_spk_zsc, decoder_params = dict(dec_mFR=dec_mFR,
                                         dec_sdFR=dec_sdFR))
@@ -918,12 +947,18 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
 
     if null_predictor:
         sff9 = '_null'
+    elif null_predictor_w_null_alpha:
+        sff9 = '_null_alpha'
     else:
         sff9 = ''
 
     ### ALSO SAVE MODEL_DATA: 
     if only_potent_predictor:
         pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_pot.pkl' %model_set_number, 'wb'))
+    
+    elif only_command:
+        pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_only_com.pkl' %model_set_number, 'wb'))
+    
     else:
         if fit_task_specific_model_test_task_spec:
             pickle.dump(model_data, open(analysis_config.config[animal + '_pref'] + 'tuning_models_'+animal+'_model_set%d_task_spec%s.pkl' %(model_set_number, sff2), 'wb'))
@@ -1760,7 +1795,7 @@ def panda_to_dict(D):
 
 def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
     test_data=None, test_data2=None, train_data2=None,
-    only_potent_predictor = False, KG_pot = None, 
+    only_potent_predictor = False, only_command = False, KG = None, KG_pot = None, 
     fit_task_specific_model_test_task_spec = False,
     fit_intercept = True, model_nm=None, nneur=None,
     normalize_vars = False, keep_bin_spk_zsc = False):
@@ -1794,6 +1829,17 @@ def fit_ridge(y_train, data_temp_dict, x_var_names, alpha = 1.0,
             ### Assuming KG_pot is the 
             assert(X.shape == pre_X_shape)
             print 'only potent used to train ridge'
+
+        elif only_command:
+            assert KG is not None
+
+            #### Assuuming that the trianing data is some sort of spiking thing
+            assert(KG.shape[1] == X.shape[1])
+            pre_X_shape = X.shape
+            
+            X = np.dot(KG, X.T).T
+            y_train = np.dot(KG, y_train.T).T
+            assert(X.shape == y_train.shape)
 
         #### Fit two models one on each task ####
         if fit_task_specific_model_test_task_spec:
@@ -2463,6 +2509,12 @@ def get_KG_decoder_grom(day_ix, animal='grom'):
     Va[:2, :] = Vh[:2, :]
     KG_potent_orth = np.dot(Va.T, Va)
 
+    ### Make sure the eigenvalues are 1 
+    ev, _ = np.linalg.eig(KG_potent_orth)
+    assert(np.sum(np.round(np.abs(ev), 10) == 1.) == 2)
+    ev, _ = np.linalg.eig(KG_null_proj)
+    assert(np.sum(np.round(np.abs(ev), 10)== 1.) == KG.shape[1] - 2)
+    
     if animal == 'grom':
         return KG_potent, KG_null_proj, KG_potent_orth
     elif animal == 'home':
