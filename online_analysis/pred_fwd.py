@@ -305,12 +305,14 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
         print('Animal %s, POOLED: pv = %.5f, mn_err = %.3f, mn_shuf = [%.3f, %.3f]' %(animal, 
             pv, mn_err, np.mean(mn_shuf), np.percentile(mn_shuf, 5)))
 
-    for _, (ax, ylab, lab) in enumerate(zip([axcc, axcom], ['Frac Command-Conditions with\nSig. Next Command Prediction',
-        'Frac Commands with\nSig. Next Command Prediction'], ['com_cond', 'com'])): 
+    for _, (ax, f, ylab, lab) in enumerate(zip([axcc, axcom], [fcc, fcom], ['Frac (command, condition)\n with sig. pred. next command',
+        'Frac (command) with\nsig. pred. next command'], ['com_cond', 'com'])): 
         ax.set_xticks([0, 1])
-        ax.set_ylim([0., 1.])
+        ax.set_ylim([0., 1.05])
         ax.set_xticklabels(['G', 'J'])
         ax.set_ylabel(ylab, fontsize=10)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
         f.tight_layout()
         util_fcns.savefig(f, 'frac_%s_w_sig_next_comm_pred'%lab)
 
