@@ -1878,8 +1878,12 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
     for i_a, animal in enumerate(['grom', 'jeev']):
 
         r2_stats = []
+        r2_stats_cyan = []
         r2_stats_shuff = []
         
+        ### Load this regardless; 
+        nonNULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6_.pkl'%animal), 'rb'))
+
         if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0': 
             if null_opt == 'nulldyn':
                 
@@ -1891,9 +1895,6 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
                 
                 else:
                     raise Exception('no null opt for nulldyn')
-            
-            ### Load this regardless; 
-            nonNULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6_.pkl'%animal), 'rb'))
             
             if include_command_corr: 
                 pass
@@ -1990,14 +1991,14 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
                     assert(np.allclose(test_i_sort, np.arange(null_spks_pred.shape[0])))
                     assert(len(np.unique(test_i_sort)) == null_spks_pred.shape[0])
 
-                full_spks_pred = 10*nonNULL_dict[day_ix, model_nm][an_ind, :].copy()
-                if plot_action:
-                    full_spks_pred = np.dot(KG, 0.1*full_spks_pred.T).T
-
                 ### Make sure fully null, except if doing null --> full; 
                 assert(np.allclose(np.dot(KG, null_spks_pred.T).T, np.zeros_like(push_true[:, [3, 5]])))
                 null_spks_pred = null_spks_pred[an_ind, :]
                 print('done with estimating null spks')
+
+            full_spks_pred = 10*nonNULL_dict[day_ix, model_nm][an_ind, :].copy()
+            if plot_action:
+                full_spks_pred = np.dot(KG, 0.1*full_spks_pred.T).T
 
             ######## re index #####
             spks_true = spks_true[an_ind, :]
@@ -2136,6 +2137,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             r2_pred_nlo, _ = yfcn(lo_true_all, nlo_pred_all)
             r2_pred_full, _ = yfcn(lo_true_all, full_spks_pred[lo_ix_all, :])
 
+
             if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
                 color = analysis_config.blue_rgb
             
@@ -2171,6 +2173,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
                 r2_cond, _ = yfcn(lo_true_all, cond_all)
                 ax.plot(i_a*10 + day_ix, r2_cond, '^', color='gray', markersize=10)
+                r2_null = -1.
             else:
                 #if plot_action:
                 r2_null, _ = yfcn(lo_true_all, null_pred)
@@ -2251,6 +2254,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
 
             ### Use for pooled stats ####
             r2_stats.append(r2_pred_lo)
+            r2_stats_cyan.append(r2_pred_full)
             r2_stats_shuff.append(np.hstack((r2_shuff)))
 
             if redoshuffs:
@@ -2266,20 +2270,20 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             mx = np.max([r2_pred_nlo, r2_pred_lo, np.mean(r2_shuff)])
             ax.plot([i_a*10 + day_ix, i_a*10 + day_ix], [mn, mx], 'k-', linewidth=0.5)
 
-            ### Print the stats; 
-        #     tmp_ix = np.nonzero(r2_shuff >= r2_pred_lo)[0]
-        #     print('Animal %s, Day ix %s, pv = %.5f, purple r2_ = %.5f, cyan r2_%.5f, shuff = [%.3f, %.3f], null_r2 %.5f' %(animal, 
-        #         day_ix, float(len(tmp_ix)) / float(len(r2_shuff)), r2_pred_lo, r2_pred_nlo, np.mean(r2_shuff), 
-        #         np.percentile(r2_shuff, 95), r2_null))
+            ## Print the stats; 
+            tmp_ix = np.nonzero(r2_shuff >= r2_pred_lo)[0]
+            print('Animal %s, Day ix %s, pv = %.5f, purple r2_ = %.5f, cyan r2_%.5f, shuff = [%.3f, %.3f], null_r2 %.5f' %(animal, 
+                day_ix, float(len(tmp_ix)) / float(len(r2_shuff)), r2_pred_lo, r2_pred_full, np.mean(r2_shuff), 
+                np.percentile(r2_shuff, 95), r2_null))
 
-        # r2_shuff_mn = np.mean(np.vstack((r2_stats_shuff)), axis = 0)
-        # assert(len(r2_shuff_mn) == nshuffs)
-        # r2_mn = np.mean(r2_stats)
-        # tmp_ix = np.nonzero(r2_shuff_mn >= r2_mn)[0]
-        # pv = float(len(tmp_ix)) / float(len(r2_shuff_mn))
+        r2_shuff_mn = np.mean(np.vstack((r2_stats_shuff)), axis = 0)
+        assert(len(r2_shuff_mn) == nshuffs)
+        r2_mn = np.mean(r2_stats)
+        tmp_ix = np.nonzero(r2_shuff_mn >= r2_mn)[0]
+        pv = float(len(tmp_ix)) / float(len(r2_shuff_mn))
 
-        # print('Animal POOLED %s, pv = %.5f, r2_ = %.3f, shuff = [%.3f, %.3f], r2_null %.3f' %(animal, 
-        #     pv, r2_mn, np.mean(r2_shuff_mn), np.percentile(r2_shuff_mn, 95), r2_null))
+        print('Animal POOLED %s, pv = %.5f, r2_ purple = %.3f, r2_ cyan = %.3f, shuff = [%.3f, %.3f], r2_null %.3f' %(animal, 
+            pv, r2_mn, np.mean(r2_stats_cyan), np.mean(r2_shuff_mn), np.percentile(r2_shuff_mn, 95), r2_null))
 
     ### Set the title ####
     if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
