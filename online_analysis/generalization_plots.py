@@ -1057,7 +1057,7 @@ def fit_predict_lomov_model(
     model_set_number = 6, nshuffs=1000,
     min_commands = 15, plot_pw = False):
 
-    """Summary
+    """Summary: Leave out groups of conditions, not just a single condition 
     
     Parameters
     ----------
@@ -1546,11 +1546,14 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
 
         ### Project data and plot ###
         trans_true = util_fcns.dat2PC(true_mc[np.newaxis, :], pc_model)
-        axpca[0].plot(trans_true[0, 0], yaxis_mult*trans_true[0, 1], '.', color=util_fcns.get_color(mov), markersize=20)
+        #axpca[0].plot(trans_true[0, 0], yaxis_mult*trans_true[0, 1], '.', color=util_fcns.get_color(mov), markersize=20)
+        axpca[0].plot(x, trans_true[0, 0], '.', color=util_fcns.get_color(mov), markersize=20)
+
 
         ### PLot the predicted data : 
         trans_pred = util_fcns.dat2PC(loo_pred[np.newaxis, :], pc_model)
-        axpca[1].plot(trans_pred[0, 0], yaxis_mult*trans_pred[0, 1], '*', color=colrgb, markersize=20)
+        #axpca[1].plot(trans_pred[0, 0], yaxis_mult*trans_pred[0, 1], '*', color=colrgb, markersize=20)
+        axpca[1].plot(x, trans_pred[0, 0], '*', color=colrgb, markersize=20)
 
         #trans_pred = util_fcns.dat2PC(nlo_pred[np.newaxis, :], pc_model)
         #axpca[1].plot(trans_pred[0, 0], yaxis_mult*trans_pred[0, 1], '*', mec=colrgb, mew = .5, mfc = 'white', markersize=20)
@@ -1558,8 +1561,10 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
         ### PLot the shuffled: Shuffles x 2 
         ### Population distance from movement-command FR
         trans_shuff = util_fcns.dat2PC(shuf_pred.T, pc_model) # shuffles x 2
-        e = plot_pred_fr_diffs.confidence_ellipse(trans_shuff[:, 0], yaxis_mult*trans_shuff[:, 1], axpca[1], n_std=3.0,
-            facecolor = util_fcns.get_color(mov, alpha=1.0))
+        # e = plot_pred_fr_diffs.confidence_ellipse(trans_shuff[:, 0], yaxis_mult*trans_shuff[:, 1], axpca[1], n_std=3.0,
+        #     facecolor = util_fcns.get_color(mov, alpha=1.0))
+        util_fcns.draw_plot(x, trans_shuff[:, 0], 'k', np.array([1., 1., 1., 0.]), axpca[1])
+        axpca[1].set_xlim([-1, len(plot_movs)])
 
     for axi in axsu:
         axi.set_xlim([-1, len(plot_movs)])
@@ -1570,8 +1575,8 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
     axsu[1].set_ylim([17, 31])
 
     for axi in axpca:
-        axi.set_xlabel('PC1')
-        axi.set_ylabel('PC2')
+        axi.set_xlabel('Conditions')
+        axi.set_ylabel('PC1')
 
     fsu.tight_layout()
     faxpca.tight_layout()
@@ -1583,7 +1588,8 @@ def plot_loo_n36_eg_lo_command(cat = 'com', nshuffs = 10, neurix = 36):
 def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', save=False): 
     '''
-    For each model type lets plot the held out data vs real data correlations 
+    Fraction of commands-move-neurons signifcnat
+    Also fraction of command-condtions sig, fraction of commands sig, frac. fo neurons sig.
     ''' 
     model_set_number = 6 
 
@@ -1592,16 +1598,27 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
     
     track_cm_analyzed = {}
 
+    f_fracCC, ax_fracCC = plt.subplots(figsize=(2, 3))
+    f_fracN, ax_fracN = plt.subplots(figsize=(2, 3))
+    
+    ylabels = dict()
+    ylabels['fracCC'] = 'frac. (command,condition) \nsig. predicted'
+    ylabels['fracCom']= 'frac. (command) \nsig. predicted'
+    ylabels['fracN']  = 'frac. (neuron)  \nsig. predicted'
+
     if 'com' in cat: 
         return_trans_from_lo = False
     else:
         return_trans_from_lo = False
 
     for i_a, animal in enumerate(['grom', 'jeev']):
-
+        bar_dict = dict(fracCC=[], fracCom=[], fracN=[])
+        stats_dict = dict(CC=[], Neur=[])
+        
         frac_dict = {}
         frac_dict['su_frac'] = []
         frac_dict['pop_frac'] = []
+        frac_dict['neur_frac'] = []
 
         stats_dict = {}
         stats_dict['avg_su_err'] = []
@@ -1645,7 +1662,6 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
             nneur = spks_true.shape[1]
 
             print('Spks shape: %d, %d' %(spks_true.shape[0], spks_true.shape[1]))
-
 
             ### Load shuffled dynamics --> same as shuffled, not with left out shuffled #####
             ### Go through the items that have been held out: 
@@ -1729,6 +1745,10 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
             #### nT x nN x 1000 ####
             shuffs = np.dstack((shuffs))
             err = dict(su=[], pop=[], su_shuff = [], pop_shuff =[])
+            err_su = dict()
+            for n in range(nneur): 
+                err_su[n] = dict(err = [], err_shuff = [])
+
             fs = dict(su_sig=0, su_tot=0, pop_sig=0, pop_tot=0)
 
             assert(shuffs.shape[0] == spks_true.shape[0])
@@ -1752,6 +1772,8 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
 
                     err['su'].append(su)
                     err['su_shuff'].append(sush)
+                    err_su[n]['err'].append(su)
+                    err_su[n]['err_shuff'].append(sush)
 
                     pv = len(np.nonzero(sush <= su)[0]) / float(len(sush))
                     if pv < 0.05:
@@ -1778,6 +1800,7 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
             frac_pop = float(fs['pop_sig'])/float(fs['pop_tot'])
             frac_dict['pop_frac'].append(frac_pop)
             axpop.plot(i_a, frac_pop, 'k.')
+            ax_fracCC.plot(i_a, frac_pop, 'k.')
 
             ### save the means !
             mn_su_err = np.mean(err['su'])
@@ -1798,9 +1821,25 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
             stats_dict['avg_pop_err'].append(mn_pop_err)
             stats_dict['avg_pop_shuff_err'].append(mn_pop_shuff)
 
+            ##### frac neurons ###
+            frac_neur_sig = 0; 
+            for n in range(nneur): 
+                mn_err = np.mean(np.array([s for s in err_su[n]['err']]))
+                sh_err = np.mean(np.vstack(([s for s in err_su[n]['err_shuff']])), axis=0)
+                assert(len(sh_err) == nshuffs)
+
+                ix = np.nonzero(sh_err <= mn_err)[0]
+                pv = float(len(ix))/float(nshuffs)
+                if pv < 0.05: 
+                    frac_neur_sig += 1
+            ax_fracN.plot(i_a, float(frac_neur_sig)/float(nneur), 'k.')
+            frac_dict['neur_frac'].append(float(frac_neur_sig)/float(nneur))
+        
         ### Plot the bars ###
         axsu.bar(i_a, np.mean(frac_dict['su_frac']), color='k', alpha=.5)
         axpop.bar(i_a, np.mean(frac_dict['pop_frac']), color='k', alpha=.5)
+        ax_fracCC.bar(i_a, np.mean(frac_dict['pop_frac']), color='k', alpha=0.5)
+        ax_fracN.bar(i_a, np.mean(frac_dict['neur_frac']), color='k', alpha=0.5)
 
         ### Sum pvalues ###
         mn_su = np.mean(stats_dict['avg_su_err'])
@@ -1815,26 +1854,34 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
         print('Pop pooled %s, pv = %.5f, mn = %.5f, sh_mn = %.5f, sh_5th = %.5f' %(animal, pv_, 
             mn_pop, np.mean(mn_popsh), np.percentile(mn_popsh, 5)))
 
-    for axi in [axsu, axpop]:
+    for axi in [axsu, axpop, ax_fracCC, ax_fracN]:
         axi.set_xticks([0, 1])
         axi.set_xticklabels(['G', 'J'])
-
+        axi.set_xlim([-1, 2])
+        axi.set_yticks([0., 0.2, .4, .6, .8, 1.0])
+        axi.set_ylim([0., 1.05])
+    
     axsu.set_ylabel('Frac Sig. Pred. Neuron\nCom-Move Activity')
     axpop.set_ylabel('Frac Sig. Pred. Pop.\nCom-Move Activity')
+    ax_fracCC.set_ylabel(ylabels['fracCC'], fontsize=8)
+    ax_fracN.set_ylabel(ylabels['fracN'], fontsize=8)
+    
+
 
     fsu.tight_layout()
     fpop.tight_layout()
+    f_fracN.tight_layout()
+    f_fracCC.tight_layout()
 
     if save:
-
-        util_fcns.savefig(fsu, 'lo_%s_cm_frac_sig_SU'%cat)
-        util_fcns.savefig(fpop, 'lo_%s_cm_frac_sig_POP'%cat)
+        util_fcns.savefig(f_fracCC, 'lo_%s_cm_frac_com_conds_sig'%cat)
+        util_fcns.savefig(f_fracN, 'lo_%s_cm_frac_neruons_sig'%cat)
     return track_cm_analyzed
 
 def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000, 
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', return_trans_from_lo = False,
     plot_r2_by_lo_cat = False, plot_action = False, null_opt = None, potent_addon = False,
-    nulldyn_opt = None, include_command_corr = False, redoshuffs = False):
+    nulldyn_opt = None, include_command_corr = False, redoshuffs = False, save_bars = False):
 
     '''
     null_opt: 
@@ -1871,15 +1918,22 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
     model_set_number = 6 
 
     f, ax = plt.subplots(figsize=(3, 3))
+
+    if save_bars: 
+        save_bars_dict = {}
     
     if plot_r2_by_lo_cat:
         f3, ax3 = plt.subplots(ncols = 3, figsize=(6, 3))
 
     for i_a, animal in enumerate(['grom', 'jeev']):
 
+        if save_bars: 
+            save_bars_dict[animal] = {}
+
         r2_stats = []
         r2_stats_cyan = []
         r2_stats_shuff = []
+        r2_stats_null = []
         
         ### Load this regardless; 
         nonNULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6_.pkl'%animal), 'rb'))
@@ -2137,6 +2191,10 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             r2_pred_nlo, _ = yfcn(lo_true_all, nlo_pred_all)
             r2_pred_full, _ = yfcn(lo_true_all, full_spks_pred[lo_ix_all, :])
 
+            if save_bars: 
+                save_bars_dict[animal][day_ix, 'r2_pred_lo'] = r2_pred_lo
+                save_bars_dict[animal][day_ix, 'r2_pred_nlo'] = r2_pred_nlo
+                save_bars_dict[animal][day_ix, 'r2_pred_full'] = r2_pred_full
 
             if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
                 color = analysis_config.blue_rgb
@@ -2173,18 +2231,24 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
                 r2_cond, _ = yfcn(lo_true_all, cond_all)
                 ax.plot(i_a*10 + day_ix, r2_cond, '^', color='gray', markersize=10)
+                if save_bars: 
+                    save_bars_dict[animal][day_ix, 'r2_cond'] = r2_cond
                 r2_null = -1.
             else:
                 #if plot_action:
                 r2_null, _ = yfcn(lo_true_all, null_pred)
                 print('r2 of null predicting null: %.4f'%(r2_null))
                 ax.plot(i_a*10 + day_ix, r2_null, '.', color='deeppink', markersize=10)
+                if save_bars: 
+                    save_bars_dict[animal][day_ix, 'r2_null'] = r2_null
                 #null_plots(lo_true_all, null_pred, nlo_pred_all, animal, day_ix
 
             if include_command_corr:
                 pot_pred_all = np.vstack((pot_pred_all))
                 r2_pot, _ = yfcn(lo_true_all, pot_pred_all)
                 ax.plot(i_a*10+day_ix, r2_pot, '.', color='k', markersize=10)
+                if save_bars: 
+                    save_bars_dict[animal][day_ix, 'r2_pot'] = r2_pot
                 print('command r2 = %.5f' %(r2_pot))
 
             r2_shuff = []
@@ -2256,11 +2320,15 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             r2_stats.append(r2_pred_lo)
             r2_stats_cyan.append(r2_pred_full)
             r2_stats_shuff.append(np.hstack((r2_shuff)))
+            r2_stats_null.append(r2_null)
 
             if redoshuffs:
                 util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'green', np.array([1., 1., 1., 0.]), ax)
             else:
                 util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+
+                if save_bars: 
+                    save_bars_dict[animal][day_ix, 'r2_shuff'] = r2_shuff
 
             if include_command_corr:
                 util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff_pot, 'gray', np.array([1., 1., 1., 0.]), ax)
@@ -2276,6 +2344,9 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
                 day_ix, float(len(tmp_ix)) / float(len(r2_shuff)), r2_pred_lo, r2_pred_full, np.mean(r2_shuff), 
                 np.percentile(r2_shuff, 95), r2_null))
 
+            tmp_ix = np.nonzero(r2_shuff >= r2_null)[0]
+            print('pv null %.5f'%(float(len(tmp_ix)) / float(len(r2_shuff))))
+
         r2_shuff_mn = np.mean(np.vstack((r2_stats_shuff)), axis = 0)
         assert(len(r2_shuff_mn) == nshuffs)
         r2_mn = np.mean(r2_stats)
@@ -2283,9 +2354,13 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
         pv = float(len(tmp_ix)) / float(len(r2_shuff_mn))
 
         print('Animal POOLED %s, pv = %.5f, r2_ purple = %.3f, r2_ cyan = %.3f, shuff = [%.3f, %.3f], r2_null %.3f' %(animal, 
-            pv, r2_mn, np.mean(r2_stats_cyan), np.mean(r2_shuff_mn), np.percentile(r2_shuff_mn, 95), r2_null))
+            pv, r2_mn, np.mean(r2_stats_cyan), np.mean(r2_shuff_mn), np.percentile(r2_shuff_mn, 95), np.mean(r2_stats_null)))
+        
+        tmp_ix = np.nonzero(r2_shuff_mn >= np.mean(r2_stats_null))[0]
+        print('pv null %.5f'%(float(len(tmp_ix)) / float(len(r2_shuff_mn))))
 
-    ### Set the title ####
+
+    ### Set the title  ####
     if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
         ax.set_title('Cat: %s' %cat)
     else:
@@ -2300,6 +2375,77 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
     ax.set_xticks([])
     f.tight_layout()
     util_fcns.savefig(f, 'r2_cat%s_action%s_nullopt%s_potadd%s'%(cat, str(plot_action), null_opt, str(potent_addon)))
+
+    if save_bars: 
+        return save_bars_dict
+
+def bar_plot_loo_r2_overall(save_dict, title, other_color = analysis_config.blue_rgb,
+    fig4 = False, fig5 = True):
+    
+    f, ax = plt.subplots(figsize=(4, 4))
+
+    add_on_x = 0; 
+
+    xlabel = []
+    xticks = []
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        ### keys ### 
+        if fig4: 
+            keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo', 'r2_pred_nlo']
+            labels = ['output', 'shuffle', 'left-out', 'full' ]
+            colors = ['gray',   'k',       'purple',       other_color]
+        
+        if fig5: 
+            keys = ['r2_shuff', 'r2_null', 'r2_pred_lo', 'r2_pred_nlo']
+            labels = ['shuffle', 'null', 'left-out', 'full' ]
+            colors = ['gray',   'hotpink',  'purple',  other_color]
+
+
+        day_lines = dict()
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+            day_lines[i_d] = []
+
+        for i_k, key in enumerate(keys): 
+
+            bar_mean = []
+
+            ### Datapoints per bar 
+            for i_d in range(analysis_config.data_params[animal+'_ndays']): 
+
+                if key == 'r2_shuff': 
+                    ax.plot(i_k + add_on_x, np.percentile(save_dict[animal][i_d, key], 95), 'k.',)
+                    bar_mean.append(np.percentile(save_dict[animal][i_d, key], 95))
+                    day_lines[i_d].append(np.percentile(save_dict[animal][i_d, key], 95))
+                
+                else: 
+                    ax.plot(i_k + add_on_x, save_dict[animal][i_d, key], 'k.')
+                    bar_mean.append(save_dict[animal][i_d, key])
+                    day_lines[i_d].append(save_dict[animal][i_d, key])
+
+            ax.bar(i_k + add_on_x, np.mean(bar_mean), width=.8, color=colors[i_k], alpha=.6)
+
+            ### 
+            #xlabel.append(labels[i_k])
+            xlabel.append('')
+            xticks.append(i_k + add_on_x)
+
+        for i_d in range(analysis_config.data_params[animal+'_ndays']):
+            ax.plot(np.arange(len(keys)) + add_on_x, day_lines[i_d], 'k-', linewidth=.5)
+
+        add_on_x += len(keys)
+        add_on_x += 1
+
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(xlabel, rotation=45)
+    ax.set_ylabel('Model $R^2$')
+
+    f.tight_layout()
+    util_fcns.savefig(f, 'leave_out_bar_%s.svg'%title)    
+
+
+
 
 def null_plots(lo_true_all, null_pred, nlo_pred_all, animal, day_ix):
     err_null = np.linalg.norm(lo_true_all - null_pred, axis=0); 
