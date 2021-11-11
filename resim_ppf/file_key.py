@@ -4,7 +4,7 @@ import scipy.io as sio
 import matplotlib.pyplot as plt
 import gc
 import scipy.stats
-import test_full_no_adapt as tfna
+#import test_full_no_adapt as tfna
 from resim_ppf import *
 import pickle
 import analysis_config
