@@ -1076,6 +1076,9 @@ def fit_predict_lomov_model(
     ridge_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'] , 'max_alphas_ridge_model_set%d.pkl'%model_set_number), 'rb')); 
     
     f, ax = plt.subplots(figsize=(5, 3))
+
+    save_bars = {}
+
     
     for ic, cat_ in enumerate(['vert', 'horz', 'diag_pos', 'diag_neg']): 
         print('############ starting %s ##############' %(cat_))
@@ -1083,11 +1086,13 @@ def fit_predict_lomov_model(
         # f, ax = plt.subplots(figsize=(3, 3))
         # ax.set_title(cat_)
 
-        f_cc, ax_cc = plt.subplots(figsize=(2, 3))
-        f_err, ax_err = plt.subplots(figsize=(2, 3))
+        #f_cc, ax_cc = plt.subplots(figsize=(2, 3))
+        #f_err, ax_err = plt.subplots(figsize=(2, 3))
 
         ##### cycle through the animals for this ###
         for i_a, animal in enumerate(animals):
+
+            save_bars[cat_, animal] = []
 
             pooled_stats = dict(r2 = [], r2_shuff = [])
 
@@ -1189,6 +1194,8 @@ def fit_predict_lomov_model(
                 ### Make sure dots are on top of the liens 
                 ax.plot(i_a*10 + day_ix + 0.15*ic, r2_lo, marker[cat_], mec='purple',
                     mfc='white', mew=1., markersize=markersize[cat_]*.5)
+
+                save_bars[cat_, animal].append([np.percentile(r2_shuff, 95), r2_lo])
 
                 # ax.plot(i_a*10 + day_ix + 0.15*ic, r2_std, marker[cat_], mec=analysis_config.blue_rgb,
                 #     mfc='white', mew=1., markersize=markersize[cat_]*.5)
@@ -1301,6 +1308,35 @@ def fit_predict_lomov_model(
     f.tight_layout()
     util_fcns.savefig(f, 'mov_grp_train_all_nshuffs%d' %nshuffs)
   
+    return save_bars
+
+def plot_loo_bars(save_bars): 
+    f, ax = plt.subplots(figsize=(5, 4))
+    xtics = []
+    xlabs = []
+
+    for i_a, animal in enumerate(['grom', 'jeev']): 
+        for i_c, cat in enumerate(['vert', 'horz', 'diag_pos', 'diag_neg']): 
+
+            try:
+                data = np.vstack((save_bars[cat, animal]))
+                cont = True 
+            except: 
+                pass
+                cont = False 
+            if cont: 
+                ax.bar(i_a*10 + i_c*2, np.mean(data[:, 0]), width=.8, color='k', alpha=.5)
+                ax.bar(i_a*10 + i_c*2 + .8, np.mean(data[:, 1]), width=.8, color='purple', alpha=.5)
+                xtics.append(i_a*10 + i_c*2)
+                xlabs.append(cat)
+                for i_d in range(data.shape[0]): 
+                    ax.plot(i_a*10 + i_c*2+np.array([0., .8]), data[i_d, :], 'k.-')
+    
+    ax.set_ylabel('Model $R^2$')
+    ax.set_xticks(xtics)
+    ax.set_xticklabels(xlabs, rotation=45)
+    f.tight_layout()
+    util_fcns.savefig(f, 'leave_out_movements_bars')
 def get_tsk_spec_alpha(n_folds=5):
     alphas = [np.arange(10, 100, 10), np.arange(100, 1000, 100), np.arange(1000, 10000, 1000)]; 
     # for i in range(-4, 7):
@@ -1881,7 +1917,8 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
 def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000, 
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', return_trans_from_lo = False,
     plot_r2_by_lo_cat = False, plot_action = False, null_opt = None, potent_addon = False,
-    nulldyn_opt = None, include_command_corr = False, redoshuffs = False, save_bars = False):
+    nulldyn_opt = None, include_command_corr = False, redoshuffs = False, save_bars = False,
+    save_dict = None):
 
     '''
     null_opt: 
@@ -1920,15 +1957,19 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
     f, ax = plt.subplots(figsize=(3, 3))
 
     if save_bars: 
-        save_bars_dict = {}
-    
+        if save_dict is None:
+            save_bars_dict = {}
+        else: 
+            save_bars_dict = save_dict 
+
     if plot_r2_by_lo_cat:
         f3, ax3 = plt.subplots(ncols = 3, figsize=(6, 3))
 
     for i_a, animal in enumerate(['grom', 'jeev']):
 
         if save_bars: 
-            save_bars_dict[animal] = {}
+            if animal not in save_bars_dict.keys(): 
+                save_bars_dict[animal] = {}
 
         r2_stats = []
         r2_stats_cyan = []
@@ -2192,7 +2233,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             r2_pred_full, _ = yfcn(lo_true_all, full_spks_pred[lo_ix_all, :])
 
             if save_bars: 
-                save_bars_dict[animal][day_ix, 'r2_pred_lo'] = r2_pred_lo
+                save_bars_dict[animal][day_ix, 'r2_pred_lo_'+cat] = r2_pred_lo
                 save_bars_dict[animal][day_ix, 'r2_pred_nlo'] = r2_pred_nlo
                 save_bars_dict[animal][day_ix, 'r2_pred_full'] = r2_pred_full
 
@@ -2393,14 +2434,18 @@ def bar_plot_loo_r2_overall(save_dict, title, other_color = analysis_config.blue
 
         ### keys ### 
         if fig4: 
-            keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo', 'r2_pred_nlo']
-            labels = ['output', 'shuffle', 'left-out', 'full' ]
-            colors = ['gray',   'k',       'purple',       other_color]
+            keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo_mov', 'r2_pred_lo_com','r2_pred_full']
+            labels = ['output', 'shuffle', 'cond-lo', 'com-lo', 'full' ]
+            colors = ['gray',   'k',       'purple', 'purple', other_color]
         
         if fig5: 
-            keys = ['r2_shuff', 'r2_null', 'r2_pred_lo', 'r2_pred_nlo']
-            labels = ['shuffle', 'null', 'left-out', 'full' ]
-            colors = ['gray',   'hotpink',  'purple',  other_color]
+            # keys = ['r2_null', 'r2_shuff', 'r2_pred_lo_mov', 'r2_pred_lo_com', 'r2_pred_full']
+            # labels = ['null', 'shuffle', 'cond-lo', 'com-lo', 'full' ]
+            # colors = ['deeppink', 'gray',  'purple', 'purple', other_color]
+
+            keys = ['r2_shuff', 'r2_null', 'r2_pred_lo_mov', 'r2_pred_lo_com', 'r2_pred_full']
+            labels = ['shuffle', 'null', 'cond-lo',  'com-lo', 'full' ]
+            colors = ['gray', 'deeppink', 'purple', 'purple', other_color]
 
 
         day_lines = dict()

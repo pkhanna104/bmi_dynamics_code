@@ -856,7 +856,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
 
 def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
 
-    for i_a, animal in enumerate(['home','grom', 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
         NCM = []
         CM = []
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
@@ -946,7 +946,7 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
             for _, val in enumerate(pop_stats):
                 dFR, dFR_shuff, _, _, _, gFR = val
                 frac_pop_dist.append(np.linalg.norm(dFR)/np.linalg.norm(gFR))
-
+                
                 assert(dFR_shuff.shape[0] == Nshuffs)
                 assert(dFR_shuff.shape[1] == Nneur)
                 
@@ -970,12 +970,12 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
             ax_fracdist.plot([ia, ia+0.4], [np.mean(frac_pop_dist), np.mean(frac_pop_dist_shuff)], 'k-', linewidth=0.5)
 
             bar_dict['fracdist_sig'].append(np.mean(frac_pop_dist_sig))
-            ax_fracdist_sig.plot(ia, np.mean(frac_pop_dist_sig), 'k.')
+            ax_fracdist_sig.plot(ia, np.mean(frac_pop_dist_sig), 'k.', markersize=12)
             
             bar_dict['fracdist_shuff_sig'].append(np.mean(frac_pop_dist_shuff_sig))
-            ax_fracdist_sig.plot(ia+0.4, np.mean(frac_pop_dist_shuff_sig), '.', color='gray')
-
             ax_fracdist_sig.plot([ia, ia+0.4], [np.mean(frac_pop_dist_sig), np.mean(frac_pop_dist_shuff_sig)], 'k-', linewidth=1.)
+            ax_fracdist_sig.plot(ia+0.4, np.mean(frac_pop_dist_shuff_sig), '.', markerfacecolor='white', 
+                markeredgewidth=1.0, markeredgecolor='k', markersize=12)
 
 
             ########## # of Cond/com sig. and # of com sig. ###########
@@ -1103,12 +1103,20 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
             [ax_fracCC, ax_fracCom, ax_fracN, ax_fracdist, ax_fracdist, ax_fracdist_sig, ax_fracdist_sig], 
             [.8, .8, .8, .4, .4, .4, .4], 
             [0, 0, 0, 0, .4, 0, .4],
-            [.2, .2, .2, .2, .1, .2, .1])):
-            ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, alpha=alpha, color='k')
+            [.2, .2, .2, .2, 0., .2, 0.])):
+            if alpha == 0.:
+                ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, color='w', edgecolor='k',
+                    linewidth=.5)
+            else:
+                ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, alpha=alpha, color='k')
             ax.set_ylabel(ylabels[key], fontsize=8)
             ax.set_xticks([0, 1])
             ax.set_xticklabels(['G', 'J'])
-            ax.set_xlim([-1, 2])
+
+            if key == 'fracdist_shuff_sig':
+                ax.set_xlim([-.3, 1.7])
+            else:
+                ax.set_xlim([-1, 2])
             if 'dist' not in key:
                 ax.set_yticks([0., 0.2, .4, .6, .8, 1.0])
                 ax.set_ylim([0., 1.05])
@@ -2312,6 +2320,21 @@ def eg_command_PSTH(animal='grom', day_ix = 0, mag = 0, ang = 7, nbins_past_fut 
 
             util_fcns.savefig(f, 'cm_com_psth_mov%.1f'%mov)
 
+    ### Add condition pooled: 
+    ix = np.nonzero((command_bins[:, 0] == mag) & (command_bins[:, 1] == ang))[0]
+    f, ax = plt.subplots(figsize=(10, 2))
+    ax.axis('square')
+    PSTH = get_PSTH(bin_num, rev_bin_num, push, ix)
+    for i in range(PSTH.shape[0]):
+        ax.quiver(i*1.5, 2, PSTH[i, 0], PSTH[i, 1],
+                width=arrow_scale*2, color = 'gray', 
+                angles='xy', scale=1, scale_units='xy')
+    ax.set_ylim([0.5, 3.5])
+    ax.set_xlim([-2, 20])
+
+    util_fcns.savefig(f, 'cm_com_psth_pool')
+
+
 def eg_command_PSTH_pred(animal='grom', day_ix=0, mag=0, ang=7, nbins_past_fut=1,
     arrow_scale = .03, width=.001):
 
@@ -2367,17 +2390,24 @@ def eg_command_PSTH_pred(animal='grom', day_ix=0, mag=0, ang=7, nbins_past_fut=1
             ax.axis('square')
 
             ### Plto the command you're centering on ####
-            ax.quiver(1, 10-cnt, np.mean(push_tm1[ix, 3]), np.mean(push_tm1[ix, 5]),
+            mn_psh_tmp = np.mean(push_tm1[np.ix_(ix, [3, 5])], axis=0)
+            mn_psh_tmp = mn_psh_tmp / np.linalg.norm(mn_psh_tmp)
+            
+            ax.quiver(1, 10-cnt, mn_psh_tmp[0], mn_psh_tmp[1],
                 width=arrow_scale*2, color = util_fcns.get_color(mov), 
                 angles='xy', scale=1, scale_units='xy')
 
+            mn_push_tmp = np.mean(push_tm0[np.ix_(ix, [3, 5])], axis=0)
+            mn_push_tmp = mn_push_tmp / np.linalg.norm(mn_push_tmp)
             ### Plot the actual next command #######
-            ax.quiver(3, 10-cnt, np.mean(push_tm0[ix, 3]), np.mean(push_tm0[ix, 5]), 
+            ax.quiver(3, 10-cnt, mn_push_tmp[0], mn_push_tmp[1], 
                 width=arrow_scale*2, color = util_fcns.get_color(mov), 
                 angles='xy', scale=1, scale_units='xy')
 
+            mn_push_tmp = np.mean(pred_push[np.ix_(ix, [3, 5])], axis=0)
+            mn_push_tmp = mn_push_tmp / np.linalg.norm(mn_push_tmp)
             ### PLot the predicted next command #####
-            ax.quiver(5, 10-cnt, np.mean(pred_push[ix, 3]), np.mean(pred_push[ix, 5]),
+            ax.quiver(5, 10-cnt, mn_push_tmp[0], mn_push_tmp[1], 
                 width=arrow_scale*2, color = util_fcns.get_color(mov), 
                 angles='xy', scale=1, scale_units='xy')
 

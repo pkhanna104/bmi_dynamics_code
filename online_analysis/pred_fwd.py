@@ -11,7 +11,7 @@ from online_analysis import plot_actions
 
 from collections import defaultdict
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.25, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
 
 def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 20, plot_action = False, nshuffs_roll = 100, keep_bin_spk_zsc = False):
@@ -376,12 +376,13 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     ax_pw2 = ax_pw.twinx()
     PW_eg = []; PW_shuff = []; PW_shuff_rol = []
 
+    special_dots = []
 
-    for i_a, animal in enumerate(['grom', 'jeev']):
+    for i_a, animal in enumerate(['grom']):#, 'jeev']):
         cc_avg = []
         animal_data = []
 
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
 
 
             if animal in ['grom'] and day_ix in range(1):
@@ -425,7 +426,7 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
                             mov_ix[mov] = ix.copy()
                             
                     ##### Global;
-                    movs = np.array(mov_ix.keys()) 
+                    movs = np.sort(np.array(mov_ix.keys()))
                     for i_m1, mov1 in enumerate(movs):
 
                         ix1 = mov_ix[mov1]
@@ -476,6 +477,15 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
 
                                 if animal in ['grom'] and day_ix in range(1):
                                     ax_scatter.plot(true_pw_dist, pred_pw_dist, 'k.', markersize=5.)
+
+                                    if mag == 0 and ang == 7:
+                                        if mov1 == 1. and mov2 == 3.:
+                                            ax_scatter.plot(true_pw_dist, pred_pw_dist, '.', color = 'deeppink',
+                                                markersize=7.)
+
+                                        elif mov1 == 1. and mov2 == 10.1:
+                                            ax_scatter.plot(true_pw_dist, pred_pw_dist, '.', color = 'limegreen',
+                                                markersize=7.)
 
                                     if animal == 'grom' and day_ix == 0 and mag == mag_eg and ang == ang_eg:
                                         PW_eg.append([mov1, mov2, true_pw_dist, pred_pw_dist])

@@ -423,7 +423,7 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     shuff_mFR = {};
 
     cond_mFR = {}; 
-
+    cond_pop_FR = {}
     ###############################################
     ########### COllect movements ################
     ###############################################
@@ -469,6 +469,7 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         pred_mFR_vect[mov] = np.mean(pred_FR_vect, axis=0)
         shuff_mFR_vect[mov] = np.mean(shuff_vector, axis=0)
         cond_mFR[mov] = np.mean(cond_spks[ix_mc_all, neuron_ix], axis=0)
+        cond_pop_FR[mov] = np.mean(cond_spks[ix_mc_all, :], axis=0)
 
         ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
         ix_ok, niter = plot_fr_diffs.distribution_match_global_mov(push_sub[np.ix_(ix_mc_all, [3, 5])], 
@@ -571,31 +572,53 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     fpca, axpca = plt.subplots(figsize=(6, 3), ncols = 2)
 
     #### For true data, plot the coordinates: 
-    for m in mFR_vect.keys(): 
+    keys = np.argsort(np.hstack((mFR.keys())) % 10)
+    xlim = [-1, len(keys)]
+
+    #### Sort correctly #####
+    for x, m in enumerate(np.hstack((mFR.keys()))[keys]):
+    #for m in mFR_vect.keys(): 
 
         ### Project data and plot ###
         trans_true = util_fcns.dat2PC(mFR_vect[m][np.newaxis, :], pc_model)
-        axpca[0].plot(trans_true[0, 0], trans_true[0, 1], '.', color=get_color(m), markersize=20)
+        #axpca[0].plot(trans_true[0, 0], trans_true[0, 1], '.', color=get_color(m), markersize=20)
+        axpca[0].plot(x, trans_true[0, 0], '.', color=get_color(m), markersize=20)
 
         ### PLot the predicted data : 
         trans_pred = util_fcns.dat2PC(pred_mFR_vect[m][np.newaxis, :], pc_model)
-        axpca[1].plot(trans_pred[0, 0], trans_pred[0, 1], '*', color=get_color(m), markersize=20)
+        axpca[1].plot(x, trans_pred[0, 0], '*', color=get_color(m), markersize=20)
+        
+        #axpca[1].plot(trans_pred[0, 0], trans_pred[0, 1], '*', color=get_color(m), markersize=20)
         #axpca[0].plot([trans_true[0, 0], trans_pred[0, 0]], [trans_true[0, 1], trans_pred[0, 1]], '-', 
         #    color=get_color(m), linewidth=1.)
 
+        ## Plot output only: 
+        trans_cond = util_fcns.dat2PC(cond_pop_FR[m][np.newaxis, :], pc_model)
+        axpca[1].plot(x, trans_cond[0, 0], '^', color='gray')
+
         ### PLot the shuffled: Shuffles x 2 
         trans_shuff = util_fcns.dat2PC(shuff_mFR_vect[m].T, pc_model)
-        e = confidence_ellipse(trans_shuff[:, 0], trans_shuff[:, 1], axpca[1], n_std=3.0,
-            facecolor = get_color(m, alpha=1.0))
+        #e = confidence_ellipse(trans_shuff[:, 0], trans_shuff[:, 1], axpca[1], n_std=3.0,
+        #    facecolor = get_color(m, alpha=1.0))
+        util_fcns.draw_plot(x, trans_shuff[:, 0], 'k', np.array([1., 1., 1., 0]), axpca[1])
+
     ### Add the global FR command ####
     global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
     trans_global = util_fcns.dat2PC(global_mFR[np.newaxis, :], pc_model)
-    axpca[0].plot(trans_global[0, 0], trans_global[0, 1], 'k.', markersize=10)
+
+    ## Dashed output ## 
+    #axpca[0].hlines(trans_global[0, 0], -1, len(keys), linestyles='dashed')
+    #axpca[0].plot(trans_global[0, 0], trans_global[0, 1], 'k.', markersize=10)
     #axpca[1].plot(trans_global[0, 0], trans_global[0, 1], 'k.', markersize=10)
     
     for axpcai in axpca:
-        axpcai.set_xlabel('PC1')
-        axpcai.set_ylabel('PC2')
+        axpcai.set_ylabel('PC1')
+        axpcai.set_xlabel('Condition')
+        axpcai.set_xlim(xlim)
+
+    axpca[0].set_ylim([14, 57])
+    axpca[1].set_ylim([32, 48])
+
     fpca.tight_layout()
     util_fcns.savefig(fpca,'fig4_eg_pca')
 
@@ -655,7 +678,6 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     fdyn.tight_layout()
     util_fcns.savefig(fdyn,'fig4_eg_dyn')
 
-
 def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
     """
     Create a plot of the covariance confidence ellipse of *x* and *y*.
@@ -709,7 +731,8 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
     return ax.add_patch(ellipse)
 
 def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0, 
-    model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', only_sig_cc=False):
+    model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
+    only_sig_cc=False):
     '''
     goal: 
         1. fraction of command/conditions sig. diff (population)
@@ -734,8 +757,14 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
 
     for ia, animal in enumerate(['grom', 'jeev']):
         bar_dict = dict(fracCC=[], fracCom=[], fracN=[], r2=[], r2_shuff=[])
+        stats_dict = dict(CC=[], Neur=[], R2=[])
         
+        model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
+        model_dict = pickle.load(open(model_fname, 'rb'))
+
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            day_stats_dict = dict(CC=[])
 
             ################################
             ###### Extract real data #######
@@ -759,8 +788,6 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             ###############################################
             ###### Get predicted spikes from the model ####
             ###############################################
-            model_fname = analysis_config.config[animal+'_pref']+'tuning_models_'+animal+'_model_set'+str(model_set_number)+'_.pkl'
-            model_dict = pickle.load(open(model_fname, 'rb'))
             pred_spks = model_dict[day_ix, model_nm]
             pred_spks = 10*pred_spks; 
             cond_spks = 10*plot_generated_models.cond_act_on_psh(animal, day_ix)
@@ -783,7 +810,6 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
             command_bins = util_fcns.commands2bins([push_sub], mag_boundaries, animal, day_ix, 
                                                vel_ix=[3, 5])[0]
-
 
             ####### Metrics ##########
             nCC=0; nCC_sig=0; 
@@ -861,7 +887,9 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                                 nCC_sig += 1
                             nCC += 1
 
-
+                            nnr = float(len(mFR))
+                            day_stats_dict['CC'].append([err_pred/nnr, err_shuff/nnr, mag, ang, mov])
+                            
                             if only_sig_cc: 
                                 if pv < 0.05: 
                                     ##### Add to list ####
@@ -924,10 +952,15 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             else:
                 assert(neur_com_mov_vals.shape[0] == nCC)     
 
+            VL = []
+            SHF = []
             for n in range(nneur): 
 
                 vls = np.mean(neur_com_mov_vals[:, n])
                 shf = np.mean(neur_com_mov_shuffs[n, :, :], axis=1)
+                VL.append(vls)
+                SHF.append(shf)
+
                 assert(len(shf) == nshuffs)
 
                 n_lte = len(np.nonzero(shf <= vls)[0])
@@ -956,13 +989,58 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             for s in range(nshuffs):
                 r2_sh.append(util_fcns.get_R2(mfr_true, mFR_for_r2_shuff[:, s, :].T))
             
-            ax_r2.plot(ia, r2_, 'k.')
-            bar_dict['r2'].append(r2_)
+            print('Monk R2 %.3f, [%.3f, %.3f] mn | 95th perc' %(r2_, np.mean(r2_sh), np.percentile(r2_sh, 95)))
+            stats_dict['R2'].append([r2_, r2_sh])
 
-            ax_r2.plot(ia+.4, np.mean(r2_sh), '.', color='w', mec='k', mew=.5)
+            ax_r2.plot(ia, r2_, 'k.', markersize=12)
+            bar_dict['r2'].append(r2_)
+            
+            ### Line before white dot###
+            ax_r2.plot([ia, ia+.4], [r2_, np.mean(r2_sh)], 'k-', linewidth=.25)
+
+            ax_r2.plot(ia+.4, np.mean(r2_sh), '.', color='w', mec='k', mew=1., markersize=12)
             bar_dict['r2_shuff'].append(np.mean(r2_sh))
 
-            ax_r2.plot([ia, ia+.4], [r2_, np.mean(r2_sh)], 'k-', linewidth=.25)
+            
+
+            ######## Neur sig #########
+            VL = np.mean(VL)
+            SHF = np.mean(np.vstack((SHF)), axis=0)
+            assert(nshuffs == len(SHF))
+            pv = float(len(np.nonzero(SHF <= VL)[0]))/float(len(SHF))
+            print('NNeurons Monk %s, Day %d, pv %.5f'%(animal, day_ix, pv))
+            stats_dict['Neur'].append([VL, SHF])
+
+            ####### Command condition Sig. ######
+            VL = np.mean(np.array([i[0] for i in day_stats_dict['CC']]))
+            SHF = np.mean(np.vstack(([i[1] for i in day_stats_dict['CC']])), axis=0)
+            assert(nshuffs == len(SHF))
+            pv = float(len(np.nonzero(SHF <= VL)[0]))/float(len(SHF))
+            print('CCs Monk %s, Day %d, pv %.5f'%(animal, day_ix, pv))
+            stats_dict['CC'].append([VL, SHF])
+
+
+        ####### POOLED STATS #########
+        vl = np.mean(np.array([i[0] for i in stats_dict['Neur']]))
+        shf = np.mean(np.vstack((np.array([i[1] for i in stats_dict['Neur']]))), axis=0)
+        assert(len(shf) == nshuffs)
+        pv = float(len(np.nonzero(shf <= vl)[0]))/float(len(shf))
+        print('NNeurons Monk %s, POOLED, pv %.5f, mean = %.5f, [%.5f, %.5f]'%(animal, pv, vl, np.mean(shf), np.percentile(shf, 5)))
+        
+
+        vl = np.mean(np.array([i[0] for i in stats_dict['CC']]))
+        shf = np.mean(np.vstack((np.array([i[1] for i in stats_dict['CC']]))), axis=0)
+        assert(len(shf) == nshuffs)
+        pv = float(len(np.nonzero(shf <= vl)[0]))/float(len(shf))
+        print('CC Monk %s, POOLED, pv %.5f, mean = %.5f, [%.5f, %.5f]'%(animal, pv, vl, np.mean(shf), np.percentile(shf, 5)))
+        
+        vl = np.mean(np.array([i[0] for i in stats_dict['R2']]))
+        shf = np.mean(np.vstack((np.array([i[1] for i in stats_dict['R2']]))), axis=0)
+        assert(len(shf) == nshuffs)
+        pv = float(len(np.nonzero(shf <= vl)[0]))/float(len(shf))
+        print('R2 Monk %s, POOLED, pv %.5f, mean = %.5f, [%.5f, %.5f]'%(animal, pv, vl, np.mean(shf), np.percentile(shf, 95)))
+        
+
 
         #### Plot bar plots 
         for _, (key, ax, wid, offs, alpha) in enumerate(zip(
@@ -970,13 +1048,20 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             [ax_fracCC, ax_fracCom, ax_fracN, ax_r2, ax_r2], 
             [.8, .8, .8, .4, .4, ], 
             [0,   0,  0,  0, .4, ],
-            [.2, .2, .2, .2, .1, ])):
+            [.2, .2, .2, .2, 0., ])):
 
-            ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, alpha=alpha, color='k')
+            if alpha == 0.:
+                ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, color='white',
+                    linewidth=1., edgecolor='k')
+            else:
+                ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, alpha=alpha, color='k')
             ax.set_ylabel(ylabels[key], fontsize=8)
             ax.set_xticks([0, 1])
             ax.set_xticklabels(['G', 'J'])
-            ax.set_xlim([-1, 2])
+            if 'r2' in key: 
+                ax.set_xlim([-.3, 1.7])
+            else:
+                ax.set_xlim([-1, 2])
 
             if 'r2' in key:
                 pass
