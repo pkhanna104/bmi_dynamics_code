@@ -112,7 +112,7 @@ def get_sorted_realized_evs(A):
 
 ####### UTILS ######
 def plot_flow(A, axi, nb_points=20, xmin=-5, xmax=5, ymin=-5, ymax=5, dim0 = 0, dim1 = 1,
-    scale = .5, alpha=1.0, width=.005, cmax=.1, setdimeq1 = False):
+    scale = .5, alpha=1.0, width=.005, cmax=.1, setdimeq1 = False, pls_b = None):
 
     ''' Method to plot flow fields in 2D 
         Inputs: 
@@ -131,7 +131,7 @@ def plot_flow(A, axi, nb_points=20, xmin=-5, xmax=5, ymin=-5, ymax=5, dim0 = 0, 
     
     ### For each position on the grid, (x1, y1), use A to compute where the next 
     ### point would be if propogate (x1, y1) by A -- assuming all other dimensions are zeros
-    DX, DY = compute_dX(X1, Y1, A, dim0, dim1, setdimeq1)  
+    DX, DY = compute_dX(X1, Y1, A, dim0, dim1, setdimeq1, pls_b)  
 
     ### Get magnitude of difference
     M = (np.hypot(DX, DY))         
@@ -142,7 +142,7 @@ def plot_flow(A, axi, nb_points=20, xmin=-5, xmax=5, ymin=-5, ymax=5, dim0 = 0, 
         clim = [0., cmax])
     return Q
 
-def compute_dX(X, Y, A, dim0, dim1, setdimeq1):
+def compute_dX(X, Y, A, dim0, dim1, setdimeq1, pls_b):
     '''
     method to compute dX based on A
     '''
@@ -170,6 +170,9 @@ def compute_dX(X, Y, A, dim0, dim1, setdimeq1):
             st[dim1] = Y[nr, nc];
 
             st_nx = np.dot(A, st)
+            if pls_b is not None: 
+                st_nx = st_nx + pls_b
+                st_nx = np.squeeze(st_nx)
             newX[nr, nc] = st_nx[dim0]
             newY[nr, nc] = st_nx[dim1]
 
