@@ -891,9 +891,13 @@ def get_training_testings(n_folds, data_temp):
     return test_ix, train_ix 
 
 def get_training_testings_generalization_LDS_trial(n_folds, data_temp, 
-    match_task_spec_n = False):
+    match_task_spec_n = False, skip_task_specific = False):
     '''
     same as below but match number of trials; 
+
+    if 'skip_task_specific' --> then will only return indices for folds that are 
+    arbitrarily assigned 
+    regardless of task 
     '''
     train_ix = dict()
     test_ix = dict()
@@ -970,7 +974,7 @@ def get_training_testings_generalization_LDS_trial(n_folds, data_temp,
                 tst2 = N_trls[other_task][int(fold_perc*N[other_task]):int((fold_perc+(1./n_folds))*N[other_task])]
 
                 ### Add all non-testing points from this task to training; 
-                trn = np.array([j for i, j in enumerate(N_pts[tsk]) if j not in tst])
+                trn = np.array([j for i, j in enumerate(N_trls[tsk]) if j not in tst])
 
                 train_ix[i_f + tsk*n_folds] = trn.astype(int)
                 test_ix[i_f + tsk*n_folds] = np.hstack((tst, tst2)).astype(int)
@@ -1011,7 +1015,14 @@ def get_training_testings_generalization_LDS_trial(n_folds, data_temp,
         test = np.sort(np.unique(np.hstack((test))))
         assert(np.all(test == all_trls))
 
-    return test_ix, train_ix, type_of_model.astype(int)    
+    if skip_task_specific:
+        test_ix_2 = {}; train_ix_2 = {}; 
+        for i, j in enumerate(range(2*n_folds, 2*n_folds + n_folds)): 
+            test_ix_2[i] = test_ix[j]
+            train_ix_2[i] = train_ix[j]
+        return test_ix_2, train_ix_2, type_of_model[2*n_folds:].astype(int)
+    else: 
+        return test_ix, train_ix, type_of_model.astype(int)    
 
 def get_training_testings_generalization(n_folds, data_temp, 
     match_task_spec_n = False):
