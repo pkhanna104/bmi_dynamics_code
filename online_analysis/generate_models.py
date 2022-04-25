@@ -293,32 +293,43 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
             if highDsweep:
                 maxDim = np.min([nneur - 2, 36])
                 dims = np.arange(22, maxDim, 2)
-                LL = np.zeros((3, 5, len(dims) )) + np.nan
+                LL = np.zeros((3, n_folds, len(dims) )) + np.nan
             else:
-                maxDim = np.min([nneur-2, 20])
-                dims = np.arange(2, maxDim)
-                LL = np.zeros((3, 5, len(dims) )) + np.nan
+                maxDim = nneur - 4; 
+                if maxDim > 50: 
+                    dims = np.hstack((np.arange(2, 20, 2), np.arange(20, 5, 50), np.arange(50, 10, maxDim)))
+                elif maxDim > 20: 
+                    dims = np.hstack((np.arange(2, 20, 2), np.arange(20, 5, maxDim)))
+                else: 
+                    dims = np.arange(2, maxDim, 2)
+    
+                #LL = np.zeros((3, n_folds, len(dims) )) + np.nan
+
+                ### pk, 4-2022 removed task 0, task 1, just care about mixed; 
+                LL = np.zeros((1, n_folds, len(dims) )) + np.nan
 
             for i_fold, type_of_model_index in enumerate(type_of_model):
 
-                #### Get variable names #####
-                variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
-                
-                ### For each variable in the model: 
-                for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
+                if type_of_model_index == 2: 
+                    #### Get variable names #####
+                    variables_list = return_variables_associated_with_model_var(model_var_list, include_action_lags, nneur)
+                    
+                    ### For each variable in the model: 
+                    for _, (variables, model_var_list_i) in enumerate(zip(variables_list, model_var_list)):
 
-                    check_variables_order(variables, nneur)
+                        check_variables_order(variables, nneur)
 
-                    ### These are teh params; 
-                    _, model_nm, _, _, _ = model_var_list_i
+                        ### These are teh params; 
+                        _, model_nm, _, _, _ = model_var_list_i
 
-                    print('Start dims fold %d, type %d' %(i_fold, type_of_model_index))
-                    for i_n, n_dim in enumerate(dims):
+                        print('Start dims fold %d, type %d' %(i_fold, type_of_model_index))
+                        for i_n, n_dim in enumerate(dims):
 
-                        model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = n_dim)
+                            model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = n_dim)
 
-                        ### Add to log likelihood
-                        LL[type_of_model_index, i_fold % 5, i_n] = model_.lls[-1]
+                            ### Add to log likelihood
+                            #LL[type_of_model_index, i_fold % 5, i_n] = model_.lls[-1]
+                            LL[0, i_fold % 5, i_n] = model_.lls[-1]
             
             maxll = np.nanmean(LL, axis=1)
 
@@ -329,12 +340,12 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
             max_LL_dim[i_d, 'LLs'] = LL.copy()
             max_LL_dim[i_d, 'dims'] = dims.copy()
 
-            assert(len(max_dim) == 3)
+            #assert(len(max_dim) == 3)
             max_LL_dim[i_d] = dims[max_dim]
 
         ### Save data 
-        if highDsweep:
-            pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'wb'))
+        #if highDsweep:
+        pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'wb'))
 
 ######## STEP 2 -- Fit the models ###########
 ### Main tuning function -- run this for diff animals; 
@@ -366,7 +377,9 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     latent_dim = 'full', 
     keep_bin_spk_zsc = False, 
     null_predictor = False,
-    null_predictor_w_null_alpha = False):
+    null_predictor_w_null_alpha = False,
+
+    LDS_skip_task_specific = True):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -667,7 +680,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
             if model_set_number == 11:
                 #### This gets trials instead of time points ###
                 trl_test_ix, trl_train_ix, type_of_model = generate_models_utils.get_training_testings_generalization_LDS_trial(n_folds, data_temp,
-                    match_task_spec_n = match_task_spec_n)
+                    match_task_spec_n = match_task_spec_n, skip_task_specific = LDS_skip_task_specific)
                 test_confirm = {}
                 for tmp in np.unique(type_of_model):
                     test_confirm[tmp] = []
@@ -746,9 +759,10 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 pass
                             
                             elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS': 
-                                assert(fit_intercept == False)
+                                #assert(fit_intercept == False)
                                 assert(only_potent_predictor == False)
-                                model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = ndims)
+                                model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = ndims,
+                                    fit_intercept= fit_intercept)
 
                             else:
                                 if model_nm == 'diagonal_dyn':
@@ -1974,19 +1988,32 @@ def getonehotvar(var):
     return X
 
 def fit_LDS(data_temp_dict, x_var_names, trl_train_ix,
-    nEMiters = 30, n_dim_latent = 'full'):
+    nEMiters = 30, n_dim_latent = 'full', 
+    fit_intercept = False):
 
     ### Aggregate the variable name
     x = [] #### So this is X_{t-1}, so t=0:end_trial(-1)
     for vr in x_var_names:
         x.append(data_temp_dict[vr][: , np.newaxis])
+    
     X = np.hstack((x))
+
+    if fit_intercept: 
+        ### subtract mean 
+        spike_mn = np.mean(X, axis=0)
+        X = X - spike_mn[np.newaxis, :]
+    else:
+        spike_mn = np.zeros((X.shape[1]))
+
     assert(X.shape[1] == len(x_var_names))
+    numN = X.shape[1]
 
-    keep_ix = np.nonzero(10*np.sum(X, axis=0)/float(X.shape[0]) > 0.5)[0]
-
+    ### Only neurons with FR > 0.5 ### 
+    #keep_ix = np.nonzero(10*np.sum(X, axis=0)/float(X.shape[0]) > 0.5)[0]
+    keep_ix = np.nonzero(10*spike_mn > 0.5)[0]
+    
     #### Retrospectively check variable order ####
-    check_variables_order(x_var_names, X.shape[1])
+    check_variables_order(x_var_names, numN)
 
     #### Make trials #####
     trls = data_temp_dict['trl']
@@ -2005,7 +2032,7 @@ def fit_LDS(data_temp_dict, x_var_names, trl_train_ix,
     if n_dim_latent == 'full':
         n_dim_latent = D_obs
         try_dims = np.arange(n_dim_latent, 15, -1)
-    elif type(n_dim_latent) is int:
+    elif type(n_dim_latent) is np.int64:
         try_dims = [n_dim_latent]
     
     for n_dim_latent_try in try_dims:
@@ -2027,6 +2054,8 @@ def fit_LDS(data_temp_dict, x_var_names, trl_train_ix,
 
         model.C = FA.components_.T
         model.A = A
+        model.spike_mn = spike_mn ### mean that was subtracted
+
         if n_dim_latent == 1:
             model.sigma_states = np.array([[np.cov(err)]])
             model.sigma_obs = np.array([[np.cov(err_obs)]])
@@ -2056,12 +2085,14 @@ def pred_LDS(data_temp, model, variables, trl_test_ix, i_f):
     trls = data_temp['trl']
     bin_num = data_temp['bin_num']
     keep_ix = model.keep_ix
+    spike_mn = model.spike_mn
 
     ### Aggregate the variable name
     x = [] #### So this is X_{t-1}, so t=0:end_trial(-1)
     for vr in variables:
         x.append(data_temp[vr][: , np.newaxis])
     X = np.hstack((x))
+    X = X - spike_mn[np.newaxis, :]
     assert(X.shape[1] == len(variables))
 
     ########### Append to list ###########
@@ -2099,11 +2130,12 @@ def pred_LDS(data_temp, model, variables, trl_test_ix, i_f):
         g.inputs, g.data)
         
         assert(filtered_mus.shape[0] == trl.shape[0])
+        
         #### Take filtered data, propagate fwd to get estimated next time step; 
         pred_trl = np.dot(g.C, np.dot(g.A, filtered_mus.T)).T
         
         assert(pred_trl.shape == trl.shape)
-        pred_Y.append(pred_trl)
+        pred_Y.append(pred_trl + spike_mn[np.newaxis, :])
 
     #### Stack up ####
     test_ix[i_f] = np.hstack((test_ix[i_f]))
