@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
-import file_key as fk
+from . import file_key as fk
 import pickle
 import os
 import analysis_config
@@ -29,7 +29,7 @@ def get_jeev_trials(filename, binsize=.1):
     # Make sure all 'go indices' 5s. 
     assert np.sum(np.squeeze(strobed[go_ix, 1] - 5)) == 0
 
-    times = zip(strobed[go_ix, 0], strobed[rew_ix, 0])
+    times = list(zip(strobed[go_ix, 0], strobed[rew_ix, 0]))
 
     # Get decoder: 
     ix = [i for i, j in enumerate(fk.filelist) if filename in j]
@@ -127,7 +127,7 @@ def get_jeev_trials_from_task_data(filename, include_pos = False, include_vel = 
     else:
         assert np.sum(np.squeeze(strobed[go_ix, 1] - 5)) == 0
     
-    ixs_og = zip(strobed[go_ix, 0], strobed[rew_ix, 0])
+    ixs_og = list(zip(strobed[go_ix, 0], strobed[rew_ix, 0]))
     ixs = []
 
     # Ensure only indices > start_index_overall: 
@@ -206,7 +206,7 @@ def get_jeev_trials_from_task_data(filename, include_pos = False, include_vel = 
     if include_pos:
         cursor_kin = dat['cursor_kin']
         bin_ck, ck = _bin_cursor_kin(ixs, cursor_kin, binsize, pre_go)
-        print len(bin_ck), bin_ck[0].shape
+        print(len(bin_ck), bin_ck[0].shape)
         unbinned['cursor_kin'] = ck
         return bin_spk, targ_i_all, np.array(targ_IX), np.array(trial_IX), decoder_all, bin_ck, unbinned, exclude
     else:
@@ -255,7 +255,7 @@ def _bin_spike_counts(ixs, spike_counts, spk_counts_dt, binsize, pre_go):
 
 def _bin_cursor_kin(ixs, cursor_kin, binsize, pre_go = 0.):
     n_per_bin = int(binsize/.005)
-    print('Bin Curson kin Size %d' %(n_per_bin))
+    print(('Bin Curson kin Size %d' %(n_per_bin)))
     pre_go_bins = int( pre_go / .005 ); 
 
     bin_ck = []
@@ -559,13 +559,13 @@ def plot_percent_correct_t2t(plot=True, min_obs_targ = 2):
                 cursor_kin = dat['cursor_kin']
 
                 go_ix = np.nonzero(strobed[:, 1] == 5)[0]
-                print('1. Total Go Ix: %d' %(len(go_ix)))
+                print(('1. Total Go Ix: %d' %(len(go_ix))))
 
                 ###### Successfully get out of the center #####
                 keep_ix = np.nonzero(strobed[go_ix+1, 1] == 6)[0]
                 go_ix = go_ix[keep_ix]
                 go_ix = go_ix[go_ix < len(strobed) - 3]
-                print('2. Go Ix, out of center: %d' %(len(go_ix)))
+                print(('2. Go Ix, out of center: %d' %(len(go_ix))))
                 
                 ##### Remove targets 0, 1 for obstacle; 
                 ### Get target index: 
@@ -577,7 +577,7 @@ def plot_percent_correct_t2t(plot=True, min_obs_targ = 2):
                     keep_ix = np.arange(len(targ_ix))
 
                 go_ix = go_ix[keep_ix]
-                print('3. Go Ix, rm targs obs only: %d' %(len(go_ix)))
+                print(('3. Go Ix, rm targs obs only: %d' %(len(go_ix))))
                 
                 ##### Obstacle collision = 300 ########
                 obs_coll_ix = np.nonzero(strobed[go_ix+2, 1] == 300)[0]
@@ -607,7 +607,7 @@ def plot_percent_correct_t2t(plot=True, min_obs_targ = 2):
                     ### happened once day 1 --> go_ix[185], seems like skipped 9? 
 
                     ### Day 2 --> [5, 6, 9] at go_ix[132], seems like skipped 7; 
-                    print('Day %d, Task %d, Discrepancy %d' %(i_d, i_tsk, len(go_ix) - len(np.hstack((rew_ix, the_ix, timeout_ix, obs_coll_ix)))))
+                    print(('Day %d, Task %d, Discrepancy %d' %(i_d, i_tsk, len(go_ix) - len(np.hstack((rew_ix, the_ix, timeout_ix, obs_coll_ix))))))
                     N_trls = len(np.unique(np.hstack((rew_ix, the_ix, timeout_ix, obs_coll_ix))))
                     
                 #### Add percent correct 
@@ -655,8 +655,8 @@ def plot_percent_correct_t2t(plot=True, min_obs_targ = 2):
     ########### PERCENT CORRECT ##############
     util_fcns.draw_plot(0, np.hstack((metrics['co_pc'])), 'g', [1., 1., 1., 0.], ax, width = .5)
     util_fcns.draw_plot(1, np.hstack((metrics['obs_pc'])),'b', [1., 1., 1., 0.], ax, width = .5)
-    print('mean perc correct CO %.2f, OBS %.2f' %(np.mean(np.hstack((metrics['co_pc']))), 
-        np.mean(np.hstack((metrics['obs_pc'])))))
+    print(('mean perc correct CO %.2f, OBS %.2f' %(np.mean(np.hstack((metrics['co_pc']))), 
+        np.mean(np.hstack((metrics['obs_pc']))))))
 
     for _, (c, o) in enumerate(zip(metrics['co_pc'], metrics['obs_pc'])):
         ax.plot([0, 1], [c, o], '-', color='gray', linewidth=0.5)

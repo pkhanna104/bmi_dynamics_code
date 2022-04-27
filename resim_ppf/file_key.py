@@ -25,7 +25,7 @@ trialList[9,:]  = [23, 20, 24]
 trialList[10,:] = [24, 20, 23] 
 trialList = trialList + 63
 obstrialList = trialList[1:, :]
-obstrialList_types = dict(hard= [6, 7, 8, 9], easy = [0, 1, 2, 3, 4, 5], all = range(10))
+obstrialList_types = dict(hard= [6, 7, 8, 9], easy = [0, 1, 2, 3, 4, 5], all = list(range(10)))
 
 cotrialList = np.arange(64, 73)
 centerPos = np.array([ 0.0377292,  0.1383867])
@@ -106,7 +106,7 @@ def obs_target_gen(trial_types='all'):
 	easy = [0, 1, 2, 3, 4, 5]
 
 	if trial_types == 'all':
-		tgs = range(10)
+		tgs = list(range(10))
 	elif trial_types == 'easy':
 		tgs = easy
 	elif trial_types == 'hard':
@@ -158,7 +158,7 @@ def check_if_strobed_events_are_on_5ms(dat):
 
 def unit_list(dat):
 	units = []
-	for k in dat.keys():
+	for k in list(dat.keys()):
 		if k[:3] == 'sig' and k[-2:] not in ['wf', 'ts']:
 			units.append(k)
 	return units
@@ -171,7 +171,7 @@ def sim_all(filelist=filelist, decoderlist=decoderlist):
 				RSP.init_run_decoder()
 				cont_flag = 1
 			except:
-				print 'cant init decoder: ', fn
+				print('cant init decoder: ', fn)
 				cont_flag = 0
 			if cont_flag:
 				RSP.run_decoder()
@@ -179,7 +179,7 @@ def sim_all(filelist=filelist, decoderlist=decoderlist):
 				RSP.plot_pred_vel(save=True)
 				gc.collect()
 		else:
-			print 'done: ', fn
+			print('done: ', fn)
 
 def surajs_sim_with_task_data(filelist=task_filelist, save_neural_push_fn=None):
 	directory = '/home/lab/preeya/jeev_data_tmp/'
@@ -237,7 +237,7 @@ class ReSimPPF(object):
 		try:
 			self.n_iter = int(np.ceil(self.dat['AD39'].shape[0]/(self.T*self.Fs)))+1
 		except:
-			print 'pass on n_iter'
+			print('pass on n_iter')
 
 		# TODO: beta is 3 x n_units. First is offset? 
 		self.beta = self.decoder['decoder'][0]['beta'][0]
@@ -304,7 +304,7 @@ class ReSimPPF(object):
 
 		if np.linalg.cond(P_pred) > 1e5:
 			P_est = P_pred;
-			print 'not updating P'
+			print('not updating P')
 		else:
 			P_est = np.linalg.inv(np.linalg.inv(P_pred) + self.beta_sub*L*self.beta_sub.T)
 
@@ -327,9 +327,9 @@ class ReSimPPF(object):
 		s, i, rv, pv, ste = scipy.stats.linregress(xvel_5[:N]*100, self.dat['AD37'][:N, 0])
 		s2, i2, rv2, pv2, ste2 = scipy.stats.linregress(yvel_5[:N]*100, self.dat['AD38'][:N, 0])
 
-		print self.fname
-		print 'xvel match: ', rv**2
-		print 'yvel match: ', rv2**2
+		print(self.fname)
+		print('xvel match: ', rv**2)
+		print('yvel match: ', rv2**2)
 
 		f, ax = plt.subplots(nrows=2)
 		ax[0].plot(xvel_5[:N]*100) # m to cm
@@ -396,7 +396,7 @@ def get_sskf(P_est_array, CT, tol = 1e-15):
 	err = []
 	while np.linalg.norm(K-K_last) > tol:
 		if cnt >= P_est_array.shape[2]:
-			print 'did not converge: ', np.linalg.norm(K-K_last)
+			print('did not converge: ', np.linalg.norm(K-K_last))
 			break
 		else:
 			K_last = K.copy()
