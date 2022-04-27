@@ -1,12 +1,12 @@
 #### Utils for model generation ######
 import analysis_config
-import util_fcns
+from . import util_fcns
 import prelim_analysis as pa 
 from resim_ppf import ppf_pa
 
 import numpy as np 
 import pandas
-import xarray as xr
+#import xarray as xr
 import copy
 import pickle 
 import tables 
@@ -98,7 +98,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
     trial_ix = kwargs.pop('trial_ix', None)
     skip_plot = kwargs.pop('skip_plot', False)
 
-    if 'day_ix' not in kwargs.keys():
+    if 'day_ix' not in list(kwargs.keys()):
         raise Exception('Need to include day ix to get mag boundaries for shuffling wihtin bin and figure out cw/ccw boundaries')
     else:
         day_ix = kwargs['day_ix']
@@ -191,7 +191,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                     assert(len(np.unique(targ_ix2[tmp])) == 8)
                 elif animal == 'home':
                     assert(len(np.unique(targ_ix2[tmp])) <= 8)
-                    print('number of unique targs home: %d = %d' %(te_num, len(np.unique(targ_ix2[tmp]))))
+                    print(('number of unique targs home: %d = %d' %(te_num, len(np.unique(targ_ix2[tmp])))))
                 assert(len(np.vstack((bin_spk))) == len(np.vstack((decoder_all))))
                 assert(len(np.vstack((bin_spk))) == len(targ_i_all))
 
@@ -252,7 +252,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 if i_t == 1:
                     ### 9 obstacle target ###
                     assert(np.max(np.unique(targ_ix[tmp])) > 8)
-                    print('Len Obs Targs %s'%str(np.unique(targ_ix[tmp])))
+                    print(('Len Obs Targs %s'%str(np.unique(targ_ix[tmp]))))
                 else:
                     assert(len(np.unique(targ_ix[tmp])) == 8)
 
@@ -284,7 +284,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
             ########## Trial Ix: Select only specific indices #########
             if trial_ix is not None:
-                print('Getting trial indices: %s' %str(trial_ix))
+                print(('Getting trial indices: %s' %str(trial_ix)))
                 ix_ix = np.nonzero(np.logical_and(trial_ix>=trl_ix_cnt, trial_ix<(len(bin_spk)+trl_ix_cnt)))[0]
                 ix_mod = trial_ix[ix_ix] - trl_ix_cnt
             else:
@@ -313,7 +313,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
                 if tmp_tg_ix < min_targ_ix:
                     rm_trls.append(ix_)
-                    print('REMOVING A TRIAL: Animal %s, TargIx %.1f' %(animal, targ_ix[ix_x[0]]))
+                    print(('REMOVING A TRIAL: Animal %s, TargIx %.1f' %(animal, targ_ix[ix_x[0]])))
                     #import pdb; pdb.set_trace()
 
                 ### If we want to keep this one; #
@@ -386,7 +386,7 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
             ### Get the trial INDEX for this new formation ####
             tmp = np.array([np.zeros(( bin_spk[x].shape[0])) + ix + trl_off for ix, x in enumerate(ix_mod)])
             trl_off += len(ix_mod)
-            print('new trial offset %d, total trls in this blk %d' %(trl_off, len(ix_mod)))
+            print(('new trial offset %d, total trls in this blk %d' %(trl_off, len(ix_mod))))
 
             ### Make sure there isn't trial overlapping 
             if len(trl) > 0:
@@ -773,7 +773,7 @@ def plot_data_temp(data_temp, animal, use_bg = False):
     ### open target: 
     for i in range(2): 
         tsk_ix = np.nonzero(data_temp['tsk'] == i)[0]
-        print('Animal %s, tsk %d, N = %d' %(animal, i, len(tsk_ix)))
+        print(('Animal %s, tsk %d, N = %d' %(animal, i, len(tsk_ix))))
 
         targs = np.unique(data_temp['trg'][tsk_ix])
 
@@ -781,7 +781,7 @@ def plot_data_temp(data_temp, animal, use_bg = False):
             ## Get the trial numbers: 
             targ_ix = np.nonzero(data_temp['trg'][tsk_ix] == tr)[0]
             trls = np.unique(data_temp['trl'][tsk_ix[targ_ix]])
-            print('Tsk %d, Trg %.2f, N = %d' %(i, tr, len(targ_ix)))
+            print(('Tsk %d, Trg %.2f, N = %d' %(i, tr, len(targ_ix))))
 
             alpha = 0.6; LW = 1.0
 
@@ -1274,7 +1274,7 @@ def reconst_spks_from_cond_spec_model(data, model_nm, ndays):
 
         for tsk in range(2):
             for trg in range(10):
-                if tuple((tsk*10 + trg, 'ix')) in day_dat.keys():
+                if tuple((tsk*10 + trg, 'ix')) in list(day_dat.keys()):
                     ix_ = np.hstack(( day_dat[tsk*10 + trg, 'ix']))
                     pred_ = np.vstack((day_dat[tsk*10 + trg, 'pred']))
                     assert(len(ix_) == pred_.shape[0])
@@ -1613,7 +1613,7 @@ def h5_add_model(h5file, model_v, day_ix, first=False, model_nm=None, test_data=
                 vrs = np.array(model_v.coef_names, dtype=np.str)
                 h5file.createArray(col, 'vars', vrs)
             except:
-                print 'skipping adding varaible names'
+                print('skipping adding varaible names')
         else:
             tab = getattr(h5file.root, model_nm+'_fold_'+str(int(fold)))
     
@@ -1726,7 +1726,7 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
     #     fit_task_specific_model_test_task_spec)
     
     animal = None 
-    if 'dec_mFR' in decoder_params.keys():
+    if 'dec_mFR' in list(decoder_params.keys()):
         if decoder_params['dec_mFR'] is not None:
             animal ='home'
 
@@ -1774,11 +1774,11 @@ def sklearn_mod_to_ols(model, test_data=None, x_var_names=None, predict_key='spk
 
     if only_potent_predictor:
         X = np.dot(KG_pot, X.T).T
-        print 'only potent predictor'
+        print('only potent predictor')
     elif only_command:
         X = np.dot(KG, X.T).T
         Y = np.dot(KG, Y.T).T
-        print 'only command'
+        print('only command')
 
     if fit_intercept:
         pred = np.mat(X)*np.mat(model.coef_).T + model.intercept_[np.newaxis, :]
