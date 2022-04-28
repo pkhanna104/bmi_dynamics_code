@@ -14,6 +14,14 @@ from resim_ppf import file_key
 
 import analysis_config
 
+import sys
+py_ver = sys.version
+
+if '3.6.15' in py_ver:
+    pkl_kw = dict(encoding='latin1')
+elif '2.7.8' in py_ver: 
+    pkl_kw = dict()
+
 def get_cov_diffs(ix_co, ix_ob, spks, diffs, method = 1):
     cov1 = np.cov(10*spks[ix_co, :].T); 
     cov2 = np.cov(10*spks[ix_ob, :].T); 
@@ -284,7 +292,7 @@ def CW_CCW_obs(centerPos, targPos, trialPos):
 
 #### Extract Data ###
 def get_grom_decoder(day_ix, animal='grom'):
-    co_obs_dict = pickle.load(open(analysis_config.config['%s_pref'%animal]+'co_obs_file_dict.pkl'))
+    co_obs_dict = pickle.load(open(analysis_config.config['%s_pref'%animal]+'co_obs_file_dict.pkl', 'rb'), **pkl_kw)
     input_type = analysis_config.data_params['%s_input_type'%animal]
 
     ### First CO task for that day:
@@ -295,7 +303,7 @@ def get_grom_decoder(day_ix, animal='grom'):
 
     dec = co_obs_dict[te_num, 'dec']
     decix = dec.rfind('/')
-    decoder = pickle.load(open(analysis_config.config['%s_pref'%animal]+dec[decix:]))
+    decoder = pickle.load(open(analysis_config.config['%s_pref'%animal]+dec[decix:], 'rb'), **pkl_kw)
     F, KG = decoder.filt.get_sskf()
     if animal == 'home':
         return F, KG, decoder.mFR, decoder.sdFR
@@ -306,13 +314,13 @@ def get_home_decoder(day_ix):
     return get_grom_decoder(day_ix, animal='home') 
     
 def get_jeev_decoder(day_ix):
-    kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'))
+    kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'), **pkl_kw)
     KG = kgs[day_ix]
     KG_potent = KG.copy(); #$[[3, 5], :]; # 2 x N
     return np.squeeze(np.array(KG_potent))
 
 def get_jeev_F(day_ix):
-    kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'))
+    kgs = pickle.load(open(analysis_config.config['jeev_pref']+'jeev_KG_approx_fit.pkl', 'rb'), **pkl_kw)
     F = kgs[day_ix, 'F'] ## 7 x N 
     return np.squeeze(np.array(F))
 
@@ -335,9 +343,9 @@ def get_data_from_shuff(animal, day_ix, w_intc = True, keep_bin_spk_zsc = False)
         zstr = 'zsc'
 
     if animal == 'home':
-        dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_%s_shuff_ix.pkl'%(animal, day_ix, zstr), 'rb'))
+        dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_%s_shuff_ix.pkl'%(animal, day_ix, zstr), 'rb'), **pkl_kw)
     else:
-        dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
+        dat = pickle.load(open(analysis_config.config['shuff_fig_dir']+'%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'), **pkl_kw)
     
     #### Extract the data ####
     spks = dat['Data']['spks']
