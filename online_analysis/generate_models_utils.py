@@ -24,6 +24,13 @@ import scipy.io as sio
 import seaborn
 seaborn.set(font='Arial',context='talk',font_scale=1.0, style='white')
 
+import sys
+py_ver = sys.version
+
+if '3.6.15' in py_ver:
+    pkl_kw = dict(encoding='latin1')
+elif '2.7.8' in py_ver: 
+    pkl_kw = dict()
 
 class Model_Table(tables.IsDescription):
     #param = tables.Float64Col(shape=(n_entries_hdf, ))
@@ -138,14 +145,14 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
 
                 ### Open up CO / OBS ###
                 pref = analysis_config.config['%s_pref'%animal]
-                co_obs_dict = pickle.load(open(pref+'co_obs_file_dict.pkl'))
+                co_obs_dict = pickle.load(open(pref+'co_obs_file_dict.pkl', 'rb'), **pkl_kw)
                 hdf = co_obs_dict[te_num, 'hdf']
                 hdfix = hdf.rfind('/')
                 hdf = tables.openFile(pref+hdf[hdfix:])
 
                 dec = co_obs_dict[te_num, 'dec']
                 decix = dec.rfind('/')
-                decoder = pickle.load(open(pref+dec[decix:]))
+                decoder = pickle.load(open(pref+dec[decix:], 'rb'), **pkl_kw)
                 F, KG = decoder.filt.get_sskf()
 
                 # Get trials: 
@@ -770,17 +777,23 @@ def plot_data_temp(data_temp, animal, use_bg = False):
             for axi in ax:
                 axi.axis('square')
 
+    tsk_row = data_temp['tsk'].to_numpy()
+    trg_row = data_temp['trg'].to_numpy()
+    trl_row = data_temp['trl'].to_numpy()
+    
     ### open target: 
     for i in range(2): 
-        tsk_ix = np.nonzero(data_temp['tsk'] == i)[0]
+
+        tsk_ix = np.nonzero(tsk_row == i)[0]
         print(('Animal %s, tsk %d, N = %d' %(animal, i, len(tsk_ix))))
 
         targs = np.unique(data_temp['trg'][tsk_ix])
 
         for itr, tr in enumerate(targs):
             ## Get the trial numbers: 
-            targ_ix = np.nonzero(data_temp['trg'][tsk_ix] == tr)[0]
-            trls = np.unique(data_temp['trl'][tsk_ix[targ_ix]])
+            targ_ix = np.nonzero(trg_row[tsk_ix] == tr)[0]
+            
+            trls = np.unique(trl_row[tsk_ix[targ_ix]])
             print(('Tsk %d, Trg %.2f, N = %d' %(i, tr, len(targ_ix))))
 
             alpha = 0.6; LW = 1.0
@@ -794,7 +807,7 @@ def plot_data_temp(data_temp, animal, use_bg = False):
                 axi = axob[itr]
 
             for trl in trls:
-                ix = np.nonzero(data_temp['trl'][tsk_ix] == trl)[0]
+                ix = np.nonzero(trl_row[tsk_ix] == trl)[0]
                 axi.plot(data_temp['posx_tm0'][tsk_ix[ix]], data_temp['posy_tm0'][tsk_ix[ix]], '-', color=cmap_list[int(np.round(tr))])
             axi.set_title('Targ. %.1f' %(tr))
 
@@ -856,10 +869,11 @@ def get_training_testings(n_folds, data_temp):
     N_pts = [];
 
     ### List which points are from which task: 
+    tsk_column = data_temp['tsk'].to_numpy()
     for tsk in range(2):
 
         ### Get task specific indices; 
-        ix = np.nonzero(data_temp['tsk'] == tsk)[0]
+        ix = np.nonzero(tsk_column == tsk)[0]
 
         ### Shuffle the task indices
         N_pts.append(ix[np.random.permutation(len(ix))])
@@ -907,11 +921,13 @@ def get_training_testings_generalization_LDS_trial(n_folds, data_temp,
     N_trls = []; N = []; 
     all_trls = np.unique(data_temp['trl'])
 
+    tsk_column = data_temp['tsk'].to_numpy()
+
     ### List which points are from which task: 
     for tsk in range(2):
 
         ### Get task specific indices; 
-        ix = np.nonzero(data_temp['tsk'] == tsk)[0]
+        ix = np.nonzero(tsk_column == tsk)[0]
         Trls = np.unique(data_temp['trl'][ix])
 
         ### Shuffle the task indices
@@ -1041,10 +1057,11 @@ def get_training_testings_generalization(n_folds, data_temp,
     N_pts = []; N = []; 
 
     ### List which points are from which task: 
+    tsk_column = data_temp['tsk'].to_numpy()
     for tsk in range(2):
 
         ### Get task specific indices; 
-        ix = np.nonzero(data_temp['tsk'] == tsk)[0]
+        ix = np.nonzero(tsk_column == tsk)[0]
 
         ### Shuffle the task indices
         N_pts.append(ix[np.random.permutation(len(ix))])
@@ -1380,7 +1397,7 @@ def within_bin_shuffling(bin_spk, decoder_all, animal, day_ix):
     assert(bin_spk.shape[0] == decoder_all.shape[0])
 
     #### Mag boundaries #######
-    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file'], 'rb'), **pkl_kw)
     #print('using animal %s, day_ix %d for mag boundaries' %(animal, day_ix))
 
     command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [0, 1])[0]
@@ -1441,7 +1458,7 @@ def within_bin_shuffling_mean_main(bin_spk, decoder_all, animal, day_ix, tsk, ta
     assert(bin_spk.shape[0] == decoder_all.shape[0] == len(tsk) == len(target))
 
     #### Mag boundaries #######
-    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file'], 'rb'), **pkl_kw)
 
     #### Get commands ####
     command_bins = util_fcns.commands2bins([decoder_all], mag_boundaries, animal, day_ix, vel_ix = [0, 1])[0]
