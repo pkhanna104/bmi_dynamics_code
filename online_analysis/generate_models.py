@@ -22,7 +22,7 @@ import sys
 py_ver = sys.version
 
 if '3.6.15' in py_ver: 
-    pass
+    from online_analysis import slds_tools
 else:
     from pylds.models import DefaultLDS
     from pylds.states import kalman_filter
@@ -257,11 +257,16 @@ def sweep_ridge_alpha(alphas, animal='grom', n_folds = 5, history_bins_max = 1,
     print(('H5 File Done: ', hdf_filename))
     return hdf_filename
 
-######## IF LDS -- step 1 get x-validated dimensionality #####
+######## IF LDS or SLDS -- step 1 get x-validated dimensionality #####
 def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffle = False,
     n_folds = 5, highDsweep = False):
+    '''
+    here the number of dimensions swept for LDS is # latent dimensions, 
+    SLDS is # of discrete dynamical systems fit (always try to fit full dimensionality)
+    '''
 
     model_var_list, predict_key, include_action_lags, _ = generate_models_list.get_model_var_list(model_set_number)
+    
     if highDsweep:
         animals = ['grom']
     else:
@@ -297,23 +302,26 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
             #### CO/ OBS / GEN vs. folds 
             nneur = sub_spk_temp_all.shape[2]
 
-            if highDsweep:
-                maxDim = np.min([nneur - 2, 36])
-                dims = np.arange(22, maxDim, 2)
-                LL = np.zeros((3, n_folds, len(dims) )) + np.nan
-            else:
-                maxDim = nneur - 4; 
-                if maxDim > 50: 
-                    dims = np.hstack((np.arange(2, 20, 2), np.arange(20, 5, 50), np.arange(50, 10, maxDim)))
-                elif maxDim > 20: 
-                    dims = np.hstack((np.arange(2, 20, 2), np.arange(20, 5, maxDim)))
-                else: 
-                    dims = np.arange(2, maxDim, 2)
-    
-                #LL = np.zeros((3, n_folds, len(dims) )) + np.nan
+            if model_set_number == 11: 
+                if highDsweep:
+                    maxDim = np.min([nneur - 2, 36])
+                    dims = np.arange(22, maxDim, 2)
+                    LL = np.zeros((3, n_folds, len(dims) )) + np.nan
+                else:
+                    maxDim = nneur - 4; 
+                    if maxDim > 50: 
+                        dims = np.hstack((np.arange(2, 20, 2), np.arange(20, 5, 50), np.arange(50, 10, maxDim)))
+                    elif maxDim > 20: 
+                        dims = np.hstack((np.arange(2, 20, 2), np.arange(20, 5, maxDim)))
+                    else: 
+                        dims = np.arange(2, maxDim, 2)
 
-                ### pk, 4-2022 removed task 0, task 1, just care about mixed; 
-                LL = np.zeros((1, n_folds, len(dims) )) + np.nan
+            elif model_set_number == 13: 
+                dims = [1, 3, 5, 7, 9, 11, 13, 15]
+    
+            #LL = np.zeros((3, n_folds, len(dims) )) + np.nan
+            ### pk, 4-2022 removed task 0, task 1, just care about mixed; 
+            LL = np.zeros((1, n_folds, len(dims) )) + np.nan
 
             for i_fold, type_of_model_index in enumerate(type_of_model):
 
@@ -332,12 +340,16 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
                         print(('Start dims fold %d, type %d' %(i_fold, type_of_model_index)))
                         for i_n, n_dim in enumerate(dims):
 
-                            model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = n_dim)
+                            if model_set_number == 11: 
+                                model_ = fit_LDS(data_temp, variables, trl_train_ix[i_fold], n_dim_latent = n_dim)
+                                ### Add to log likelihood
+                                #LL[type_of_model_index, i_fold % 5, i_n] = model_.lls[-1]
+                                LL[0, i_fold % 5, i_n] = model_.lls[-1]
 
-                            ### Add to log likelihood
-                            #LL[type_of_model_index, i_fold % 5, i_n] = model_.lls[-1]
-                            LL[0, i_fold % 5, i_n] = model_.lls[-1]
-            
+                            elif model_set_number == 13: 
+                                exp_log_prob = slds_tools.fit_slds(data_temp, variables, trl_train_ix[i_fold], n_dim)
+                                LL[0, i_fold%5, i_n] = exp_log_prob
+                            
             maxll = np.nanmean(LL, axis=1)
 
             ##### max sure ####
@@ -352,7 +364,10 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
 
         ### Save data 
         #if highDsweep:
-        pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'wb'))
+        if model_set_number == 11:
+            pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'LDS_maxL_ndims.pkl', 'wb'))
+        elif model_set_number == 13: 
+            pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'SLDS_sweep_K.pkl', 'wb'))
 
 ######## STEP 2 -- Fit the models ###########
 ### Main tuning function -- run this for diff animals; 
