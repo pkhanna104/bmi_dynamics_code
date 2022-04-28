@@ -137,9 +137,10 @@ def get_model_var_list(model_set_number):
         history_bins_max = 2; 
 
     elif model_set_number == 11:
-        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 0, 1, 0]) ### only dynamics
+        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS', 0, 1, 0]) ### only dynamics 
         predict_key = 'spks'
         history_bins_max = 1
+
 
     #### Addition as of January 2021
     elif model_set_number == 12: 
@@ -153,5 +154,11 @@ def get_model_var_list(model_set_number):
         predict_key = 'spks'
         history_bins_max = 1
         include_action_lags = False 
+
+    ### Addition of sLDS April 2022; 
+    elif model_set_number == 13: 
+        model_var_list.append([np.array([-1]), 'hist_1pos_0psh_0spksm_1_spksp_0_latent_RSLDS', 0, 1, 0]) # only dynamics
+        predict_key = 'spks'
+        history_bins_max = 1
 
     return model_var_list, predict_key, include_action_lags, history_bins_max
