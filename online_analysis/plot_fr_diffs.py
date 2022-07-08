@@ -1023,8 +1023,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
                 command_sig[tuple([mag, ang])]['vals'].append(np.linalg.norm(dmean_FR))
                 command_sig[tuple([mag, ang])]['shuffs'].append(np.linalg.norm(dmFR_shuffle, axis=1))
                     
-                ##### Add to neurons 
-                if pv_cc < 0.05:
+                ##### Add to neuron values if signficant ### 
+                if pv_cc < 0.05: 
                     for nneur in range(Nneur):
                         neuron_sig[nneur]['vals'].append(np.abs(dmean_FR[nneur]))
                         neuron_sig[nneur]['shuffs'].append(np.abs(dmFR_shuffle[:, nneur]))
@@ -1033,7 +1033,7 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
             ax_fracCC.plot(ia, float(nCC_sig)/float(nCC), 'k.')
             bar_dict['fracCC'].append(float(nCC_sig)/float(nCC))
 
-            ########## Frac commands with sig deviations #########################
+            ########## Frac commands with SOME sig deviations #########################
             for ic, com in enumerate(commands_already): 
                 vals = command_sig[tuple(com)]['vals']
                 shuf = command_sig[tuple(com)]['shuffs']
@@ -1132,7 +1132,6 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
         
         f.tight_layout()
         util_fcns.savefig(f, yl)
-
 
 def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None, 
     plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5, neur_ix = 36):

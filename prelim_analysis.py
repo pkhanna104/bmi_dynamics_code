@@ -1,7 +1,7 @@
 import numpy as np
 from collections import defaultdict
 import sklearn.decomposition as skdecomp
-from db import dbfunctions as dbfn
+#from db import dbfunctions as dbfn
 import tables
 #import test_reconst_bmi_traj as trbt
 import matplotlib.pyplot as plt
@@ -127,7 +127,7 @@ def learning_curve_metrics(hdf_list, epoch_size=56, n_factors=5):
     #For each epoch, fit FA model (stick w/ 5 factors for now):
     ratio = []
     for te, r_ix in zip(te_refs, rew_ix_list):
-        print te, len(r_ix)
+        print(te, len(r_ix))
 
         update_bmi_ix = np.nonzero(np.diff(np.squeeze(hdf.root.task[:]['internal_decoder_state'][:, 3, 0])))[0] + 1
         bin_spk, targ_pos, targ_ix, z, zz = pa.extract_trials_all(hdf_dict[te], r_ix, time_cutoff=1000, update_bmi_ix=update_bmi_ix)
@@ -194,7 +194,7 @@ def get_trials_per_min(hdf,nmin=2, rew_per_min_cutoff=0, ignore_assist=False, re
         try:
             beg_zer_assist_ix = assist_ix[0]
         except:
-            print 'No values w/o assist for filename: ', hdf.filename
+            print('No values w/o assist for filename: ', hdf.filename)
             beg_zer_assist_ix = rew_ix[-1]+1
     else:
         beg_zer_assist_ix = 0
@@ -265,7 +265,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
     if update_bmi_ix is None:
         internal_state = hdf.root.task[:]['internal_decoder_state']
         if drives_neurons_ix0 is None:
-            print 'Must define either update_bmi_ix OR drives_neurons_ix0'
+            print('Must define either update_bmi_ix OR drives_neurons_ix0')
             raise NameError('drives_neurons_ix0 must be defined')
 
         update_bmi_ix = np.nonzero(np.diff(np.squeeze(internal_state[:, drives_neurons_ix0, 0])))[0]+1
@@ -286,13 +286,13 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
     if rew_pls:
         print('Using rew pls option -- this is unusual, may want to check out prelim_analysis fcn')
         go_ix = np.array([hdf.root.task_msgs[it - step_dict[m['msg']]]['time'] for it, m in enumerate(hdf.root.task_msgs[:]) 
-            if m['msg'] in step_dict.keys()])
+            if m['msg'] in list(step_dict.keys())])
 
         rew_ix = np.array([hdf.root.task_msgs[it]['time'] for it, m in enumerate(hdf.root.task_msgs[:]) 
-            if m['msg'] in step_dict.keys()])
+            if m['msg'] in list(step_dict.keys())])
 
         outcome_ix = np.array([hdf.root.task_msgs[it]['msg'] for it, m in enumerate(hdf.root.task_msgs[:]) 
-            if m['msg'] in step_dict.keys()])
+            if m['msg'] in list(step_dict.keys())])
 
     ### Get rewards from the HDF file ####
     else:
@@ -311,12 +311,12 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
     if first_n_sec_of_trial is not None:
         if first_n_sec_of_trial > 0:
             n = 60*first_n_sec_of_trial #Fs (it / sec) * sec = ix
-            print 'fwd from go: ', n
+            print('fwd from go: ', n)
             rew_ix = go_ix + n
 
         elif first_n_sec_of_trial < 0:
             n = 60*np.abs(first_n_sec_of_trial)
-            print 'back from reward: ', n
+            print('back from reward: ', n)
             go_ix = rew_ix - n
 
     if include_pre_go > 0:
@@ -329,7 +329,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
         rew_ix[i] = -1.
 
     if use_ITI: 
-        print ' using ITI '
+        print(' using ITI ')
         go_ix = rew_ix.copy()
         rew_ix = np.array([hdf.root.task_msgs[it+3][1] for it, t in enumerate(hdf.root.task_msgs[:-3]) if 
             scipy.logical_and(t[0] == 'reward', t[1] in go_ix)])
@@ -389,7 +389,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
 
             else:
                 keep_trial = False
-                print('TE %d, Rejecting trial %d' %(te_num, ig))
+                print(('TE %d, Rejecting trial %d' %(te_num, ig)))
 
 
         if keep_trial:
@@ -464,9 +464,9 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
                 #reach_tm_all = np.hstack((reach_tm_all, np.zeros(( bin_spk_i.shape[0] ))+((r-g)*1000./60.) ))
                 all_data['rch_tm'].append(np.zeros((nT, )) + (r-g)*1000./60.)
             
-    print go_ix[keep_ix].shape, rew_ix[keep_ix].shape, bin_spk_i.shape, nbins, hdf_ix_i.shape
+    print(go_ix[keep_ix].shape, rew_ix[keep_ix].shape, bin_spk_i.shape, nbins, hdf_ix_i.shape)
     targ_ix = get_target_ix(np.vstack((all_data['targ_i_all'])), animal, all_data['tsk']) #targ_i_all[1:,:])
-    print np.unique(targ_ix)
+    print(np.unique(targ_ix))
 
     if hdf_ix:
         raise Exception('Deprecated')
@@ -727,7 +727,7 @@ def fit_all_targs(spk, targ_ix, proc_spks=True, iters=10, max_k = 10, return_ax=
         else:
             ix = np.nonzero(targ_ix==t)[0]
             resh_spk_trunc_bin = spk[ix,:]
-            print 'ix: ', str(len(ix))
+            print('ix: ', str(len(ix)))
         zscore_X, mu = zscore_spks(resh_spk_trunc_bin)
         log_lik, psv = find_k_FA(zscore_X, iters=iters, max_k =max_k, plot=False)
         LL[t] = log_lik

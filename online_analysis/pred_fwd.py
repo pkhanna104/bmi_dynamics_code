@@ -23,7 +23,7 @@ def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number
     col[True] = 'red'
     col[False] = analysis_config.blue_rgb; 
 
-    for i_a, animal in enumerate(['home']):#grom', 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
 
         pooled = dict(r2 = [], r2_shuff = [], r2_shuff_roll=[])
 

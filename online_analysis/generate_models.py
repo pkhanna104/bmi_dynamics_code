@@ -317,6 +317,7 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
                         dims = np.arange(2, maxDim, 2)
 
             elif model_set_number == 13: 
+                ## Number of states to sweep -- 
                 dims = [1, 3, 5, 7, 9, 11, 13, 15]
     
             #LL = np.zeros((3, n_folds, len(dims) )) + np.nan
