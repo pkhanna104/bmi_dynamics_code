@@ -7,6 +7,15 @@ import os
 import analysis_config
 from online_analysis import util_fcns
 
+import sys
+py_ver = sys.version
+
+if '3.6.15' in py_ver:
+    pkl_kw = dict(encoding='latin1')
+elif '2.7.8' in py_ver: 
+    pkl_kw = dict()
+
+
 def get_jeev_trials(filename, binsize=.1):
     try:
         dat = sio.loadmat(filename)
@@ -205,6 +214,9 @@ def get_jeev_trials_from_task_data(filename, include_pos = False, include_vel = 
     
     if include_pos:
         cursor_kin = dat['cursor_kin']
+        import pdb; pdb.set_trace()
+        print('Xlims: %.2f, %.2f'%(dat['horiz_min'][0, 0], dat['horiz_max'][0, 0]))
+        print('Ylims: %.2f, %.2f'%(dat['vert_min'][0, 0], dat['vert_max'][0, 0]))
         bin_ck, ck = _bin_cursor_kin(ixs, cursor_kin, binsize, pre_go)
         print(len(bin_ck), bin_ck[0].shape)
         unbinned['cursor_kin'] = ck
@@ -278,9 +290,10 @@ def _bin_neural_push(ixs, filename, binsize, start_index_overall, pre_go = 0.):
     
     neuralpush_fn = '/Volumes/TimeMachineBackups/jeev2013/jeev_neural_push_apr2017.pkl'
     try:
-        neuralpush = pickle.load(open(neuralpush_fn))
+        neuralpush = pickle.load(open(neuralpush_fn, 'rb'), **pkl_kw)
     except:
-        neuralpush = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/jeev_neural_push_apr2017.pkl'))
+        neuralpush = pickle.load(open('/Users/preeyakhanna/Dropbox/TimeMachineBackups/jeev2013/jeev_neural_push_apr2017.pkl', 'rb'), **pkl_kw)
+    
     # Get correct tag
 
     for i, dayfn in enumerate(fk.task_filelist):
