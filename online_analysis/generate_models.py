@@ -18,7 +18,7 @@ from sklearn.linear_model import Ridge
 import scipy
 import scipy.io as sio
 
-import sys
+import sys, os
 py_ver = sys.version
 
 if '3.6.15' in py_ver: 
@@ -1839,13 +1839,13 @@ def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 
 def sweep_slds_params(animal, day, n_folds=5):
 
     ### Posterior fitting params 
-    window_size = [1]#, 2, 5, 10] # window size for posterior 
+    window_size = [2, 5, 10] # window size for posterior 
     window_size_max = 10
-    niters_fit_post = [2]#, 5, 10, 20, 50, 100] # number of iters to fit posterior 
+    niters_fit_post = [2, 5, 10, 20, 50, 100] # number of iters to fit posterior 
     
     ### model fitting params 
-    niters_fit_model = [10]#, 50, 100] # number of iteratinos to fit the model 
-    K = [1]#, 2, 3, 4, 5, 7, 9, 12, 15] # Number of discrete LDSs 
+    niters_fit_model = [10, 50, 100] # number of iteratinos to fit the model 
+    K = [1, 2, 3, 4, 5, 7, 9, 12, 15] # Number of discrete LDSs 
 
     history_bins_max = 1; 
     within_bin_shuffle = False; 
@@ -1897,8 +1897,6 @@ def sweep_slds_params(animal, day, n_folds=5):
                     ### Get test data w/ different window sizes ###
                     pts_post, pts_true_test, pts_true_test_tm1, pts_id = get_slds_data_test(data, trl_test_ix, type_of_model, i_fold,
                         ws)
-                    print('n spks in trls_test %d'%(pts_post[0].shape[1]))
-                    print('n spks in trls_test 2 %d'%(pts_true_test[0].shape[1]))
 
                     for i_nit_post, nit_post in enumerate(niters_fit_post): 
 
@@ -1920,8 +1918,7 @@ def sweep_slds_params(animal, day, n_folds=5):
 
     ### Save these 
     d = dict(save_params_post=save_params_post, save_params_model=save_params_model)
-    pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d.pkl'), 'wb'))
-
+    pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d.pkl'%(animal, day)), 'wb'))
 
 def get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_max):
 
@@ -1978,12 +1975,14 @@ def get_slds_data_test(data, trl_test_ix, type_of_model, i_fold, window_size):
         ### add a set of windows used to predict next data point 
         if len(ix) > (window_size + 1): 
             for pt in range(window_size, len(ix) - 1): 
-                pts_post.append(data['spks'][ix[pt-window_size:pt], :])
+                ix_ = ix[np.arange(pt-window_size, pt)]
+                pts_post.append(data['spks'][ix_, :])
                 pts_test.append(data['spks'][ix[pt+1], :])
                 pts_test_tm1.append(data['spks'][ix[pt], :])
                 pts_id.append([t, pt+1]) # trial // predicted point 
 
     return pts_post, pts_test, pts_test_tm1, pts_id
+
 
 def fit_slds(trls_train, k, nit): 
     D_obs = trls_train[0].shape[1]
