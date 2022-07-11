@@ -1835,6 +1835,225 @@ def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 
     D = dict(pred_dict=pred_dict, rez_dict = rez_dict)
     pickle.dump(D, open(analysis_config.config[animal+'_pref'] + 'res_model_fit_state.pkl', 'wb'))
 
+######## SLDS sweeping ###################
+def sweep_slds_params(animal, day, n_folds=5):
+
+    ### Posterior fitting params 
+    window_size = [1]#, 2, 5, 10] # window size for posterior 
+    window_size_max = 10
+    niters_fit_post = [2]#, 5, 10, 20, 50, 100] # number of iters to fit posterior 
+    
+    ### model fitting params 
+    niters_fit_model = [10]#, 50, 100] # number of iteratinos to fit the model 
+    K = [1]#, 2, 3, 4, 5, 7, 9, 12, 15] # Number of discrete LDSs 
+
+    history_bins_max = 1; 
+    within_bin_shuffle = False; 
+    keep_bin_spk_zsc = False; 
+    null_pred = False 
+
+    ### order
+    ndays = analysis_config.data_params['%s_ndays'%animal]
+    order_dict = analysis_config.data_params['%s_ordered_input_type'%animal]
+    order_dict = [order_dict[i] for i in range(ndays)]
+    order_d = order_dict[day]
+
+    input_type = analysis_config.data_params['%s_input_type'%animal]
+    input_type = [input_type[i] for i in range(ndays)]
+
+    ### pull spike kinematics
+    data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, 
+        input_type[day], order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle, 
+        keep_bin_spk_zsc = keep_bin_spk_zsc,
+        day_ix = day, null = null_pred)
+    print('n spks in data %d'%(data['spks'].shape[1]))
+        
+    #### Which trials are test vs. training ###
+    ### type of model 2 doesn't care about task specificity ####
+    trl_test_ix, trl_train_ix, type_of_model = generate_models_utils.get_training_testings_generalization_LDS_trial(n_folds, data_temp,
+        match_task_spec_n = False)
+
+    save_params_model = {}
+    save_params_post = {}
+
+    ### For each fold and set of parameters
+    for i_fold in range(n_folds): 
+
+        trls_train = get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_max)
+        print('n spks in trls_train %d'%(trls_train[0].shape[1]))
+
+        for ik, k in enumerate(K): 
+        
+            for i_nit, nit in enumerate(niters_fit_model): 
+            
+                ### fit model ####
+                rslds, elbos = fit_slds(trls_train, k, nit) 
+
+                save_params_model[i_fold, k, nit, 'elbo'] = elbos 
+
+                ### fit posterior 
+                for i_w, ws in enumerate(window_size): 
+
+                    ### Get test data w/ different window sizes ###
+                    pts_post, pts_true_test, pts_true_test_tm1, pts_id = get_slds_data_test(data, trl_test_ix, type_of_model, i_fold,
+                        ws)
+                    print('n spks in trls_test %d'%(pts_post[0].shape[1]))
+                    print('n spks in trls_test 2 %d'%(pts_true_test[0].shape[1]))
+
+                    for i_nit_post, nit_post in enumerate(niters_fit_post): 
+
+                        ### get held out data prediction ###
+                        xhat_post = fit_slds_posteriors(rslds, pts_post, nit_post)
+
+                        ### predict it forward
+                        yt_pred_all = pred_fwd_slds(rslds, xhat_post)
+
+                        ### going forward ### 
+                        r2_fwd = util_fcns.get_R2(np.vstack((pts_true_test)), np.vstack((yt_pred_all)))
+                        save_params_post[i_fold, k, nit, ws, nit_post, 'r2_pred'] = r2_fwd
+
+                        ### smoothed ###
+                        yt_pred_tm1 = pred_tm1_slds(rslds, xhat_post)
+                        r2_smooth = util_fcns.get_R2(np.vstack((pts_true_test_tm1)), np.vstack((yt_pred_tm1)))
+
+                        save_params_post[i_fold, k, nit, ws, nit_post, 'r2_smooth'] = r2_smooth
+
+    ### Save these 
+    d = dict(save_params_post=save_params_post, save_params_model=save_params_model)
+    pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d.pkl'), 'wb'))
+
+
+def get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_max):
+
+    ### Get out only the index 2 (doesn't balance across tasks -- no longer relevant)
+    ix_valid = np.nonzero(type_of_model == 2)[0]
+
+    train_trls = None; 
+    for i in ix_valid: 
+
+        ### This fold should match i_fold 
+        if (i%5) == i_fold: 
+
+            train_trls = trl_train_ix[i]
+
+    ### Make sure they got assigned 
+    assert(train_trls is not None) 
+
+    trls_train = []; 
+
+    for t in train_trls: 
+        ix = np.nonzero(data['trl'] == t)[0]
+
+        if len(ix) > (window_size_max+1):
+        
+            ## add spikes for this trial ###
+            trls_train.append(data['spks'][ix[window_size_max:], :])
+
+    return trls_train
+
+def get_slds_data_test(data, trl_test_ix, type_of_model, i_fold, window_size):
+
+    ### Get out only the index 2 (doesn't balance across tasks -- no longer relevant)
+    ix_valid = np.nonzero(type_of_model == 2)[0]
+
+    test_trls = None; 
+    for i in ix_valid: 
+
+        ### This fold should match i_fold 
+        if (i%5) == i_fold: 
+
+            test_trls = trl_test_ix[i]
+
+    ### Make sure they got assigned 
+    assert(test_trls is not None) 
+
+    pts_post = []; 
+    pts_test = []; 
+    pts_test_tm1 = []; 
+    pts_id = []; 
+
+    for t in test_trls: 
+        ix = np.nonzero(data['trl'] == t)[0]
+
+        ### add a set of windows used to predict next data point 
+        if len(ix) > (window_size + 1): 
+            for pt in range(window_size, len(ix) - 1): 
+                pts_post.append(data['spks'][ix[pt-window_size:pt], :])
+                pts_test.append(data['spks'][ix[pt+1], :])
+                pts_test_tm1.append(data['spks'][ix[pt], :])
+                pts_id.append([t, pt+1]) # trial // predicted point 
+
+    return pts_post, pts_test, pts_test_tm1, pts_id
+
+def fit_slds(trls_train, k, nit): 
+    D_obs = trls_train[0].shape[1]
+    n_dim_latent_try = D_obs - 1; 
+
+    import ssm 
+    rslds_lem = ssm.SLDS(D_obs, k, n_dim_latent_try,
+                 transitions="recurrent_only",
+                 dynamics="gaussian",
+                 emissions="gaussian",
+                 single_subspace=True)
+
+    rslds_lem.initialize(trls_train)
+
+    q_elbos_lem, q_lem = rslds_lem.fit(trls_train, method="laplace_em",
+        variational_posterior="structured_meanfield",initialize=False, 
+        num_iters=nit, alpha=0.0)
+
+    return rslds_lem, q_elbos_lem
+
+def fit_slds_posteriors(rslds, pts_post, nit_post): 
+
+    _, post_test = rslds.approximate_posterior(pts_post, num_iters=nit_post, alpha=0.0)
+    
+    return post_test.mean_continuous_states
+
+def pred_fwd_slds(rslds, xhat_all): 
+
+    yt_pred_all = []
+
+    for xhat in xhat_all: 
+
+        ### Get p(discrete state) based on estimate of x; 
+        Ptm1 = rslds.transitions.log_transition_matrices(xhat, np.zeros((xhat.shape[0], 0)), 
+                                                           None, None)
+        ## Get z_tm1
+        z_tm1 = np.argmax(Ptm1[-1, 0, :])
+
+        ## x_{t-1}
+        x_tm1 = xhat[-1, :]
+
+        # A_{z_t-1} 
+        A = rslds.dynamics.As[z_tm1, :, :]
+        b = rslds.dynamics.bs[z_tm1, :]
+        xt = np.dot(A, x_tm1) + b
+
+        C = rslds.emissions.Cs[0, :, :]
+        d = rslds.emissions.ds[0, :]
+        yt_pred = np.dot(C, xt) + d
+        yt_pred_all.append(yt_pred)
+
+    return yt_pred_all
+
+def pred_tm1_slds(rslds, xhat_all): 
+    
+    yt_pred_all = []
+
+    for xhat in xhat_all: 
+
+        ## x_{t-1}
+        x_tm1 = xhat[-1, :]
+
+        
+        C = rslds.emissions.Cs[0, :, :]
+        d = rslds.emissions.ds[0, :]
+        ytm1_pred = np.dot(C, x_tm1) + d
+        yt_pred_all.append(ytm1_pred)
+
+    return yt_pred_all
+
 #### UTILS #####
 def panda_to_dict(D):
     d = dict()
