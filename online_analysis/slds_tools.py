@@ -3,10 +3,11 @@ import ssm
 from online_analysis import generate_models
 
 
-def fit_slds(data_temp_dict, x_var_names, trl_train_ix, num_states): 
+def fit_slds(data_temp_dict, x_var_names, trl_train_ix, num_states, num_iters = 1000): 
     '''
+    DEPRECATED 7-11-22 -- see generate_models.py for fitting code 
+    
     method to fit recurrance-only rSLDS model (similar to nascar example)
-
     latent_dimensionality is full dimensionality of data (or closest to full possible)
     '''
 
@@ -54,15 +55,16 @@ def fit_slds(data_temp_dict, x_var_names, trl_train_ix, num_states):
         # Initialize the model with the observed data.  It is important
         # to call this before constructing the variational posterior since
         # the posterior constructor initialization looks at the rSLDS parameters.
+        
         rslds_lem.initialize(train_trls)
 
         #############
         # Train sLDS #
         ############# 
         try:
-            q_elbos_lem, q_lem = rslds_lem.fit(train_trls, method="laplace_em",
-                                   variational_posterior="structured_meanfield",
-                                   initialize=False, num_iters=1000, alpha=0.0)
+            q_elbos_lem, q_lem = rslds_lem.fit(train_sub_trls, method="laplace_em",
+                variational_posterior="structured_meanfield",initialize=False, 
+                num_iters=num_iters, alpha=0.0)
 
             ####################
             ### #get out LL? ###
