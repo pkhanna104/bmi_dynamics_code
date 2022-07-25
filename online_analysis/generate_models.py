@@ -18,6 +18,8 @@ from sklearn.linear_model import Ridge
 import scipy
 import scipy.io as sio
 
+from autograd.scipy.special import logsumexp
+
 import sys, os
 py_ver = sys.version
 
@@ -1836,16 +1838,20 @@ def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 
     pickle.dump(D, open(analysis_config.config[animal+'_pref'] + 'res_model_fit_state.pkl', 'wb'))
 
 ######## SLDS sweeping ###################
-def sweep_slds_params(animal, day, n_folds=5):
+def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
+    ## ver: 
+    ### model version: 1 == gaussian/gaussian 
+    ### model version: 2 == diag gaussian / gaussian_ortho
 
     ### Posterior fitting params 
-    window_size = [2, 5, 10] # window size for posterior 
-    window_size_max = 10
-    niters_fit_post = [2, 5, 10, 20, 50, 100] # number of iters to fit posterior 
+    window_size = [5] #2, 5, 10]#, 20] # window size for posterior 
+    window_size_max = 5
+    niters_fit_post = [5]#2, 5, 10, 50] # number of iters to fit posterior 
     
     ### model fitting params 
-    niters_fit_model = [10, 50, 100] # number of iteratinos to fit the model 
-    K = [1, 2, 3, 4, 5, 7, 9, 12, 15] # Number of discrete LDSs 
+    niters_fit_model = [50] # number of iteratinos to fit the model 
+    K = [1, 2, 5]#, 3, 5, 9, 12] # Number of discrete LDSs 
+    alphas = [0.01]#, .01, .01]
 
     history_bins_max = 1; 
     within_bin_shuffle = False; 
@@ -1866,6 +1872,7 @@ def sweep_slds_params(animal, day, n_folds=5):
         input_type[day], order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle, 
         keep_bin_spk_zsc = keep_bin_spk_zsc,
         day_ix = day, null = null_pred)
+    
     print('n spks in data %d'%(data['spks'].shape[1]))
         
     #### Which trials are test vs. training ###
@@ -1885,40 +1892,125 @@ def sweep_slds_params(animal, day, n_folds=5):
         for ik, k in enumerate(K): 
         
             for i_nit, nit in enumerate(niters_fit_model): 
+
+                for i_a, alph in enumerate(alphas): 
             
-                ### fit model ####
-                rslds, elbos = fit_slds(trls_train, k, nit) 
+                    ### fit model ####
+                    print('training model ver %d'%ver)
+                    rslds, elbos = fit_slds(trls_train, k, nit, alph, ver=ver, mean_sub=mean_sub) 
 
-                save_params_model[i_fold, k, nit, 'elbo'] = elbos 
+                    save_params_model[i_fold, k, nit, alph, 'elbo'] = elbos 
+                    save_params_model[i_fold, k, nit, alph, 'model'] = rslds 
 
-                ### fit posterior 
-                for i_w, ws in enumerate(window_size): 
+                    ### fit posterior 
+                    for i_w, ws in enumerate(window_size): 
 
-                    ### Get test data w/ different window sizes ###
-                    pts_post, pts_true_test, pts_true_test_tm1, pts_id = get_slds_data_test(data, trl_test_ix, type_of_model, i_fold,
-                        ws)
+                        ### Get test data w/ different window sizes ###
+                        pts_post, pts_true_test, pts_true_test_tm1, pts_id = get_slds_data_test(data, trl_test_ix, 
+                            type_of_model, i_fold, ws, window_size_max)
 
-                    for i_nit_post, nit_post in enumerate(niters_fit_post): 
+                        for i_nit_post, nit_post in enumerate(niters_fit_post): 
 
-                        ### get held out data prediction ###
-                        xhat_post = fit_slds_posteriors(rslds, pts_post, nit_post)
+                            ### get held out data prediction ###
+                            xhat_post, elbos2 = fit_slds_posteriors(rslds, pts_post, nit_post, mean_sub=mean_sub)
 
-                        ### predict it forward
-                        yt_pred_all = pred_fwd_slds(rslds, xhat_post)
+                            ### predict it forward
+                            yt_pred_all = pred_fwd_slds(rslds, xhat_post, mean_sub=mean_sub)
 
-                        ### going forward ### 
-                        r2_fwd = util_fcns.get_R2(np.vstack((pts_true_test)), np.vstack((yt_pred_all)))
-                        save_params_post[i_fold, k, nit, ws, nit_post, 'r2_pred'] = r2_fwd
+                            ### going forward ### 
+                            r2_fwd = util_fcns.get_R2(np.vstack((pts_true_test)), np.vstack((yt_pred_all)))
+                            
+                            save_params_post[i_fold, k, nit, alph, ws, nit_post, 'r2_pred'] = r2_fwd
+                            save_params_post[i_fold, k, nit, alph, ws, nit_post, 'elbos'] = elbos2
+                            save_params_post[i_fold, k, nit, alph, ws, nit_post, 'pred_spks'] = yt_pred_all
+                            save_params_post[i_fold, k, nit, alph, ws, nit_post, 'true_spks'] = pts_true_test
 
-                        ### smoothed ###
-                        yt_pred_tm1 = pred_tm1_slds(rslds, xhat_post)
-                        r2_smooth = util_fcns.get_R2(np.vstack((pts_true_test_tm1)), np.vstack((yt_pred_tm1)))
+                            ## Trl / bin_num predicted in pred_spks
+                            save_params_post[i_fold, k, nit, alph, ws, nit_post, 'pred_spks_params'] = pts_id
+                            
+                            ### smoothed ###
+                            yt_pred_tm1 = pred_tm1_slds(rslds, xhat_post)
+                            r2_smooth = util_fcns.get_R2(np.vstack((pts_true_test_tm1)), np.vstack((yt_pred_tm1)))
 
-                        save_params_post[i_fold, k, nit, ws, nit_post, 'r2_smooth'] = r2_smooth
+                            save_params_post[i_fold, k, nit, alph, ws, nit_post, 'r2_smooth'] = r2_smooth
 
-    ### Save these 
-    d = dict(save_params_post=save_params_post, save_params_model=save_params_model)
-    pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d.pkl'%(animal, day)), 'wb'))
+                            ### Save these each time (over writting so we can get intermediate plots)
+                            d = dict(save_params_post=save_params_post, save_params_model=save_params_model)
+                            if mean_sub: 
+                                pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d_%d_mean_sub.pkl'%(animal, day, ver)), 'wb'))
+                            else: 
+                                pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d_%d.pkl'%(animal, day, ver)), 'wb'))
+
+# def get_slds_r2(animal, day, n_folds=5): 
+    
+#     ###
+#     K = [1, 2] # how many disrete states 
+#     alpha = 0.01; 
+#     niters_fit_model = 20; 
+#     niters_fit_post = 5; 
+
+#     ### order
+#     ndays = analysis_config.data_params['%s_ndays'%animal]
+#     order_dict = analysis_config.data_params['%s_ordered_input_type'%animal]
+#     order_dict = [order_dict[i] for i in range(ndays)]
+#     order_d = order_dict[day]
+
+#     input_type = analysis_config.data_params['%s_input_type'%animal]
+#     input_type = [input_type[i] for i in range(ndays)]
+
+#     ### pull spike kinematics
+#     data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, 
+#         input_type[day], order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle, 
+#         keep_bin_spk_zsc = keep_bin_spk_zsc,
+#         day_ix = day, null = null_pred)
+#     print('n spks in data %d'%(data['spks'].shape[1]))
+        
+#     #### Which trials are test vs. training ###
+#     ### type of model 2 doesn't care about task specificity ####
+#     trl_test_ix, trl_train_ix, type_of_model = generate_models_utils.get_training_testings_generalization_LDS_trial(n_folds, 
+#         data_temp, match_task_spec_n = False)
+
+#     save_params_model = {}
+#     save_params_post = {}
+
+#     ### For each fold and set of parameters
+#     for i_fold in range(5): # Train on data; 
+
+#         trls_train = get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_max)
+#         print('n spks in trls_train %d'%(trls_train[0].shape[1]))
+
+#         for ik, k in enumerate(K): 
+    
+#             ### fit model ####
+#             rslds, elbos = fit_slds(trls_train, k, niters_fit_model, alpha) 
+
+#             save_params_model[i_fold, k, nit, alph, 'elbo'] = elbos 
+
+#             ###### now evaluate the model on held out data #### 
+#             trls_test = get_slds_data_test_full_trial(data, trl_test_ix, type_of_model, i_fold)
+
+#             ##### fit posterior ###
+#             ### get held out data prediction ###
+#             xhat_post = fit_slds_posteriors(rslds, pts_post, niters_fit_post)
+
+#             ### Take the first point and propate forward ### 
+
+#             ### predict it forward
+#             yt_pred_all = pred_fwd_slds(rslds, xhat_post)
+
+#             ### going forward ### 
+#             r2_fwd = util_fcns.get_R2(np.vstack((pts_true_test)), np.vstack((yt_pred_all)))
+#             save_params_post[i_fold, k, nit, ws, nit_post, 'r2_pred'] = r2_fwd
+
+#             ### smoothed ###
+#             yt_pred_tm1 = pred_tm1_slds(rslds, xhat_post)
+#             r2_smooth = util_fcns.get_R2(np.vstack((pts_true_test_tm1)), np.vstack((yt_pred_tm1)))
+
+#             save_params_post[i_fold, k, nit, alph, ws, nit_post, 'r2_smooth'] = r2_smooth
+
+#             ### Save these each time (over writting so we can get intermediate plots)
+#             d = dict(save_params_post=save_params_post, save_params_model=save_params_model)
+#             pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep2_%s_%d.pkl'%(animal, day)), 'wb'))
 
 def get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_max):
 
@@ -1948,7 +2040,7 @@ def get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_m
 
     return trls_train
 
-def get_slds_data_test(data, trl_test_ix, type_of_model, i_fold, window_size):
+def get_slds_data_test(data, trl_test_ix, type_of_model, i_fold, window_size, window_size_max):
 
     ### Get out only the index 2 (doesn't balance across tasks -- no longer relevant)
     ix_valid = np.nonzero(type_of_model == 2)[0]
@@ -1974,52 +2066,126 @@ def get_slds_data_test(data, trl_test_ix, type_of_model, i_fold, window_size):
 
         ### add a set of windows used to predict next data point 
         if len(ix) > (window_size + 1): 
-            for pt in range(window_size, len(ix) - 1): 
+
+            ### only include data points accessible to all; 
+            for pt in range(window_size_max, len(ix) - 1): 
                 ix_ = ix[np.arange(pt-window_size, pt)]
                 pts_post.append(data['spks'][ix_, :])
-                pts_test.append(data['spks'][ix[pt+1], :])
-                pts_test_tm1.append(data['spks'][ix[pt], :])
-                pts_id.append([t, pt+1]) # trial // predicted point 
+                pts_test.append(data['spks'][ix[pt], :])
+                assert(np.all(data['spks'][ix_, :][-1, :] == data['spks'][ix[pt-1], :]))
+
+                pts_test_tm1.append(data['spks'][ix[pt-1], :])
+                pts_id.append([t, pt]) # trial // predicted point 
 
     return pts_post, pts_test, pts_test_tm1, pts_id
 
+def get_slds_data_test_full_trial(data, trl_test_ix, type_of_model, i_fold): 
+    ### Get out only the index 2 (doesn't balance across tasks -- no longer relevant)
+    ix_valid = np.nonzero(type_of_model == 2)[0]
 
-def fit_slds(trls_train, k, nit): 
+    test_trls = None; 
+    for i in ix_valid: 
+
+        ### This fold should match i_fold 
+        if (i%5) == i_fold: 
+
+            test_trls = trl_test_ix[i]
+   
+    ### Make sure they got assigned 
+    assert(test_trls is not None) 
+
+    pts_test = []; 
+
+    for t in test_trls: 
+        ix = np.nonzero(data['trl'] == t)[0]
+
+        ### add a set of windows used to predict next data point 
+        if len(ix) > 0: 
+
+            ### add the trial ### 
+            pts_test.append(data['spks'][ix, :])
+            
+    return pts_test
+
+def fit_slds(trls_train, k, nit, alpha, ver=1, mean_sub=False): 
     D_obs = trls_train[0].shape[1]
-    n_dim_latent_try = D_obs - 1; 
+     
+
+    if mean_sub: 
+        X = np.vstack((trls_train))
+        mean_sub = np.mean(X, axis=0)
+        keep_ix = np.nonzero(10*mean_sub > 0.5)[0]
+        D_obs = len(keep_ix)
+        trls_train2 = []
+        for trl in trls_train: 
+            trls_train2.append(trl[:, keep_ix] - mean_sub[keep_ix][np.newaxis, :])
+
+    else: 
+        D_obs = trls_train[0].shape[1]
+        trls_train2 = [trl for trl in trls_train]
+    
+    n_dim_latent_try = D_obs - 1;
+
 
     import ssm 
-    rslds_lem = ssm.SLDS(D_obs, k, n_dim_latent_try,
+    if ver == 1: 
+        rslds_lem = ssm.SLDS(D_obs, k, n_dim_latent_try,
                  transitions="recurrent_only",
                  dynamics="gaussian",
                  emissions="gaussian",
                  single_subspace=True)
 
-    rslds_lem.initialize(trls_train)
+    elif ver == 2: 
+        rslds_lem = ssm.SLDS(D_obs, k, n_dim_latent_try,
+                 transitions="recurrent_only",
+                 dynamics="diagonal_gaussian", #"gaussian",
+                 emissions="gaussian_orthog", #"gaussian",
+                 single_subspace=True)
 
-    q_elbos_lem, q_lem = rslds_lem.fit(trls_train, method="laplace_em",
+    rslds_lem.initialize(trls_train2)
+
+    q_elbos_lem, q_lem = rslds_lem.fit(trls_train2, method="laplace_em",
         variational_posterior="structured_meanfield",initialize=False, 
-        num_iters=nit, alpha=0.0)
+        num_iters=nit, alpha=alpha)
+
+    rslds_lem.keep_ix = keep_ix.copy()
+    rslds_lem.mean_sub = mean_sub.copy()
 
     return rslds_lem, q_elbos_lem
 
-def fit_slds_posteriors(rslds, pts_post, nit_post): 
+def fit_slds_posteriors(rslds, pts_post, nit_post, mean_sub=False): 
 
-    _, post_test = rslds.approximate_posterior(pts_post, num_iters=nit_post, alpha=0.0)
+    if mean_sub: 
+        pts_post2 = []
+        for trl in pts_post: 
+            pts_post2.append(trl[:, rslds.keep_ix] - rslds.mean_sub[keep_ix][np.newaxis, :])
+    else: 
+        pts_post2 = [trl for trl in pts_post]
+
+    elbos, post_test = rslds.approximate_posterior(pts_post2, num_iters=nit_post, alpha=0.0)
     
-    return post_test.mean_continuous_states
+    return post_test.mean_continuous_states, elbos
 
-def pred_fwd_slds(rslds, xhat_all): 
+def pred_fwd_slds(rslds, xhat_all, mean_sub = False): 
 
     yt_pred_all = []
 
     for xhat in xhat_all: 
 
         ### Get p(discrete state) based on estimate of x; 
-        Ptm1 = rslds.transitions.log_transition_matrices(xhat, np.zeros((xhat.shape[0], 0)), 
-                                                           None, None)
-        ## Get z_tm1
-        z_tm1 = np.argmax(Ptm1[-1, 0, :])
+        #Ptm1 = rslds.transitions.log_transition_matrices(xhat, np.zeros((xhat.shape[0], 0)), 
+        #                                                   None, None)
+        # ## Get z_tm1
+        #z_tm1 = np.argmax(Ptm1[-1, 0, :])
+
+        ### get Log PS on own calcs; 
+        log_Ps =  np.dot(xhat, rslds.transitions.Rs.T)[:, None, :]     # past observations
+        log_Ps = log_Ps + rslds.transitions.r                                       # bias
+        log_Ps = np.tile(log_Ps, (1, rslds.transitions.K, 1))                       # expand
+        log_Ps = log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)       # normalize
+
+        # log_Ps is just tiled in K dimensions; 
+        z_tm1 = np.argmax(log_Ps[-1, 0, :])
 
         ## x_{t-1}
         x_tm1 = xhat[-1, :]
@@ -2032,7 +2198,17 @@ def pred_fwd_slds(rslds, xhat_all):
         C = rslds.emissions.Cs[0, :, :]
         d = rslds.emissions.ds[0, :]
         yt_pred = np.dot(C, xt) + d
-        yt_pred_all.append(yt_pred)
+
+        if mean_sub: 
+            ## set all values to mean ###
+            yt_pred_2 = rslds.mean_sub.copy()
+
+            ## Updated the values that have FR > 0.5 Hz; ### 
+            yt_pred_2[rslds.keep_ix] = yt_pred + rslds.mean_sub[rslds.keep_ix]
+            yt_pred_all.append(yt_pred_2)
+
+        else: 
+            yt_pred_all.append(yt_pred)
 
     return yt_pred_all
 
