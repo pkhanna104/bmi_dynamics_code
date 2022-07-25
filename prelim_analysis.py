@@ -270,7 +270,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
 
         update_bmi_ix = np.nonzero(np.diff(np.squeeze(internal_state[:, drives_neurons_ix0, 0])))[0]+1
 
-    if animal == 'home':
+    if animal == b'home':
         te_num = kwargs.pop('te_num', None)
         if te_num is None:
             raise Exception('Cannot proceed without te_num for homer')
@@ -297,13 +297,13 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
     ### Get rewards from the HDF file ####
     else:
         go_ix = np.array([hdf.root.task_msgs[it-3][1] for it, t in enumerate(hdf.root.task_msgs[:]) if 
-            scipy.logical_and(t[0] == 'reward', t[1] in rew_ix)])
+            scipy.logical_and(t[0] == b'reward', t[1] in rew_ix)])
 
         ### Make sure the mesaged for all of these are ...?
-        assert(np.all(s[0] == 'target' for s in hdf.root.task_msgs[:] if s[1] in go_ix))
-        assert(len([s[0] for s in hdf.root.task_msgs[:] if s[1] in go_ix and s[0] == 'target']) == len(go_ix))
-        assert(np.all(s[0] == 'reward' for s in hdf.root.task_msgs[:] if s[1] in rew_ix))
-        assert(len([s[0] for s in hdf.root.task_msgs[:] if s[1] in rew_ix and s[0] == 'reward']) == len(rew_ix))
+        assert(np.all(s[0] == b'target' for s in hdf.root.task_msgs[:] if s[1] in go_ix))
+        assert(len([s[0] for s in hdf.root.task_msgs[:] if s[1] in go_ix and s[0] == b'target']) == len(go_ix))
+        assert(np.all(s[0] == b'reward' for s in hdf.root.task_msgs[:] if s[1] in rew_ix))
+        assert(len([s[0] for s in hdf.root.task_msgs[:] if s[1] in rew_ix and s[0] == b'reward']) == len(rew_ix))
 
     go_ix = go_ix[go_ix<it_cutoff]
     rew_ix = rew_ix[go_ix<it_cutoff]
@@ -332,7 +332,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
         print(' using ITI ')
         go_ix = rew_ix.copy()
         rew_ix = np.array([hdf.root.task_msgs[it+3][1] for it, t in enumerate(hdf.root.task_msgs[:-3]) if 
-            scipy.logical_and(t[0] == 'reward', t[1] in go_ix)])
+            scipy.logical_and(t[0] == b'reward', t[1] in go_ix)])
 
     ### Approach here, from 2016 preeya is to initialize a bunch of arrays that could 
     ### be added to, approach from 2020 preeya is to use a default dict that is a list-like thing ###
@@ -354,7 +354,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
             bin_spk_i, nbins, hdf_ix_i = bin_spks(spk_i, g, r, neural_bins, update_bmi_ix, divide_by_6)
 
             #If homer data then z-score: 
-            if animal == 'home' and keep_bin_spk_zsc:
+            if animal == b'home' and keep_bin_spk_zsc:
                 dec = kwargs['dec']
                 bin_spk_i = (bin_spk_i - dec.mFR[np.newaxis, :])/dec.sdFR[np.newaxis, :]
                 zscored_bin_spk_i = True
@@ -371,7 +371,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
         
         keep_trial = True
         #### Run decoder check for homer ######
-        if animal == 'home':
+        if animal == b'home':
             decoder_state = te_num_cursor_state['decoder_state'][np.ix_(hdf_ix_i, [0, 2, 3, 5])]
 
             tmp = np.hstack(( np.squeeze(te_num_cursor_state['cursor'][np.ix_(hdf_ix_i, [0, 2])]),  
@@ -405,7 +405,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
             nT_targ = np.tile(targ, (nT, 1))
             all_data['targ_i_all'].append(nT_targ)
 
-            if animal == 'home':
+            if animal == b'home':
                 tl = hdf.root.task[int(g) + 1 + int(include_pre_go*60)]['target_label']
                 all_data['tsk'].append(np.tile(tl, (nT, 1)))
             else:
@@ -423,7 +423,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
 
             
             elif reach_tm_is_hdf_cursor_state:
-                if animal == 'home':
+                if animal == b'home':
                     decoder_state = te_num_cursor_state['decoder_state'][np.ix_(hdf_ix_i, [0, 2, 3, 5])]
 
                     tmp = np.hstack(( np.squeeze(te_num_cursor_state['cursor'][np.ix_(hdf_ix_i, [0, 2])]),  
@@ -463,7 +463,7 @@ def extract_trials_all(hdf, rew_ix, neural_bins = 100, time_cutoff=None, hdf_ix=
             else:
                 #reach_tm_all = np.hstack((reach_tm_all, np.zeros(( bin_spk_i.shape[0] ))+((r-g)*1000./60.) ))
                 all_data['rch_tm'].append(np.zeros((nT, )) + (r-g)*1000./60.)
-            
+
     print(go_ix[keep_ix].shape, rew_ix[keep_ix].shape, bin_spk_i.shape, nbins, hdf_ix_i.shape)
     targ_ix = get_target_ix(np.vstack((all_data['targ_i_all'])), animal, all_data['tsk']) #targ_i_all[1:,:])
     print(np.unique(targ_ix))
