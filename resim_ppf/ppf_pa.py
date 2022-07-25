@@ -214,7 +214,7 @@ def get_jeev_trials_from_task_data(filename, include_pos = False, include_vel = 
     
     if include_pos:
         cursor_kin = dat['cursor_kin']
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         print('Xlims: %.2f, %.2f'%(dat['horiz_min'][0, 0], dat['horiz_max'][0, 0]))
         print('Ylims: %.2f, %.2f'%(dat['vert_min'][0, 0], dat['vert_max'][0, 0]))
         bin_ck, ck = _bin_cursor_kin(ixs, cursor_kin, binsize, pre_go)
