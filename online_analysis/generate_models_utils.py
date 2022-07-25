@@ -10,6 +10,10 @@ import pandas
 import copy
 import pickle 
 import tables 
+if hasattr(tables, 'openFile'): 
+    pass
+else:
+    tables.openFile = tables.open_file
 
 import matplotlib.pyplot as plt
 
@@ -159,6 +163,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 drives_neurons_ix0 = 3
                 key = 'spike_counts'
                 rew_ix = np.array([t[1] for it, t in enumerate(hdf.root.task_msgs[:]) if t[0]=='reward'])
+                if len(rew_ix) == 0: 
+                    rew_ix = np.array([t[1] for it, t in enumerate(hdf.root.task_msgs[:]) if t[0]==b'reward'])
                 
                 if animal == 'home':
                     update_bmi_ix = util_fcns.get_update_ix_homer(hdf)
