@@ -18,13 +18,15 @@ from sklearn.linear_model import Ridge
 import scipy
 import scipy.io as sio
 
-from autograd.scipy.special import logsumexp
+
 
 import sys, os
 py_ver = sys.version
 
 if '3.6.15' in py_ver: 
     from online_analysis import slds_tools
+    from autograd.scipy.special import logsumexp
+
 else:
     from pylds.models import DefaultLDS
     from pylds.states import kalman_filter
@@ -404,7 +406,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     null_predictor = False,
     null_predictor_w_null_alpha = False,
 
-    LDS_skip_task_specific = True):
+    LDS_skip_task_specific = True,
+    window_size_LDS = 'full'):
     
     ### Deprecated variables 
     only_vx0_vy0_tsk_mod=False; 
@@ -837,7 +840,8 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                 pred_Y = pred_diag_cond(data_temp_dict_test, model_, nneur, KG)
 
                             elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_latentLDS':
-                                pred_Y, test_ix = pred_LDS(data_temp, model_, variables, trl_test_ix[i_fold], i_fold)
+                                pred_Y, test_ix = pred_LDS(data_temp, model_, variables, trl_test_ix[i_fold], i_fold, 
+                                    window_size=window_size_LDS)
                                 test_confirm[type_of_model_index].append(test_ix[i_fold])
                             
                             elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0_smoothLDS':
@@ -890,6 +894,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
                                         model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelC'] = model_.C;
                                         model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelQ'] = model_.sigma_obs; 
                                         model_data[i_d, model_nm, i_fold, type_of_model_index, 'modelkeepix'] = model_.keep_ix; 
+                                        model_data[i_d, model_nm, i_fold, type_of_model_index, 'model_spikemn'] = model_.spike_mn; 
                                         
                                     else:
                                         print('Adding model and test_indices') 
@@ -1849,7 +1854,7 @@ def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
     niters_fit_post = [5]#2, 5, 10, 50] # number of iters to fit posterior 
     
     ### model fitting params 
-    niters_fit_model = [50] # number of iteratinos to fit the model 
+    niters_fit_model = [10] # number of iteratinos to fit the model 
     K = [1, 2, 5]#, 3, 5, 9, 12] # Number of discrete LDSs 
     alphas = [0.01]#, .01, .01]
 
@@ -1902,6 +1907,14 @@ def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
                     save_params_model[i_fold, k, nit, alph, 'elbo'] = elbos 
                     save_params_model[i_fold, k, nit, alph, 'model'] = rslds 
 
+                    ### train LDS pure too ###
+                    if k == 1: 
+                        LDS, elbos = fit_slds(trls_train, k, nit, alph, ver=ver, mean_sub=mean_sub,
+                            lds_model = True) 
+
+                        save_params_model[i_fold, k, nit, alph, 'elbo_lds'] = elbos 
+                        save_params_model[i_fold, k, nit, alph, 'model_lds'] = LDS 
+
                     ### fit posterior 
                     for i_w, ws in enumerate(window_size): 
 
@@ -1929,7 +1942,7 @@ def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
                             save_params_post[i_fold, k, nit, alph, ws, nit_post, 'pred_spks_params'] = pts_id
                             
                             ### smoothed ###
-                            yt_pred_tm1 = pred_tm1_slds(rslds, xhat_post)
+                            yt_pred_tm1 = pred_tm1_slds(rslds, xhat_post, mean_sub=mean_sub)
                             r2_smooth = util_fcns.get_R2(np.vstack((pts_true_test_tm1)), np.vstack((yt_pred_tm1)))
 
                             save_params_post[i_fold, k, nit, alph, ws, nit_post, 'r2_smooth'] = r2_smooth
@@ -2070,8 +2083,11 @@ def get_slds_data_test(data, trl_test_ix, type_of_model, i_fold, window_size, wi
             ### only include data points accessible to all; 
             for pt in range(window_size_max, len(ix) - 1): 
                 ix_ = ix[np.arange(pt-window_size, pt)]
+
                 pts_post.append(data['spks'][ix_, :])
                 pts_test.append(data['spks'][ix[pt], :])
+                
+                ### Make sure last point in spks ix is actually the last point ### 
                 assert(np.all(data['spks'][ix_, :][-1, :] == data['spks'][ix[pt-1], :]))
 
                 pts_test_tm1.append(data['spks'][ix[pt-1], :])
@@ -2158,7 +2174,7 @@ def fit_slds_posteriors(rslds, pts_post, nit_post, mean_sub=False):
     if mean_sub: 
         pts_post2 = []
         for trl in pts_post: 
-            pts_post2.append(trl[:, rslds.keep_ix] - rslds.mean_sub[keep_ix][np.newaxis, :])
+            pts_post2.append(trl[:, rslds.keep_ix] - rslds.mean_sub[rslds.keep_ix][np.newaxis, :])
     else: 
         pts_post2 = [trl for trl in pts_post]
 
@@ -2212,7 +2228,7 @@ def pred_fwd_slds(rslds, xhat_all, mean_sub = False):
 
     return yt_pred_all
 
-def pred_tm1_slds(rslds, xhat_all): 
+def pred_tm1_slds(rslds, xhat_all, mean_sub=False): 
     
     yt_pred_all = []
 
@@ -2225,7 +2241,20 @@ def pred_tm1_slds(rslds, xhat_all):
         C = rslds.emissions.Cs[0, :, :]
         d = rslds.emissions.ds[0, :]
         ytm1_pred = np.dot(C, x_tm1) + d
-        yt_pred_all.append(ytm1_pred)
+
+        if mean_sub: 
+
+            ## Mean 
+            mn = rslds.mean_sub
+            ix = rslds.keep_ix
+
+            ### set all to mean and update relevant ones 
+            yt_p = mn.copy()
+            yt_p[ix] = ytm1_pred + mn[ix]
+
+            yt_pred_all.append(yt_p)
+        else: 
+            yt_pred_all.append(ytm1_pred)
 
     return yt_pred_all
 
@@ -2569,7 +2598,9 @@ def smooth_LDS(data_temp, model, variables, trl_test_ix, i_f):
 
     return smooth_Y_all, test_ix 
 
-def pred_LDS(data_temp, model, variables, trl_test_ix, i_f):
+def pred_LDS(data_temp, model, variables, trl_test_ix, i_f, 
+    window_size = 'full'):
+
     trls = data_temp['trl']
     bin_num = data_temp['bin_num']
     keep_ix = model.keep_ix
@@ -2593,35 +2624,58 @@ def pred_LDS(data_temp, model, variables, trl_test_ix, i_f):
         test_trls.append(X[np.ix_(ix, keep_ix)])
         test_ix[i_f].append(ix)
 
-    #import pdb; pdb.set_trace()
-
     ########## Make predictions #########
     pred_Y = [] 
     for trl in test_trls:
 
-        ##### Add data, pop it off again ####
-        model.add_data(trl)
-        g = model.states_list.pop()
-        
-        # Smoothed (y_t | y0...yT)
-        smoothed_trial = g.smooth()
+        if window_size == 'full': 
+            ##### Add data, pop it off again ####
+            model.add_data(trl)
+            g = model.states_list.pop()
+            
+            # Smoothed (y_t | y0...yT)
+            smoothed_trial = g.smooth()
 
-        # Smoothed (x_t | x0...xT)
-        x0 = g.smoothed_mus[0, :] # Time x ndim
-        P0 = g.smoothed_sigmas[0, :, :]
-    
-        # Filtered states (x_t | y0...y_t)
-        _, filtered_mus, _ = kalman_filter(
-        x0, P0,
-        g.A, g.B, g.sigma_states,
-        g.C, g.D, g.sigma_obs,
-        g.inputs, g.data)
+            # Smoothed (x_t | x0...xT)
+            x0 = g.smoothed_mus[0, :] # Time x ndim
+            P0 = g.smoothed_sigmas[0, :, :]
         
-        assert(filtered_mus.shape[0] == trl.shape[0])
-        
-        #### Take filtered data, propagate fwd to get estimated next time step; 
-        pred_trl = np.dot(g.C, np.dot(g.A, filtered_mus.T)).T
-        
+            # Filtered states (x_t | y0...y_t)
+            _, filtered_mus, _ = kalman_filter(
+            x0, P0,
+            g.A, g.B, g.sigma_states,
+            g.C, g.D, g.sigma_obs,
+            g.inputs, g.data)
+            
+            assert(filtered_mus.shape[0] == trl.shape[0])
+            
+            #### Take filtered data, propagate fwd to get estimated next time step; 
+            pred_trl = np.dot(g.C, np.dot(g.A, filtered_mus.T)).T
+
+        else: 
+            print('window size pred %d'%window_size)
+            ntrl, _ = trl.shape[0]
+            pred_trl = []; 
+
+            for nt in range(ntrl): 
+
+                ## Not enough window size ###
+                if nt < window_size: 
+                    pred_trl.append(-1*np.ones((1, len(keep_ix) )) )
+                else: 
+                    ### Add data in window 
+                    model.add_data(trl[nt-window_size:nt, :])
+
+                    ### pop it off 
+                    g = model.states_list.pop()
+                    smoothed_segment = g.smooth()
+
+                    ### take the last state and predit forward; 
+                    x0 = g.smoothed_mus[-1, :] # time x ndim 
+                    pred_trl.append(np.dot(g.C, np.dot(g.A, x0)))
+
+            pred_trl = np.vstack((pred_trl)) # time x ndim 
+            
         assert(pred_trl.shape == trl.shape)
         pred_Y.append(pred_trl + spike_mn[np.newaxis, keep_ix])
 
