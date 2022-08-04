@@ -374,6 +374,8 @@ def sweep_dim_all(model_set_number = 11, history_bins_max = 1, within_bin_shuffl
         elif model_set_number == 13: 
             pickle.dump(max_LL_dim, open(analysis_config.config[animal+'_pref'] + 'SLDS_sweep_K.pkl', 'wb'))
 
+
+
 ######## STEP 2 -- Fit the models ###########
 ### Main tuning function -- run this for diff animals; 
 def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs', 
@@ -397,7 +399,7 @@ def model_individual_cell_tuning_curves(hdf_filename='_models_to_pred_mn_diffs',
     full_shuffle = False,
     within_bin_shuffle = False, 
     shuff_id = 0,
-    add_model_to_datafile = False,
+    add_model_to_datafile = True,
     task_demean = False,
     gen_demean = False,
     alpha_always_zero = False,
@@ -1855,7 +1857,7 @@ def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
     
     ### model fitting params 
     niters_fit_model = [10] # number of iteratinos to fit the model 
-    K = [1, 2, 5]#, 3, 5, 9, 12] # Number of discrete LDSs 
+    K = [1, 2, 3, 4, 5]#, 3, 5, 9, 12] # Number of discrete LDSs 
     alphas = [0.01]#, .01, .01]
 
     history_bins_max = 1; 
@@ -1907,14 +1909,6 @@ def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
                     save_params_model[i_fold, k, nit, alph, 'elbo'] = elbos 
                     save_params_model[i_fold, k, nit, alph, 'model'] = rslds 
 
-                    ### train LDS pure too ###
-                    if k == 1: 
-                        LDS, elbos = fit_slds(trls_train, k, nit, alph, ver=ver, mean_sub=mean_sub,
-                            lds_model = True) 
-
-                        save_params_model[i_fold, k, nit, alph, 'elbo_lds'] = elbos 
-                        save_params_model[i_fold, k, nit, alph, 'model_lds'] = LDS 
-
                     ### fit posterior 
                     for i_w, ws in enumerate(window_size): 
 
@@ -1953,77 +1947,6 @@ def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
                                 pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d_%d_mean_sub.pkl'%(animal, day, ver)), 'wb'))
                             else: 
                                 pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d_%d.pkl'%(animal, day, ver)), 'wb'))
-
-# def get_slds_r2(animal, day, n_folds=5): 
-    
-#     ###
-#     K = [1, 2] # how many disrete states 
-#     alpha = 0.01; 
-#     niters_fit_model = 20; 
-#     niters_fit_post = 5; 
-
-#     ### order
-#     ndays = analysis_config.data_params['%s_ndays'%animal]
-#     order_dict = analysis_config.data_params['%s_ordered_input_type'%animal]
-#     order_dict = [order_dict[i] for i in range(ndays)]
-#     order_d = order_dict[day]
-
-#     input_type = analysis_config.data_params['%s_input_type'%animal]
-#     input_type = [input_type[i] for i in range(ndays)]
-
-#     ### pull spike kinematics
-#     data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal, 
-#         input_type[day], order_d, history_bins_max, within_bin_shuffle = within_bin_shuffle, 
-#         keep_bin_spk_zsc = keep_bin_spk_zsc,
-#         day_ix = day, null = null_pred)
-#     print('n spks in data %d'%(data['spks'].shape[1]))
-        
-#     #### Which trials are test vs. training ###
-#     ### type of model 2 doesn't care about task specificity ####
-#     trl_test_ix, trl_train_ix, type_of_model = generate_models_utils.get_training_testings_generalization_LDS_trial(n_folds, 
-#         data_temp, match_task_spec_n = False)
-
-#     save_params_model = {}
-#     save_params_post = {}
-
-#     ### For each fold and set of parameters
-#     for i_fold in range(5): # Train on data; 
-
-#         trls_train = get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_max)
-#         print('n spks in trls_train %d'%(trls_train[0].shape[1]))
-
-#         for ik, k in enumerate(K): 
-    
-#             ### fit model ####
-#             rslds, elbos = fit_slds(trls_train, k, niters_fit_model, alpha) 
-
-#             save_params_model[i_fold, k, nit, alph, 'elbo'] = elbos 
-
-#             ###### now evaluate the model on held out data #### 
-#             trls_test = get_slds_data_test_full_trial(data, trl_test_ix, type_of_model, i_fold)
-
-#             ##### fit posterior ###
-#             ### get held out data prediction ###
-#             xhat_post = fit_slds_posteriors(rslds, pts_post, niters_fit_post)
-
-#             ### Take the first point and propate forward ### 
-
-#             ### predict it forward
-#             yt_pred_all = pred_fwd_slds(rslds, xhat_post)
-
-#             ### going forward ### 
-#             r2_fwd = util_fcns.get_R2(np.vstack((pts_true_test)), np.vstack((yt_pred_all)))
-#             save_params_post[i_fold, k, nit, ws, nit_post, 'r2_pred'] = r2_fwd
-
-#             ### smoothed ###
-#             yt_pred_tm1 = pred_tm1_slds(rslds, xhat_post)
-#             r2_smooth = util_fcns.get_R2(np.vstack((pts_true_test_tm1)), np.vstack((yt_pred_tm1)))
-
-#             save_params_post[i_fold, k, nit, alph, ws, nit_post, 'r2_smooth'] = r2_smooth
-
-#             ### Save these each time (over writting so we can get intermediate plots)
-#             d = dict(save_params_post=save_params_post, save_params_model=save_params_model)
-#             pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep2_%s_%d.pkl'%(animal, day)), 'wb'))
 
 def get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_max):
 
@@ -2139,6 +2062,8 @@ def fit_slds(trls_train, k, nit, alpha, ver=1, mean_sub=False):
     else: 
         D_obs = trls_train[0].shape[1]
         trls_train2 = [trl for trl in trls_train]
+        keep_ix = np.arange(D_obs)
+        mean_sub = np.zeros((D_obs))
     
     n_dim_latent_try = D_obs - 1;
 
@@ -2654,24 +2579,29 @@ def pred_LDS(data_temp, model, variables, trl_test_ix, i_f,
 
         else: 
             print('window size pred %d'%window_size)
-            ntrl, _ = trl.shape[0]
+            ntrl, _ = trl.shape
             pred_trl = []; 
 
+            ## so above, all data in trl0...trl{T-1} used to predict trl1...trlT
             for nt in range(ntrl): 
 
                 ## Not enough window size ###
-                if nt < window_size: 
-                    pred_trl.append(-1*np.ones((1, len(keep_ix) )) )
+                if nt < (window_size-1): 
+                    pred_trl.append(-1000*np.ones((1, len(keep_ix) )) )
                 else: 
-                    ### Add data in window 
-                    model.add_data(trl[nt-window_size:nt, :])
+                    ### Add data in window from trl{t-ws}...trl{t} used to predict 
+                    ix_ = np.arange(nt-window_size+1, nt+1)
+                    assert(ix_[-1] == nt)
+                    assert(len(ix_) == window_size)
+
+                    model.add_data(trl[ix_, :])
 
                     ### pop it off 
                     g = model.states_list.pop()
-                    smoothed_segment = g.smooth()
+                    _ = g.smooth()
 
                     ### take the last state and predit forward; 
-                    x0 = g.smoothed_mus[-1, :] # time x ndim 
+                    x0 = g.smoothed_mus[-1, :] # time x ndim --> corresponds to estimate of spks[nt, :]
                     pred_trl.append(np.dot(g.C, np.dot(g.A, x0)))
 
             pred_trl = np.vstack((pred_trl)) # time x ndim 
