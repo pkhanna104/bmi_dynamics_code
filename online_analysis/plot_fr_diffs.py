@@ -53,7 +53,8 @@ def return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal='g
     return ix_command_valid
 
 def distribution_match_global_mov(push_command_mov, push_command, psig=.05, 
-                                  perc_drop = 0.05, plot=False):
+                                  perc_drop = 0.05, plot=False, 
+                                  match_pos = False, pos_mov = None, pos = None):
     """
     Method to match the global command distrubtion to the 
     movement-specific command distribution 
@@ -66,12 +67,23 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
         perc_drop (float, optional): If there are still sig differences, drop this 
             percent of the bigger dataset ;
         plot (bool, optional): plot the distributions along the way; 
+
+        match_pos (bool): whether to match position of global distribution in-step with command
+        pos_mov (np.array): small dataset to match to --> cursor positions 
+        pos (np.array): larger dataset to sample from --> cursor positions
     
     Returns:
         TYPE: Description
     """
     complete = False
     niter = 0
+
+    ### Add variable to push, since already setup to flexibly match all dimensions of 
+    ### push_command_mov; 
+    if match_pos: 
+        push_command_mov = np.hstack((push_command_mov, pos_mov))
+        push_command     = np.hstack((push_command,     pos))
+    
     nVar = push_command_mov.shape[1]
     assert(push_command.shape[1] == nVar)
     
@@ -328,7 +340,7 @@ def test_multi_match():
         print('pv %.3f' %(mdf.pvalues['Group Var']))
 
 def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000,
-                            min_bin_indices = 0, save=False):
+                            min_bin_indices = 0, match_pos = False, save=False):
     """
     Plot example single neuron and population deviations from global distribution
     
@@ -340,6 +352,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
         day_ix (int, optional): Description
         nshuffs (int, optional): Description
         min_bin_indices (int, optional): cut off the first N bins and last N bins 
+        match_pos (bool, optional): also match position data in global distrubuiton match
         save (bool, optional): save figures 
     """
     pref_colors = analysis_config.pref_colors
@@ -347,6 +360,24 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
     ###### Extract data #######
     spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
     
+
+    if match_pos: 
+        order_d = analysis_config.data_params['%s_ordered_input_type'%animal][day_ix]
+        day = analysis_config.data_params['%s_input_type'%animal][day_ix]
+        history_bins_max = 1; 
+
+        ### pull data ### 
+        data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
+            day, order_d, history_bins_max, day_ix = day_ix, within_bin_shuffle = False, 
+            keep_bin_spk_zsc = False, null = False)
+
+        ### spikes ####
+        assert(np.all(data['spks'] == spks))
+        assert(data['spks'].shape[0] == data['pos'].shape[0])
+
+        ### pull position ### 
+        position = data['pos']
+
     ### Multiply spks by 10 early on; 
     spks = spks*10
 
@@ -390,7 +421,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
         ### Which global indices used for command/movement 
         ix_mc_all = ix_com[ix_mc] 
 
-        ### If enought of these then proceed; 
+        ### If enough of these then proceed; 
         if len(ix_mc) >= 15:    
 
             global_comm_indices[mov] = ix_mc_all
@@ -418,9 +449,18 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             FR_vect = spks[ix_mc_all, :]
 
             ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
-            ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
+            if match_pos: 
+                ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
+                                                         push[np.ix_(ix_com_global, [3, 5])],
+                                                         match_pos = True, 
+                                                         pos_mov = position[ix_mc_all, :], 
+                                                         pos = position[ix_com_global, :])
+            else: 
+                ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
                                                          push[np.ix_(ix_com_global, [3, 5])])
-            print('Mov %.1f, # Iters %d to match global'%(mov, niter))
+            
+            print('Mov %.1f, # Iters %d to match global, len global_ix_ok %d, len_com %d'%(mov, 
+                niter, len(ix_ok), len(ix_mc_all)))
             
             ### which indices we can use in global distribution for this shuffle ----> #### 
             ix_com_global_ok = ix_com_global[ix_ok] 
@@ -434,29 +474,35 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             
             Nglobal = len(ix_com_global_ok)
             Ncommand_mov = len(ix_mc_all)
-            assert(Nglobal > Ncommand_mov)
-            
-            ### Get matching global distribution 
-            mFR_shuffle[mov] = []
-            mFR_shuffle_vect[mov] = []
-            mFR_dist[mov] = []
-            
-            for i_shuff in range(nshuffs):
-                ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
-                mFR_shuffle[mov].append(np.mean(spks[ix_com_global_ok[ix_sub], neuron_ix]))
-                
-                mshuff_vect = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
-                mFR_shuffle_vect[mov].append(np.linalg.norm(mshuff_vect - global_mean_vect)/nneur)
-            
-            ### Save teh distribution ####
-            mFR_dist[mov] = FR 
 
-            ### Save teh shuffles 
-            mFR[mov] = np.mean(FR)
-            mFR_vect[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)/nneur
-            mov_number.append(mov)
-           
-            print('mov %.1f, N = %d, mFR = %.2f'% (mov, len(ix_mc), np.mean(FR)))
+            ### only assess if you were able to ensure Nglobal >> Ncommand_mov ## 
+            ### In general this will be trivially true (i.e. used to be an assertion)
+            ###  but may not be when controlling for position 
+
+            ### Adhoc method for inlusion ## #
+            if Nglobal > 2*Ncommand_mov: 
+
+                ### Get matching global distribution 
+                mFR_shuffle[mov] = []
+                mFR_shuffle_vect[mov] = []
+                mFR_dist[mov] = []
+                
+                for i_shuff in range(nshuffs):
+                    ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
+                    mFR_shuffle[mov].append(np.mean(spks[ix_com_global_ok[ix_sub], neuron_ix]))
+                    
+                    mshuff_vect = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
+                    mFR_shuffle_vect[mov].append(np.linalg.norm(mshuff_vect - global_mean_vect)/nneur)
+                
+                ### Save teh distribution ####
+                mFR_dist[mov] = FR 
+
+                ### Save teh shuffles 
+                mFR[mov] = np.mean(FR)
+                mFR_vect[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)/nneur
+                mov_number.append(mov)
+               
+                print('mov %.1f, N = %d, mFR = %.2f'% (mov, len(ix_mc), np.mean(FR)))
 
         #### Plot by target number ####
         keys = np.argsort(np.hstack((mFR.keys())) % 10)
@@ -495,6 +541,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
                 linewidth=1., linestyle='dashed')
             
             ### Population centered by shuffle mean 
+            mFR_shuffle_vect[mov] = np.hstack((mFR_shuffle_vect[mov]))
             mn_shuf = np.mean(mFR_shuffle_vect[mov])
             util_fcns.draw_plot(x, mFR_shuffle_vect[mov] - mn_shuf, 'gray', np.array([0., 0., 0., 0.]), axvect)
             axvect.plot(x, mFR_vect[mov] - mn_shuf, '.', color=colrgb, markersize=20)
