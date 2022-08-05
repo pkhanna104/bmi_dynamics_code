@@ -84,7 +84,7 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
         push_command_mov = np.hstack((push_command_mov, pos_mov))
         push_command     = np.hstack((push_command,     pos))
     
-    nVar = push_command_mov.shape[1]
+    nPushCom, nVar = push_command_mov.shape
     assert(push_command.shape[1] == nVar)
     
     #### Keep track of PV 
@@ -112,6 +112,10 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
             complete = True
             return indices, niter
         
+        elif len(indices) < nPushCom:
+            complete = True
+            return np.array([]), niter
+
         else:
             niter += 1
             #print('Starting iter %d' %(niter))
@@ -139,7 +143,7 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
             ### Update indices to remove cost
             indices = np.delete(indices, ix_remove)
 
-            ### Make sure the cost when down 
+            ### Make sure the cost went down 
             assert(np.sum(np.sum(cost[ix_sort[:-NptsDrop]]**2, axis=1)) < np.sum(cost_sum))
             
             if plot:
@@ -479,8 +483,8 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             ### In general this will be trivially true (i.e. used to be an assertion)
             ###  but may not be when controlling for position 
 
-            ### Adhoc method for inlusion ## #
-            if Nglobal > 2*Ncommand_mov: 
+            ###  Method for inlusion ## #
+            if Nglobal > Ncommand_mov: 
 
                 ### Get matching global distribution 
                 mFR_shuffle[mov] = []
@@ -732,11 +736,14 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             util_fcns.savefig(f2, 'Next_command_diff_mag%d_ang%d_%s_d%d'%(mag, ang, animal, day_ix))
     
 ##### Main plotting functions to use in Figs 2 and 3 ########
-def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False):
+def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False, 
+    match_pos = False, factor_global_gt_mov = 1, nsessions = None):
     """
     Args:
         nshuffs (int, optional): Description
         min_bin_indices (int, optional): number of bins to remove from beginning AND end of the trial 
+        match_pos: whether to additional match the global position distribution to the com-mov position distribution
+            while doing the command matching 
     
     Update: 3/31/21 --> now want to use the "pooling" method to assess if commands / neurons are sig. 
         -- report population significance; 
@@ -759,7 +766,12 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
     
     for ia, animal in enumerate(['grom', 'jeev']): # add homer later; 
         
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+        if nsessions is None: 
+            nsess = analysis_config.data_params['%s_ndays'%animal]
+        else: 
+            nsess = nsessions; 
+
+        for day_ix in range(nsess):
             
             ### Setup the dictionaries for this animal and date
             perc_sig[animal, day_ix] = {}
@@ -770,6 +782,23 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
 
             ### Pull data ### 
             spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix, keep_bin_spk_zsc=keep_bin_spk_zsc)
+
+            if match_pos: ### Need to get position data 
+                order_d = analysis_config.data_params['%s_ordered_input_type'%animal][day_ix]
+                day = analysis_config.data_params['%s_input_type'%animal][day_ix]
+                history_bins_max = 1; 
+
+                ### pull data ### 
+                data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
+                    day, order_d, history_bins_max, day_ix = day_ix, within_bin_shuffle = False, 
+                    keep_bin_spk_zsc = False, null = False, skip_plot = True)
+
+                ### spikes ####
+                assert(np.all(data['spks'] == spks))
+                assert(data['spks'].shape[0] == data['pos'].shape[0])
+
+                ### pull position ### 
+                position = data['pos']
 
             ### Convert spike count (e.g. 2 spks/bin to rate: 2 spks/bin *1 bin/.1 sec = 20 Hz)
             ### For homer spks count should be in z-scored values for bin
@@ -817,13 +846,14 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
                             global_comm_indices[mov] = ix_mc_all
                             ix_com_global.append(ix_mc_all)
 
-                    if len(ix_com_global) > 0:
+                    if len(ix_com_global) > 0: 
                         ix_com_global = np.hstack((ix_com_global))
 
-
-                        ### ONly command, only movs we want: ####
+                        ### Only command, only movs we want: ####
                         assert(np.all(command_bins[ix_com_global, 0] == mag))
                         assert(np.all(command_bins[ix_com_global, 1] == ang))
+
+                        ### All indices correspond to the right movements 
                         assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global])))
 
                         ### Iterate through the moves we want 
@@ -839,64 +869,81 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
                             mov_mean_FR = np.mean(spks[ix_mc_all, :], axis=0)
                             
                             ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
-                            ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
+                            if match_pos: 
+                                position
+                                ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
+                                                         push[np.ix_(ix_com_global, [3, 5])], 
+                                                         match_pos=True,
+                                                         pos_mov = position[ix_mc_all, :], 
+                                                         pos = position[ix_com_global, :])
+
+                            else:
+                                ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
                                                          push[np.ix_(ix_com_global, [3, 5])])
+
                             niter2match[animal, day_ix][mag, ang, mov] = niter 
                             
-                            ### which indices we can use in global distribution for this shuffle ----> #### 
-                            ix_com_global_ok = ix_com_global[ix_ok] 
-                            assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
-                            assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
-                            assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global_ok])))
-                            Nglobal = len(ix_com_global_ok)
-
-                            ### Use this as global mean for this movement #####
-                            global_mean_FR = np.mean(spks[ix_com_global_ok, :], axis=0)
-                            
-                            ### Get difference now: 
-                            dmean_FR = np.abs(mov_mean_FR - global_mean_FR)
-                            
-                            ### Get shuffled differences saved; 
-                            dmFR_shuffle = []; ## Absolute differences from global 
-                            mFR_shuffle = [] ### Just shuffled mFR 
-                            
-                            for i_shuff in range(nshuffs):
-                                ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
-                                mn_tmp = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
+                            if len(ix_ok) > 0: 
                                 
-                                dmFR_shuffle.append(np.abs(mn_tmp - global_mean_FR))
-                                mFR_shuffle.append(mn_tmp)
-                                
-                            ### Stack ####
-                            dmFR_shuffle = np.vstack((dmFR_shuffle))
-                            mFR_shuffle = np.vstack((mFR_shuffle))
-                            
-                            ### Add mag/ang/mov to this so later can pool over commands / conditions etc ####
-                            pooled_stats[animal, day_ix].append([dmean_FR, dmFR_shuffle, mag, ang, mov, global_mean_FR])
+                                ### which indices we can use in global distribution for this shuffle ----> #### 
+                                ix_com_global_ok = ix_com_global[ix_ok] 
+                                assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
+                                assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
+                                assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global_ok])))
+                                Nglobal = len(ix_com_global_ok)
 
-                            ### For each neuron go through and do the signficiance test ####
-                            for i_neur in range(nneur):
+                                ### If global numnber >> command number ### 
+                                ### Newly added 8/2022 --> trying to make sure enough of a global distribution to sample from
+                                ### assert(Nglobal >= Ncommand_mov) --> might not be true for position control 
+                                if Nglobal > factor_global_gt_mov*Ncommand_mov: 
 
-                                ### Find differences that are greater than shuffle 
-                                n_lte = len(np.nonzero(dmFR_shuffle[:, i_neur] >= dmean_FR[i_neur])[0])
-                                pv = float(n_lte) / float(nshuffs)
+                                    ### Use this as global mean for this movement #####
+                                    global_mean_FR = np.mean(spks[ix_com_global_ok, :], axis=0)
+                                    
+                                    ### Get difference now: 
+                                    dmean_FR = np.abs(mov_mean_FR - global_mean_FR)
+                                    
+                                    ### Get shuffled differences saved; 
+                                    dmFR_shuffle = []; ## Absolute differences from global 
+                                    mFR_shuffle = [] ### Just shuffled mFR 
+                                    
+                                    for i_shuff in range(nshuffs):
+                                        ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov] ### This step needs to make sure global >> mov
+                                        mn_tmp = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
+                                        
+                                        dmFR_shuffle.append(np.abs(mn_tmp - global_mean_FR))
+                                        mFR_shuffle.append(mn_tmp)
+                                        
+                                    ### Stack ####
+                                    dmFR_shuffle = np.vstack((dmFR_shuffle))
+                                    mFR_shuffle = np.vstack((mFR_shuffle))
+                                    
+                                    ### Add mag/ang/mov to this so later can pool over commands / conditions etc ####
+                                    pooled_stats[animal, day_ix].append([dmean_FR, dmFR_shuffle, mag, ang, mov, global_mean_FR])
 
-                                ### find difference from the global mean 
-                                dFR = np.abs(mov_mean_FR[i_neur] - global_mean_FR[i_neur])
-                                perc_sig[animal, day_ix][mag, ang, mov].append(np.array((pv, dFR, dFR/global_mean_FR[i_neur], global_mean_FR[i_neur]), dtype=dtype_su))
-                                
-                            #### Vector #####
-                            n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle, axis=1) >= np.linalg.norm(dmean_FR))[0])
-                            pv = float(n_lte) / float(nshuffs)
-                            dist = np.linalg.norm(mov_mean_FR - global_mean_FR)
-                            
-                            ### Make sure this is the same thign ###
-                            assert(dist == np.linalg.norm(dmean_FR))
+                                    ### For each neuron go through and do the signficiance test ####
+                                    for i_neur in range(nneur):
 
-                            ### Fraction difference; 
-                            perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist/nneur, dist/np.linalg.norm(global_mean_FR)), dtype=dtype_pop)
+                                        ### Find differences that are greater than shuffle 
+                                        n_lte = len(np.nonzero(dmFR_shuffle[:, i_neur] >= dmean_FR[i_neur])[0])
+                                        pv = float(n_lte) / float(nshuffs)
 
-                print('Mag Cnt, mag = %d, monk = %s, day = %d, cnt = %d' %(mag, animal, day_ix, mag_cnt))
+                                        ### find difference from the global mean 
+                                        dFR = np.abs(mov_mean_FR[i_neur] - global_mean_FR[i_neur])
+                                        perc_sig[animal, day_ix][mag, ang, mov].append(np.array((pv, dFR, dFR/global_mean_FR[i_neur], global_mean_FR[i_neur]), dtype=dtype_su))
+                                        
+                                    #### Vector #####
+                                    n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle, axis=1) >= np.linalg.norm(dmean_FR))[0])
+                                    pv = float(n_lte) / float(nshuffs)
+                                    dist = np.linalg.norm(mov_mean_FR - global_mean_FR)
+                                    
+                                    ### Make sure this is the same thign ###
+                                    assert(dist == np.linalg.norm(dmean_FR))
+
+                                    ### Fraction difference; 
+                                    perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist/nneur, dist/np.linalg.norm(global_mean_FR)), dtype=dtype_pop)
+
+                #print('Mag Cnt, mag = %d, monk = %s, day = %d, cnt = %d' %(mag, animal, day_ix, mag_cnt))
                 mag_cnt = 0
                                   
     return perc_sig, perc_sig_vect, niter2match, pooled_stats
@@ -947,7 +994,8 @@ def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
         print('POOL %s, pv_cm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f (%.3f)' %(animal, float(len(ix))/1000., 
             cm_pool, np.mean(np.mean(cm_shuff_pool, axis=0)), np.percentile(np.mean(cm_shuff_pool, axis=0), 95)))
  
-def plot_pooled_stats_fig3_science_compression(pooled_stats):
+def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsessions = None, 
+    save_suff = ''):
     '''
     goal: 
         1. fraction of command/conditions sig. diff (population)
@@ -976,7 +1024,12 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
         bar_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist=[], fracdist_shuff=[], fracdist_sig=[], fracdist_shuff_sig=[])
         stats_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist_sig=[], fracdist_shuff_sig=[])
 
-        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+        if nsessions is None: 
+            nsess = analysis_config.data_params['%s_ndays'%animal]
+        else:
+            nsess = nsessions
+
+        for day_ix in range(nsess):
 
             Nneur = pooled_stats[animal, day_ix, 'nneur']
             Nshuffs = pooled_stats[animal, day_ix, 'nshuffs']
@@ -1023,7 +1076,6 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
             ax_fracdist_sig.plot([ia, ia+0.4], [np.mean(frac_pop_dist_sig), np.mean(frac_pop_dist_shuff_sig)], 'k-', linewidth=1.)
             ax_fracdist_sig.plot(ia+0.4, np.mean(frac_pop_dist_shuff_sig), '.', markerfacecolor='white', 
                 markeredgewidth=1.0, markeredgecolor='k', markersize=12)
-
 
             ########## # of Cond/com sig. and # of com sig. ###########
             nCC = 0
@@ -1079,7 +1131,10 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
             ########## Now we can plot frac of command/conditions sig #############
             ax_fracCC.plot(ia, float(nCC_sig)/float(nCC), 'k.')
             bar_dict['fracCC'].append(float(nCC_sig)/float(nCC))
-
+            
+            print('%s, %d, # of com-conds analyzed %d, # pop. sig %d'%(animal, day_ix, 
+                nCC, nCC_sig))
+            
             ########## Frac commands with SOME sig deviations #########################
             for ic, com in enumerate(commands_already): 
                 vals = command_sig[tuple(com)]['vals']
@@ -1178,7 +1233,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats):
         ['fracCC', 'fracCom', 'fracN_sig', 'fracdist', 'fracdist_sig'])):
         
         f.tight_layout()
-        util_fcns.savefig(f, yl)
+        if save: 
+            util_fcns.savefig(f, yl+'_'+save_suff)
 
 def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None, 
     plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5, neur_ix = 36):
