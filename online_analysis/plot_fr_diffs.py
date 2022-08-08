@@ -54,7 +54,8 @@ def return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal='g
 
 def distribution_match_global_mov(push_command_mov, push_command, psig=.05, 
                                   perc_drop = 0.05, plot=False, 
-                                  match_pos = False, pos_mov = None, pos = None):
+                                  match_pos = False, pos_mov = None, pos = None, 
+                                  ok_if_glob_lt_mov = False):
     """
     Method to match the global command distrubtion to the 
     movement-specific command distribution 
@@ -71,6 +72,7 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
         match_pos (bool): whether to match position of global distribution in-step with command
         pos_mov (np.array): small dataset to match to --> cursor positions 
         pos (np.array): larger dataset to sample from --> cursor positions
+        ok_if_glob_lt_mov (bool, default == False): return empty ix_ok if global size falls << movement size 
     
     Returns:
         TYPE: Description
@@ -112,47 +114,53 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
             complete = True
             return indices, niter
         
-        elif len(indices) < nPushCom:
-            complete = True
+        if ok_if_glob_lt_mov: 
+            pass 
+        else: 
+            if len(indices) < nPushCom:
+                complete = True
+                return np.array([]), niter
+
+        if len(indices) == 0: 
+            complete = True 
             return np.array([]), niter
 
-        else:
-            niter += 1
-            #print('Starting iter %d' %(niter))
-            #print(pv_recent)
-            
-            ### Compute cost of each sample of push_command 
-            mean_diff = push_command[indices, :] - mean_match[np.newaxis, :]
-            
-            ### So dimensions with high variance aren't weighted as strongly 
-            cost = mean_diff / var_match[np.newaxis, :]
+        niter += 1
+        #print('Starting iter %d' %(niter))
+        #print(pv_recent)
         
-            ### Sum across dimensions 
-            cost_sum = np.sum(cost**2, axis=1)
-            
-            ### How many pts to drop
-            Npts = len(cost_sum)
-            NptsDrop = int(np.floor(perc_drop * Npts))
-            
-            ### Sort from low to high 
-            ix_sort = np.argsort(cost_sum)
-            
-            ### Remove the highest cost 
-            ix_remove = ix_sort[-NptsDrop:]
-            
-            ### Update indices to remove cost
-            indices = np.delete(indices, ix_remove)
+        ### Compute cost of each sample of push_command 
+        mean_diff = push_command[indices, :] - mean_match[np.newaxis, :]
+        
+        ### So dimensions with high variance aren't weighted as strongly 
+        cost = mean_diff / var_match[np.newaxis, :]
+    
+        ### Sum across dimensions 
+        cost_sum = np.sum(cost**2, axis=1)
+        
+        ### How many pts to drop
+        Npts = len(cost_sum)
+        NptsDrop = int(np.floor(perc_drop * Npts))
+        
+        ### Sort from low to high 
+        ix_sort = np.argsort(cost_sum)
+        
+        ### Remove the highest cost 
+        ix_remove = ix_sort[-NptsDrop:]
+        
+        ### Update indices to remove cost
+        indices = np.delete(indices, ix_remove)
 
-            ### Make sure the cost went down 
-            assert(np.sum(np.sum(cost[ix_sort[:-NptsDrop]]**2, axis=1)) < np.sum(cost_sum))
-            
-            if plot:
-                f, ax = plt.subplots(ncols = nVar)
-                for i in range(nVar):
-                    ax[i].hist(push_command_mov[:, i], alpha=.3)
-                    ax[i].vlines(np.mean(push_command_mov[:, i]), 0, 50, 'b')
-                    ax[i].hist(push_command[indices, i], alpha=.3)
-                    ax[i].vlines(np.mean(push_command[indices, i]), 0, 50, 'g')
+        ### Make sure the cost went down 
+        assert(np.sum(np.sum(cost[ix_sort[:-NptsDrop]]**2, axis=1)) < np.sum(cost_sum))
+        
+        if plot:
+            f, ax = plt.subplots(ncols = nVar)
+            for i in range(nVar):
+                ax[i].hist(push_command_mov[:, i], alpha=.3)
+                ax[i].vlines(np.mean(push_command_mov[:, i]), 0, 50, 'b')
+                ax[i].hist(push_command[indices, i], alpha=.3)
+                ax[i].vlines(np.mean(push_command[indices, i]), 0, 50, 'g')
 
 def distribution_match_mov_pairwise(push_com1, push_com2, psig=.05, 
                                   perc_drop = 0.05):
@@ -344,7 +352,7 @@ def test_multi_match():
         print('pv %.3f' %(mdf.pvalues['Group Var']))
 
 def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000,
-                            min_bin_indices = 0, match_pos = False, save=False):
+                            min_bin_indices = 0, match_pos = False, save=False, factor_global_gt_mov=1):
     """
     Plot example single neuron and population deviations from global distribution
     
@@ -365,22 +373,22 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
     spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix)
     
 
-    if match_pos: 
-        order_d = analysis_config.data_params['%s_ordered_input_type'%animal][day_ix]
-        day = analysis_config.data_params['%s_input_type'%animal][day_ix]
-        history_bins_max = 1; 
+    #if match_pos: 
+    order_d = analysis_config.data_params['%s_ordered_input_type'%animal][day_ix]
+    day = analysis_config.data_params['%s_input_type'%animal][day_ix]
+    history_bins_max = 1; 
 
-        ### pull data ### 
-        data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
-            day, order_d, history_bins_max, day_ix = day_ix, within_bin_shuffle = False, 
-            keep_bin_spk_zsc = False, null = False)
+    ### pull data ### 
+    data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = generate_models_utils.get_spike_kinematics(animal,
+        day, order_d, history_bins_max, day_ix = day_ix, within_bin_shuffle = False, 
+        keep_bin_spk_zsc = False, null = False)
 
-        ### spikes ####
-        assert(np.all(data['spks'] == spks))
-        assert(data['spks'].shape[0] == data['pos'].shape[0])
+    ### spikes ####
+    assert(np.all(data['spks'] == spks))
+    assert(data['spks'].shape[0] == data['pos'].shape[0])
 
-        ### pull position ### 
-        position = data['pos']
+    ### pull position ### 
+    position = data['pos']
 
     ### Multiply spks by 10 early on; 
     spks = spks*10
@@ -397,6 +405,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
     fdist, axdist = plt.subplots(figsize=(3, 3))
     f, ax = plt.subplots(figsize=(3, 3))
     fvect, axvect = plt.subplots(figsize=(3.5, 3))
+    fpos, axpos = plt.subplots(figsize = (3, 3))
 
     ### Return indices for the command ### 
     ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal=animal, 
@@ -413,6 +422,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
     mFR_shuffle_vect = {}
     mFR_dist = {}
 
+    pos_mn_std = {}
 
     ### For all movements --> figure otu which ones to keep in the global distribution ###
     global_comm_indices = {}
@@ -466,47 +476,54 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             print('Mov %.1f, # Iters %d to match global, len global_ix_ok %d, len_com %d'%(mov, 
                 niter, len(ix_ok), len(ix_mc_all)))
             
-            ### which indices we can use in global distribution for this shuffle ----> #### 
-            ix_com_global_ok = ix_com_global[ix_ok] 
-            global_mean_vect = np.mean(spks[ix_com_global_ok, :], axis=0)
-            
-            assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
-            assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
-
-            ### make sure both movmenets still represneted. 
-            assert(len(np.unique(move[ix_com_global_ok])) > 1)
-            
-            Nglobal = len(ix_com_global_ok)
-            Ncommand_mov = len(ix_mc_all)
-
-            ### only assess if you were able to ensure Nglobal >> Ncommand_mov ## 
-            ### In general this will be trivially true (i.e. used to be an assertion)
-            ###  but may not be when controlling for position 
-
-            ###  Method for inlusion ## #
-            if Nglobal > Ncommand_mov: 
-
-                ### Get matching global distribution 
-                mFR_shuffle[mov] = []
-                mFR_shuffle_vect[mov] = []
-                mFR_dist[mov] = []
+            if len(ix_ok) > 0: 
+                ### which indices we can use in global distribution for this shuffle ----> #### 
+                ix_com_global_ok = ix_com_global[ix_ok] 
+                global_mean_vect = np.mean(spks[ix_com_global_ok, :], axis=0)
                 
-                for i_shuff in range(nshuffs):
-                    ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
-                    mFR_shuffle[mov].append(np.mean(spks[ix_com_global_ok[ix_sub], neuron_ix]))
+                assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
+                assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
+
+                ### make sure both movmenets still represneted. 
+                assert(len(np.unique(move[ix_com_global_ok])) > 1)
+                
+                Nglobal = len(ix_com_global_ok)
+                Ncommand_mov = len(ix_mc_all)
+
+                ### only assess if you were able to ensure Nglobal >> Ncommand_mov ## 
+                ### In general this will be trivially true (i.e. used to be an assertion)
+                ###  but may not be when controlling for position 
+
+                ###  Method for inlusion ## #
+                if Nglobal > factor_global_gt_mov*Ncommand_mov: 
+
+                    ### Get matching global distribution 
+                    mFR_shuffle[mov] = []
+                    mFR_shuffle_vect[mov] = []
+                    mFR_dist[mov] = []
                     
-                    mshuff_vect = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
-                    mFR_shuffle_vect[mov].append(np.linalg.norm(mshuff_vect - global_mean_vect)/nneur)
-                
-                ### Save teh distribution ####
-                mFR_dist[mov] = FR 
+                    for i_shuff in range(nshuffs):
+                        ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
+                        mFR_shuffle[mov].append(np.mean(spks[ix_com_global_ok[ix_sub], neuron_ix]))
+                        
+                        mshuff_vect = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
+                        mFR_shuffle_vect[mov].append(np.linalg.norm(mshuff_vect - global_mean_vect)/nneur)
+                    
+                    ### Save teh distribution ####
+                    mFR_dist[mov] = FR 
 
-                ### Save teh shuffles 
-                mFR[mov] = np.mean(FR)
-                mFR_vect[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)/nneur
-                mov_number.append(mov)
-               
-                print('mov %.1f, N = %d, mFR = %.2f'% (mov, len(ix_mc), np.mean(FR)))
+                    ### Save teh shuffles 
+                    mFR[mov] = np.mean(FR)
+                    mFR_vect[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)/nneur
+                    mov_number.append(mov)
+                   
+                    print('mov %.1f, N = %d, mFR = %.2f'% (mov, len(ix_mc), np.mean(FR)))
+
+                    ### save mpostions --> mov mean, mov std, global mean, global std ####
+                    #if match_pos: 
+                    pos_mn_std[mov] = [np.mean(position[ix_mc_all, :], axis=0),        np.std(position[ix_mc_all], axis=0), 
+                                   np.mean(position[ix_com_global_ok, :], axis=0), np.std(position[ix_com_global_ok, :], axis=0)]
+
 
         #### Plot by target number ####
         keys = np.argsort(np.hstack((mFR.keys())) % 10)
@@ -550,6 +567,24 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             util_fcns.draw_plot(x, mFR_shuffle_vect[mov] - mn_shuf, 'gray', np.array([0., 0., 0., 0.]), axvect)
             axvect.plot(x, mFR_vect[mov] - mn_shuf, '.', color=colrgb, markersize=20)
         
+            #if match_pos: 
+            mn_mv, st_mv, mn_glb, st_glb = pos_mn_std[mov]
+
+            for k, (mn, st) in enumerate([[mn_mv, st_mv], [mn_glb, st_glb]]): 
+                if k == 0: 
+                    col = colrgb
+                else: 
+                    col = 'gray'
+
+                axpos.plot([mn[0] - (2*st[0]), mn[0] + (2*st[0])], 
+                           [mn[1], mn[1]], '-', color=col)
+                axpos.plot([mn[0], mn[0]], 
+                           [mn[1]-(2*st[1]), mn[1]+(2*st[1])], '-', color=col)
+                axpos.plot(mn[0], mn[1], '.', color=col, markersize=30)
+
+                axpos.set_xlim([-13, 13])
+                axpos.set_ylim([-13, 13])
+
 
 
         for axi in [ax, axvect, axdist]:
@@ -566,18 +601,21 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
     
         f.tight_layout()
         if save:
-            util_fcns.savefig(f, 'n%d_mag%d_ang%d_%s_d%d_min_bin%d'%(neuron_ix, mag, ang, animal, day_ix, min_bin_indices))
+            util_fcns.savefig(f, 'n%d_mag%d_ang%d_%s_d%d_min_bin%d_factor%d'%(neuron_ix, mag, ang, animal, day_ix, 
+                min_bin_indices, factor_global_gt_mov))
         
         axvect.set_ylabel('Pop. Activity Dist. \n centered by shuffle mn (Hz) ')    
         
         fvect.tight_layout()
         if save:
-            util_fcns.savefig(fvect, 'POP_mag%d_ang%d_%s_d%d_min_bin%d'%(mag, ang, animal, day_ix, min_bin_indices))
+            util_fcns.savefig(fvect, 'POP_mag%d_ang%d_%s_d%d_min_bin%d_factor%d'%(mag, ang, animal, day_ix, 
+                min_bin_indices, factor_global_gt_mov))
 
         axdist.set_ylim([-2, 52])
         fdist.tight_layout()
         if save:
-            util_fcns.savefig(fdist, 'n%d_dist_mag%d_ang%d_%s_d%d_min_bin%d'%(neuron_ix, mag, ang, animal, day_ix, min_bin_indices))
+            util_fcns.savefig(fdist, 'n%d_dist_mag%d_ang%d_%s_d%d_min_bin%d_factor%d'%(neuron_ix, mag, ang, animal, day_ix, 
+                min_bin_indices, factor_global_gt_mov))
 
 def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs = 1000, min_bin_indices = 0,
     save = False, center_by_global = False): 
@@ -736,6 +774,454 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             util_fcns.savefig(f2, 'Next_command_diff_mag%d_ang%d_%s_d%d'%(mag, ang, animal, day_ix))
     
 ##### Main plotting functions to use in Figs 2 and 3 ########
+def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False, 
+    nsessions = None):
+    """
+
+    Attempt to compare pairwise distances to one another: 
+        Previous approach: 
+            Compute GLOBAL, match it to com-mov distribution 
+            Sample GLOBAL to see what noisily sampling global looks like 
+            Compare mean of com-mov to sample of global
+            Issue (R4): is GLOBAL has ONE outlier com-mov, will make ALL com-mov look sig. diff than global; 
+        
+        This approach: 
+            Isolate mov-com to avoid this issue, and compare pairwise 
+            Select two conditions; 
+                -- correct larger to match smaller command dist; 
+                -- ensure still >= 15 for both 
+                -- compute mean differences
+
+                -- load data from the shuffle 
+                    -- select conditions that were selected above 
+                    -- match command dists 
+                    -- ensure still >= 15 for both 
+                    -- compute mean diffs
+    """
+
+    ### Open mag boundaries 
+    mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
+
+    ### Dictionaries to hold the pvalues and effect sizes of the signfiicant and non-sig 
+    perc_sig = {}; 
+    perc_sig_vect = {}; 
+
+
+    niter2match = {}
+
+    pooled_stats = {}
+    
+    for ia, animal in enumerate(['grom', 'jeev']): # add homer later; 
+        
+        if nsessions is None: 
+            nsess = analysis_config.data_params['%s_ndays'%animal]
+        else: 
+            nsess = nsessions; 
+
+        for day_ix in range(nsess):
+            
+            ### Setup the dictionaries for this animal and date
+            perc_sig[animal, day_ix] = {}
+            perc_sig_vect[animal, day_ix] = {}
+            niter2match[animal, day_ix] = {}
+            pooled_stats[animal, day_ix] = []
+
+            ### Pull data ### 
+            spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, 
+                day_ix, keep_bin_spk_zsc=keep_bin_spk_zsc)
+
+            ### Convert spike count (e.g. 2 spks/bin to rate: 2 spks/bin *1 bin/.1 sec = 20 Hz)
+            ### For homer spks count should be in z-scored values for bin
+            if animal == 'home' and keep_bin_spk_zsc:
+                pass
+                ### dont multipy by 10 if youve been zscored
+            else:
+                spks = spks * 10
+    
+            nneur = spks.shape[1]
+            command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
+                                       vel_ix=[3, 5])[0]
+
+            #### Add this for easier analysis later 
+            perc_sig[animal, day_ix, 'nneur'] = nneur
+            pooled_stats[animal, day_ix, 'nneur'] = nneur
+            pooled_stats[animal, day_ix, 'nshuffs'] = nshuffs
+
+            ### For each command get: ###
+            mag_cnt = 0
+            for mag in range(4):
+                
+                for ang in range(8): 
+
+                    print('%s, %d, mag %d, ang %d'%(animal, day_ix, mag, ang))
+            
+                    #### Common indices 
+                    #### Get the indices for command ####
+                    ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, mag=mag, ang=ang,
+                                           animal=animal, day_ix=day_ix, min_bin_num=min_bin_indices,
+                                           min_rev_bin_num=min_bin_indices)
+                    mag_cnt += len(ix_com)
+
+                    ix_com_global = []
+                    global_comm_indices = {}
+                    com_mov_indices = {}
+
+                    #### Go through the movements ####
+                    for mov0 in np.unique(move[ix_com]):
+                        
+                        ### Movement specific command indices 
+                        ix_mc = np.nonzero(move[ix_com] == mov0)[0]
+
+                        #### Overall indices (overall) 
+                        ix_mc_all = ix_com[ix_mc]
+                        
+                        ### If enough of these then proceed; 
+                        if len(ix_mc) >= 15:    
+                            ### Command movement indices (subset of ix_mc) ### 
+                            com_mov_indices[mov0] = ix_mc
+
+                            ### More global command indices ###
+                            global_comm_indices[mov0] = ix_mc_all
+
+                            ### Stack together ###
+                            ix_com_global.append(ix_mc_all)
+
+                    if len(ix_com_global) > 0: 
+                        ix_com_global = np.hstack((ix_com_global))
+
+                        ### Only command, only movs we want: ####
+                        assert(np.all(command_bins[ix_com_global, 0] == mag))
+                        assert(np.all(command_bins[ix_com_global, 1] == ang))
+
+                        ### All indices correspond to the right movements 
+                        assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global])))
+
+                        ### Iterate through the moves we want 
+                        movements = np.array(global_comm_indices.keys())
+
+                        ##### PAIRS OF MOVEMENTS #####
+                        ##### PAIRS OF MOVEMENTS #####
+                        ##### PAIRS OF MOVEMENTS #####
+                        for i_m, mov1 in enumerate(movements): 
+
+                            ix_mc_all_og = global_comm_indices[mov1]
+                            Ncommand_mov = len(ix_mc_all_og)
+                                
+                            for mov2 in movements[i_m+1:]: 
+
+                                ## make sure not the same 
+                                assert(mov1 != mov2)
+
+                                ix_mc_all2_og = global_comm_indices[mov2]
+                                Ncommand_mov2 = len(ix_mc_all2_og)
+                                
+                                ### Which one is bigger --> set taht one as "global" 
+                                ########### match distributions ###############
+                                if Ncommand_mov2 > Ncommand_mov: 
+                                    ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all_og, [3, 5])], 
+                                                             push[np.ix_(ix_mc_all2_og, [3, 5])], 
+                                                             ok_if_glob_lt_mov = True)
+                                    if len(ix_ok) > 0: 
+                                        ix_mc_all = ix_mc_all_og.copy()
+                                        ix_mc_all2 = ix_mc_all2_og[ix_ok]
+                                    else:
+                                        pass
+
+                                else: 
+                                    ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all2_og, [3, 5])], 
+                                                             push[np.ix_(ix_mc_all_og, [3, 5])], 
+                                                             ok_if_glob_lt_mov = True)
+                                    if len(ix_ok) > 0: 
+                                        ix_mc_all = ix_mc_all_og[ix_ok]
+                                        ix_mc_all2 = ix_mc_all2_og.copy()
+                                    else: 
+                                        pass
+
+                                ### ok now make sure both are >> 15 still 
+                                if len(ix_ok) > 0 and len(ix_mc_all) >= 15 and len(ix_mc_all2) >= 15: 
+
+                                    ###### Make sure we didn't mess up ########
+                                    assert(np.all(command_bins[ix_mc_all, 0] == mag))
+                                    assert(np.all(command_bins[ix_mc_all, 1] == ang))
+
+                                    assert(np.all(move[ix_mc_all] == mov1))
+                                    assert(np.all(move[ix_mc_all2] == mov2))
+
+                                    assert(np.all(command_bins[ix_mc_all2, 1] == ang))
+                                    assert(np.all(command_bins[ix_mc_all2, 0] == mag))
+
+                                    ########## Mean diff FR ###############
+                                    dmean_diff_fr = np.abs(np.mean(spks[ix_mc_all, :], axis=0) - np.mean(spks[ix_mc_all2, :], axis=0))
+
+                                    abort = False
+                                    dmFR_shuffle = []
+
+                                    for i_shuff in range(nshuffs): 
+                                        fail_shuffle = 0; 
+                                        succ_shuffle = 0; 
+                                        trying = True 
+                                        
+                                        while trying: 
+                                            ########## Now do shuffle on command indices #######
+                                            shf = np.random.permutation(len(ix_com))
+                                            shuffle_ix_com = ix_com[shf]
+
+                                            ######### Now get mov-spec 1 and mov-spec 2 
+                                            ix_mc_all_og_shuff = shuffle_ix_com[com_mov_indices[mov1]]
+                                            ix_mc_all2_og_shuff = shuffle_ix_com[com_mov_indices[mov2]]
+
+                                            ######### Now match these distributions ############
+                                            if Ncommand_mov2 > Ncommand_mov: 
+                                                ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all_og_shuff, [3, 5])], 
+                                                                         push[np.ix_(ix_mc_all2_og_shuff, [3, 5])], 
+                                                                         ok_if_glob_lt_mov = True)
+                                                if len(ix_ok) > 0: 
+                                                    ix_mc_all = ix_mc_all_og_shuff
+                                                    ix_mc_all2 = ix_mc_all2_og_shuff[ix_ok]
+                                                else: 
+                                                    pass
+
+                                            else: 
+                                                ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all2_og_shuff, [3, 5])], 
+                                                                         push[np.ix_(ix_mc_all_og_shuff, [3, 5])], 
+                                                                         ok_if_glob_lt_mov = True)
+                                                if len(ix_ok) > 0: 
+                                                    ix_mc_all = ix_mc_all_og_shuff[ix_ok]
+                                                    ix_mc_all2 = ix_mc_all2_og_shuff
+                                                else: 
+                                                    pass
+
+                                            if len(ix_ok) > 0: 
+
+                                                ### make sure commands match 
+                                                assert(np.all(command_bins[ix_mc_all, 0] == mag))
+                                                assert(np.all(command_bins[ix_mc_all, 1] == ang))
+                                                assert(np.all(command_bins[ix_mc_all2, 1] == ang))
+                                                assert(np.all(command_bins[ix_mc_all2, 0] == mag))
+
+                                                assert(not np.all(move[ix_mc_all] == mov1))
+                                                assert(not np.all(move[ix_mc_all2] == mov2))
+                                                
+                                                ### ok now make sure both are >> 15 still 
+                                                if len(ix_mc_all) >= 15 and len(ix_mc_all2) >= 15: 
+
+                                                    #### Check #### 
+                                                    dmFR_shuffle.append(np.abs(np.mean(spks[ix_mc_all, :], axis=0) - np.mean(spks[ix_mc_all2, :], axis=0)))
+                                                    succ_shuffle += 1
+                                                    trying = False 
+                                                else: 
+                                                    fail_shuffle += 1
+
+                                            else: 
+                                                fail_shuffle += 1
+
+                                            ### quite if you can't match distributions often enough ####
+                                            if ((fail_shuffle + succ_shuffle) > 10) and (float(succ_shuffle) / float(fail_shuffle + succ_shuffle) < 0.5):
+                                                abort = True
+                                                print('aborting %s, %d, i_shuff %d, mag %d, ang %d'%(animal, day_ix, i_shuff, mag, ang))
+                                                break
+
+                                    if abort:
+                                        pass 
+                                    else: 
+                                        ### Stack ####
+                                        dmFR_shuffle = np.vstack((dmFR_shuffle))
+                                        
+                                        ### Add mag/ang/mov to this so later can pool over commands / conditions etc ####
+                                        ### TRUE diff, SHUFFLE diff, mag , ang , mov1, mov2 
+                                        #print('Adding mov1 %.1f, mov2 %.1f, mag %d, ang %d'%(mov1, mov2, mag, ang))
+                                        pooled_stats[animal, day_ix].append([dmean_diff_fr, dmFR_shuffle, mag, ang, mov1, mov2])
+
+    return pooled_stats
+
+
+def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True, nsessions = None, 
+    save_suff = ''):
+    '''
+    goal: 
+        1. fraction of command/condition-pairs sig. diff (population)
+        2. fraction of commands           sig. diff (population, pooled over condition pairs)
+        3. fraction of neurons            sig. diff (single neurons, pooled over command/condition pairs (sig.))
+        4. fraction distance from condition-pooled (population)
+    '''
+
+    #### Each plot ####
+    f_fracCC, ax_fracCC = plt.subplots(figsize=(2, 3))
+    f_fracCom, ax_fracCom = plt.subplots(figsize=(2, 3))
+    f_fracN, ax_fracN = plt.subplots(figsize=(2, 3))
+    f_fracdist, ax_fracdist = plt.subplots(figsize=(2, 3))
+    f_fracdist_sig, ax_fracdist_sig = plt.subplots(figsize=(2, 3))
+
+    ylabels = dict()
+    ylabels['fracCC'] = 'frac. (command,condition-pairs) \nw. sig. deviations'
+    ylabels['fracCom']= 'frac. (command) \nw. sig. deviations'
+    ylabels['fracN']  = 'frac. (neuron) w. sig. deviations \nfor sig. (command, condition-pairs)'
+    ylabels['fracdist'] = ''
+    ylabels['fracdist_shuff']  = 'norm. pop. dist'
+    ylabels['fracdist_sig'] = ''
+    ylabels['fracdist_shuff_sig']  = 'norm. pop. dist for sig. (command,condition)'
+
+    for ia, animal in enumerate(['grom', 'jeev']):
+        bar_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist=[], fracdist_shuff=[], fracdist_sig=[], fracdist_shuff_sig=[])
+        stats_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist_sig=[], fracdist_shuff_sig=[])
+
+        if nsessions is None: 
+            nsess = analysis_config.data_params['%s_ndays'%animal]
+        else:
+            nsess = nsessions
+
+        for day_ix in range(nsess):
+
+            Nneur = pooled_stats[animal, day_ix, 'nneur']
+            Nshuffs = pooled_stats[animal, day_ix, 'nshuffs']
+
+            ########## # of Cond/com sig. and # of com sig. ###########
+            nCC = 0
+            nCC_sig = 0
+
+            nCom = 0
+            nCom_sig = 0 
+
+            nNeur = 0
+            nNeur_sig = 0
+
+            #### starting with command/conditions signifiant 
+            stats = pooled_stats[animal, day_ix] ### dmean_FR, dmFR_shuffle, mag, ang, mov1, mov2
+
+            command_sig = dict(); 
+            commands_already = []
+            
+            neuron_sig = dict()
+            for n in range(Nneur): neuron_sig[n] = dict(vals=[], shuffs=[])
+
+            NComCond = len(stats)
+            
+            for i_nComCond in range(NComCond): 
+
+                ### unpack 
+                dmean_FR, dmFR_shuffle, mag, ang, mov1, mov2 = stats[i_nComCond]
+
+                assert(Nshuffs == dmFR_shuffle.shape[0])
+                assert(len(dmean_FR) == dmFR_shuffle.shape[1] == Nneur)
+
+                ### pv for command/conditions ### 
+                n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle, axis=1) >= np.linalg.norm(dmean_FR))[0])
+                pv_cc = float(n_lte) / float(Nshuffs)
+
+                if pv_cc < 0.05:
+                    nCC_sig += 1
+                nCC+= 1
+
+                #### Add to command sig 
+                if [mag, ang] not in commands_already:
+                    command_sig[tuple([mag, ang])] = dict(vals=[], shuffs=[])
+                    commands_already.append([mag, ang])
+
+                command_sig[tuple([mag, ang])]['vals'].append(np.linalg.norm(dmean_FR))
+                command_sig[tuple([mag, ang])]['shuffs'].append(np.linalg.norm(dmFR_shuffle, axis=1))
+                    
+                ##### Add to neuron values if signficant ### 
+                if pv_cc < 0.05: 
+                    for nneur in range(Nneur):
+                        neuron_sig[nneur]['vals'].append(np.abs(dmean_FR[nneur]))
+                        neuron_sig[nneur]['shuffs'].append(np.abs(dmFR_shuffle[:, nneur]))
+                
+            ########## Now we can plot frac of command/conditions sig #############
+            ax_fracCC.plot(ia, float(nCC_sig)/float(nCC), 'k.')
+            bar_dict['fracCC'].append(float(nCC_sig)/float(nCC))
+            
+            print('%s, %d, # of com-cond pairs analyzed %d, # pop. sig %d'%(animal, day_ix, 
+                nCC, nCC_sig))
+            
+            ########## Frac commands with SOME sig deviations #########################
+            for ic, com in enumerate(commands_already): 
+                vals = command_sig[tuple(com)]['vals']
+                shuf = command_sig[tuple(com)]['shuffs']
+                
+                assert(len(vals) == len(shuf))
+                ### Average over ###
+
+                shuf = np.vstack((shuf))
+                assert(shuf.shape[0] == len(vals))
+                assert(shuf.shape[1] == Nshuffs)
+
+                shuf_mn = np.mean(shuf, axis=0)
+                val_mn = np.mean(vals)
+
+                nshuff_gte = len(np.nonzero(shuf_mn >= val_mn)[0])
+                pv_com = float(nshuff_gte)/float(Nshuffs)
+
+                if pv_com < 0.05:
+                    nCom_sig += 1
+                nCom += 1
+
+            ########## Plot # sig commands over conditions ##################
+            ax_fracCom.plot(ia, float(nCom_sig)/float(nCom), 'k.')
+            bar_dict['fracCom'].append(float(nCom_sig)/float(nCom))
+
+            ########## Number of neurons ####################################
+            for i_n in neuron_sig.keys():
+                vals = neuron_sig[i_n]['vals']
+                shuf = neuron_sig[i_n]['shuffs']
+                assert(len(vals) == len(shuf))
+
+                shuf = np.vstack((shuf))
+                assert(shuf.shape[0] == len(vals))
+                assert(shuf.shape[1] == Nshuffs)
+
+                ####### use pooling method #############
+                shuf_mn = np.mean(shuf, axis=0)
+                val_mn = np.mean(vals)
+
+                nshuff_gte = len(np.nonzero(shuf_mn >= val_mn)[0])
+                pv_neur = float(nshuff_gte)/float(Nshuffs)
+
+                if pv_neur < 0.05:
+                    nNeur_sig += 1
+                nNeur += 1
+
+            ############# Plot sig neurons #################################
+            ax_fracN.plot(ia, float(nNeur_sig)/float(nNeur), 'k.')
+            bar_dict['fracN'].append(float(nNeur_sig)/float(nNeur))
+
+
+        #### Plot bar plots 
+        for _, (key, ax, wid, offs, alpha) in enumerate(zip(
+            ['fracCC', 'fracCom', 'fracN'],# 'fracdist', 'fracdist_shuff', 'fracdist_sig', 'fracdist_shuff_sig'], 
+            [ax_fracCC, ax_fracCom, ax_fracN],# ax_fracdist, ax_fracdist, ax_fracdist_sig, ax_fracdist_sig], 
+            [.8, .8, .8],# .4, .4, .4, .4], 
+            [0,   0,  0],# 0, .4, 0, .4],
+            [.2, .2, .2])):# .2, 0., .2, 0.])):
+            if alpha == 0.:
+                ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, color='w', edgecolor='k',
+                    linewidth=.5)
+            else:
+                ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, alpha=alpha, color='k')
+            ax.set_ylabel(ylabels[key], fontsize=8)
+            ax.set_xticks([0, 1])
+            ax.set_xticklabels(['G', 'J'])
+
+            if key == 'fracdist_shuff_sig':
+                ax.set_xlim([-.3, 1.7])
+            else:
+                ax.set_xlim([-1, 2])
+            if 'dist' not in key:
+                ax.set_yticks([0., 0.2, .4, .6, .8, 1.0])
+                ax.set_ylim([0., 1.05])
+            
+            #### Remove spines 
+            for side in ['right', 'top']:
+                spine_side = ax.spines[side]
+                spine_side.set_visible(False)
+
+        
+    for _, (f, yl) in enumerate(zip([f_fracCC, f_fracCom, f_fracN],#, f_fracdist, f_fracdist_sig],
+        ['fracCC', 'fracCom', 'fracN_sig'])):# 'fracdist', 'fracdist_sig'])):
+        
+        f.tight_layout()
+        if save: 
+            util_fcns.savefig(f, yl+'_PAIRS_'+save_suff)
+
 def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False, 
     match_pos = False, factor_global_gt_mov = 1, nsessions = None):
     """
