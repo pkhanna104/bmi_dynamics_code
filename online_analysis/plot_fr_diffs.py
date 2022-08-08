@@ -774,6 +774,8 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
             util_fcns.savefig(f2, 'Next_command_diff_mag%d_ang%d_%s_d%d'%(mag, ang, animal, day_ix))
     
 ##### Main plotting functions to use in Figs 2 and 3 ########
+
+### Added pairwise rebuttal --> 8/8/22
 def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False, 
     nsessions = None):
     """
@@ -1034,7 +1036,6 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
 
     return pooled_stats
 
-
 def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True, nsessions = None, 
     save_suff = ''):
     '''
@@ -1056,14 +1057,10 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
     ylabels['fracCC'] = 'frac. (command,condition-pairs) \nw. sig. deviations'
     ylabels['fracCom']= 'frac. (command) \nw. sig. deviations'
     ylabels['fracN']  = 'frac. (neuron) w. sig. deviations \nfor sig. (command, condition-pairs)'
-    ylabels['fracdist'] = ''
-    ylabels['fracdist_shuff']  = 'norm. pop. dist'
-    ylabels['fracdist_sig'] = ''
-    ylabels['fracdist_shuff_sig']  = 'norm. pop. dist for sig. (command,condition)'
-
+    
     for ia, animal in enumerate(['grom', 'jeev']):
-        bar_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist=[], fracdist_shuff=[], fracdist_sig=[], fracdist_shuff_sig=[])
-        stats_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist_sig=[], fracdist_shuff_sig=[])
+        bar_dict = dict(fracCC=[], fracCom=[], fracN=[])#, fracdist=[], fracdist_shuff=[], fracdist_sig=[], fracdist_shuff_sig=[])
+        stats_dict = dict(fracCC=[], fracCom=[], fracN=[])#, fracdist_sig=[], fracdist_shuff_sig=[])
 
         if nsessions is None: 
             nsess = analysis_config.data_params['%s_ndays'%animal]
@@ -1085,8 +1082,9 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
             nNeur = 0
             nNeur_sig = 0
 
-            #### starting with command/conditions signifiant 
-            stats = pooled_stats[animal, day_ix] ### dmean_FR, dmFR_shuffle, mag, ang, mov1, mov2
+            #### starting with command/conditions significant 
+            ### dmean_FR, dmFR_shuffle, mag, ang, mov1, mov2
+            stats = pooled_stats[animal, day_ix] 
 
             command_sig = dict(); 
             commands_already = []
@@ -1105,6 +1103,8 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
                 assert(len(dmean_FR) == dmFR_shuffle.shape[1] == Nneur)
 
                 ### pv for command/conditions ### 
+                assert(len(np.linalg.norm(dmFR_shuffle, axis=1)) == Nshuffs)
+
                 n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle, axis=1) >= np.linalg.norm(dmean_FR))[0])
                 pv_cc = float(n_lte) / float(Nshuffs)
 
@@ -1139,8 +1139,8 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
                 shuf = command_sig[tuple(com)]['shuffs']
                 
                 assert(len(vals) == len(shuf))
-                ### Average over ###
-
+                
+                ### Average over all command's condition-pairs ###
                 shuf = np.vstack((shuf))
                 assert(shuf.shape[0] == len(vals))
                 assert(shuf.shape[1] == Nshuffs)
@@ -1221,6 +1221,8 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
         f.tight_layout()
         if save: 
             util_fcns.savefig(f, yl+'_PAIRS_'+save_suff)
+
+#######
 
 def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False, 
     match_pos = False, factor_global_gt_mov = 1, nsessions = None):
@@ -1681,6 +1683,12 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
                 nNeur += 1
 
             ############# Plot sig neurons #################################
+            print('')
+            print('')
+            print('Num sig neurons %d / %d, Animal %s, day %d'%(nNeur_sig, nNeur, animal, day_ix))
+            print('')
+            print('')
+            
             ax_fracN.plot(ia, float(nNeur_sig)/float(nNeur), 'k.')
             bar_dict['fracN'].append(float(nNeur_sig)/float(nNeur))
 
