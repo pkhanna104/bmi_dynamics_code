@@ -1225,13 +1225,18 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
 #######
 
 def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False, 
-    match_pos = False, factor_global_gt_mov = 1, nsessions = None):
+    match_pos = False, factor_global_gt_mov = 1, nsessions = None, pred_spks = None):
     """
     Args:
         nshuffs (int, optional): Description
         min_bin_indices (int, optional): number of bins to remove from beginning AND end of the trial 
         match_pos: whether to additional match the global position distribution to the com-mov position distribution
             while doing the command matching 
+        factor_global_gt_mov: factor to say how much larger the global distribution eneds to be than the mov-spec dist
+        nsessions: if only want the first few sessions 
+        pred_spks: (dict, optional)
+            pred_spks[animal, day_ix] = np.array((nT, nNeurons)), 
+            if included will also compute dmfr for pred_spks 
     
     Update: 3/31/21 --> now want to use the "pooling" method to assess if commands / neurons are sig. 
         -- report population significance; 
@@ -1251,6 +1256,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
     niter2match = {}
 
     pooled_stats = {}
+    pooled_stats_pred = {}
     
     for ia, animal in enumerate(['grom', 'jeev']): # add homer later; 
         
@@ -1267,6 +1273,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
             niter2match[animal, day_ix] = {}
                         
             pooled_stats[animal, day_ix] = []
+            pooled_stats_pred[animal, day_ix] = []
 
             ### Pull data ### 
             spks, push, tsk, trg, bin_num, rev_bin_num, move, dat = util_fcns.get_data_from_shuff(animal, day_ix, keep_bin_spk_zsc=keep_bin_spk_zsc)
@@ -1288,6 +1295,30 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
                 ### pull position ### 
                 position = data['pos']
 
+            if pred_spks is not None: 
+
+                #### TRL id -- get that ###
+                dat['trl'] = []
+                for tn, (bn) in enumerate(dat['Data']['bin_num']): 
+                    dat['trl'].append(np.zeros((len(bn), )) + tn)
+                dat['trl'] = np.hstack((dat['trl']))
+                assert(len(dat['trl']) == len(trg))
+
+                assert(len(np.unique(dat['trl'])) == len(np.unique(pred_spks[animal, day_ix, 'trl'])))
+
+                bin_num_pred = pred_spks[animal, day_ix, 'bin']
+                trl_num_pred = pred_spks[animal, day_ix, 'trl']
+
+                ### fill in with nans ## 
+                pred_spks_i = np.zeros_like(spks)
+                pred_spks_i[:, :] = np.nan 
+
+                ### fill in pred_spks ### 
+                for pred_i, (b, t) in enumerate(zip(bin_num_pred, trl_num_pred)): 
+                    ix = np.nonzero(np.logical_and(bin_num == b, dat['trl'] == t))[0]
+                    assert(len(ix) == 1)
+                    pred_spks_i[ix, :] = pred_spks[animal, day_ix][pred_i, :]
+
             ### Convert spike count (e.g. 2 spks/bin to rate: 2 spks/bin *1 bin/.1 sec = 20 Hz)
             ### For homer spks count should be in z-scored values for bin
             if animal == 'home' and keep_bin_spk_zsc:
@@ -1304,6 +1335,10 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
             perc_sig[animal, day_ix, 'nneur'] = nneur
             pooled_stats[animal, day_ix, 'nneur'] = nneur
             pooled_stats[animal, day_ix, 'nshuffs'] = nshuffs
+
+            pooled_stats_pred[animal, day_ix, 'nneur'] = nneur
+            pooled_stats_pred[animal, day_ix, 'nshuffs'] = nshuffs
+
 
             ### For each command get: ###
             mag_cnt = 0
@@ -1395,19 +1430,29 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
                                     dmFR_shuffle = []; ## Absolute differences from global 
                                     mFR_shuffle = [] ### Just shuffled mFR 
                                     
+                                    pred_dmFR_shuffle = []; 
+                                    pred_mFR_shuffle = []; 
+
                                     for i_shuff in range(nshuffs):
                                         ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov] ### This step needs to make sure global >> mov
                                         mn_tmp = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
                                         
                                         dmFR_shuffle.append(np.abs(mn_tmp - global_mean_FR))
                                         mFR_shuffle.append(mn_tmp)
-                                        
+
                                     ### Stack ####
                                     dmFR_shuffle = np.vstack((dmFR_shuffle))
                                     mFR_shuffle = np.vstack((mFR_shuffle))
                                     
                                     ### Add mag/ang/mov to this so later can pool over commands / conditions etc ####
                                     pooled_stats[animal, day_ix].append([dmean_FR, dmFR_shuffle, mag, ang, mov, global_mean_FR])
+
+                                    if pred_spks is not None: 
+                                        pred_mov_mean_FR = np.nanmean(pred_spks_i[ix_mc_all, :], axis=0)
+                                        pred_dmean_FR = np.abs(pred_mov_mean_FR - global_mean_FR)
+
+                                        ### Save to pooled_stats_pred 
+                                        pooled_stats_pred[animal, day_ix].append([pred_dmean_FR, dmFR_shuffle, mag, ang, mov, global_mean_FR])
 
                                     ### For each neuron go through and do the signficiance test ####
                                     for i_neur in range(nneur):
@@ -1433,8 +1478,11 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
 
                 #print('Mag Cnt, mag = %d, monk = %s, day = %d, cnt = %d' %(mag, animal, day_ix, mag_cnt))
                 mag_cnt = 0
-                                  
-    return perc_sig, perc_sig_vect, niter2match, pooled_stats
+    
+    if pred_spks is None:     
+        return perc_sig, perc_sig_vect, niter2match, pooled_stats
+    else: 
+        return perc_sig, perc_sig_vect, niter2match, pooled_stats, pooled_stats_pred
 
 def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
 
