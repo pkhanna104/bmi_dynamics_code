@@ -7,7 +7,7 @@ import matplotlib.transforms as transforms
 
 import analysis_config
 from online_analysis import util_fcns, generate_models, plot_generated_models, plot_fr_diffs, lds_utils
-#from online_analysis import generalization_plots
+from online_analysis import generalization_plots
 from util_fcns import get_color
 
 from sklearn.linear_model import Ridge
@@ -229,7 +229,6 @@ def plot_suppfig4_R2_bars(ridge_norm = False, fraction = False, plts=False):
     #axerr[1].set_ylim([.05, .4])
     ferr.tight_layout()
     util_fcns.savefig(ferr, 'SU_POP_err_buildup')
-
 ###### Fig 4C r2 plot ########
 def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10, keep_bin_spk_zsc = False):
     if cond_on_act:
@@ -326,7 +325,8 @@ def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10, keep_bin_spk
 ######## Figure 4 examples and fraction neurons well predicted etc. ###########
 def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, animal='grom', 
     day_ix = 0, nshuffs = 1000, min_bin_indices = 0, model_set_number = 6, 
-    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'):
+    model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
+    mean_sub_PC = False):
     """
     Plot example single neuron and population deviations from global distribution
     along with predictions 
@@ -340,6 +340,8 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         nshuffs (int, optional): Description
         min_bin_indices (int, optional): cut off the first N bins and last N bins 
         save (bool, optional): save figures 
+        mean_sub_PC: option to make it so the PC1 plots are centered around zero (for
+        comparison to color plots in supplements)
     """
     pref_colors = analysis_config.pref_colors
     pooled_stats = {}
@@ -560,10 +562,13 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
 
     ##### PCA Plot ########
     ##### Find 2D PC axes that best capture true mFR_vect difference: 
-    mfr_mc = []; 
+    mfr_mc = []; pred_mfr_mc = []; 
     for m in mFR_vect.keys():
         mfr_mc.append(mFR_vect[m])
+        pred_mfr_mc.append(pred_mFR_vect[m])
+
     mfr_mc = np.vstack((mfr_mc)) # conditions x neurons #
+    pred_mfr_mc = np.vstack((pred_mfr_mc)) 
 
     ### Get the pc model 
     _, pc_model, _ = util_fcns.PCA(mfr_mc, 2, mean_subtract = True, skip_dim_assertion=True)
@@ -575,6 +580,17 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     keys = np.argsort(np.hstack((mFR.keys())) % 10)
     xlim = [-1, len(keys)]
 
+    ### mean_PC1 true 
+    if mean_sub_PC:
+        trans_true =  util_fcns.dat2PC(mfr_mc, pc_model)
+        mean_PC1 = np.mean(np.squeeze(trans_true))
+        trans_pred = util_fcns.dat2PC(pred_mfr_mc, pc_model)
+        mean_pred_PC1 = np.mean(np.squeeze(trans_pred))
+        print('mean PC1 %.2f mean pred PC1 %.2f'%(mean_PC1, mean_pred_PC1))
+    else:
+        mean_PC1 = 0; 
+        mean_pred_PC1 = 0; 
+
     #### Sort correctly #####
     for x, m in enumerate(np.hstack((mFR.keys()))[keys]):
     #for m in mFR_vect.keys(): 
@@ -582,11 +598,11 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         ### Project data and plot ###
         trans_true = util_fcns.dat2PC(mFR_vect[m][np.newaxis, :], pc_model)
         #axpca[0].plot(trans_true[0, 0], trans_true[0, 1], '.', color=get_color(m), markersize=20)
-        axpca[0].plot(x, trans_true[0, 0], '.', color=get_color(m), markersize=20)
+        axpca[0].plot(x, trans_true[0, 0] - mean_PC1, '.', color=get_color(m), markersize=20)
 
         ### PLot the predicted data : 
         trans_pred = util_fcns.dat2PC(pred_mFR_vect[m][np.newaxis, :], pc_model)
-        axpca[1].plot(x, trans_pred[0, 0], '*', color=get_color(m), markersize=20)
+        axpca[1].plot(x, trans_pred[0, 0] - mean_pred_PC1, '*', color=get_color(m), markersize=20)
         
         #axpca[1].plot(trans_pred[0, 0], trans_pred[0, 1], '*', color=get_color(m), markersize=20)
         #axpca[0].plot([trans_true[0, 0], trans_pred[0, 0]], [trans_true[0, 1], trans_pred[0, 1]], '-', 
@@ -594,13 +610,13 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
 
         ## Plot output only: 
         trans_cond = util_fcns.dat2PC(cond_pop_FR[m][np.newaxis, :], pc_model)
-        axpca[1].plot(x, trans_cond[0, 0], '^', color='gray')
+        axpca[1].plot(x, trans_cond[0, 0] - mean_pred_PC1, '^', color='gray')
 
         ### PLot the shuffled: Shuffles x 2 
         trans_shuff = util_fcns.dat2PC(shuff_mFR_vect[m].T, pc_model)
         #e = confidence_ellipse(trans_shuff[:, 0], trans_shuff[:, 1], axpca[1], n_std=3.0,
         #    facecolor = get_color(m, alpha=1.0))
-        util_fcns.draw_plot(x, trans_shuff[:, 0], 'k', np.array([1., 1., 1., 0]), axpca[1])
+        util_fcns.draw_plot(x, trans_shuff[:, 0] - mean_pred_PC1, 'k', np.array([1., 1., 1., 0]), axpca[1])
 
     ### Add the global FR command ####
     global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
@@ -616,8 +632,14 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         axpcai.set_xlabel('Condition')
         axpcai.set_xlim(xlim)
 
-    axpca[0].set_ylim([14, 57])
-    axpca[1].set_ylim([32, 48])
+    ### UNCOMMENT TEMP ##
+    if mean_sub_PC: 
+        axpca[0].set_ylim([-15, 25])
+        axpca[1].set_ylim([0, 15.5])
+
+    else:
+        axpca[0].set_ylim([14, 57])
+        axpca[1].set_ylim([32, 48])
 
     fpca.tight_layout()
     util_fcns.savefig(fpca,'fig4_eg_pca')
@@ -855,7 +877,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                     if len(ix_com_global) > 0: 
 
                         ix_com_global = np.hstack((ix_com_global))
-                        global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
+                        #global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
 
                         com_mov = dict(vals=[], shuffs=[])
 
@@ -864,6 +886,16 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
 
                             ### FR for neuron ### 
                             ix_mc_all = global_comm_indices[mov]
+
+                            ### Match distribution 
+                             ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
+                            ix_ok, niter = plot_fr_diffs.distribution_match_global_mov(push_sub[np.ix_(ix_mc_all, [3, 5])], 
+                                                                         push_sub[np.ix_(ix_com_global, [3, 5])])
+                            print('Mov %.1f, # Iters %d to match global'%(mov, niter))
+                            
+                            ### which indices we can use in global distribution for this shuffle ----> #### 
+                            ix_com_global_ok = ix_com_global[ix_ok] 
+                            global_mFR = np.mean(spks_sub[ix_com_global_ok, :], axis=0)
 
                             #### Get true FR ###
                             mFR = np.mean(spks_sub[ix_mc_all, :], axis=0) # N x 1
