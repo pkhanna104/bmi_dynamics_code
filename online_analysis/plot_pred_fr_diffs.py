@@ -583,10 +583,13 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     ### mean_PC1 true 
     if mean_sub_PC:
         trans_true =  util_fcns.dat2PC(mfr_mc, pc_model)
-        mean_PC1 = np.mean(np.squeeze(trans_true))
+        print('trans true shape')
+        print(trans_true.shape)
+        mean_PC1 = np.mean(trans_true[:, 0])
         trans_pred = util_fcns.dat2PC(pred_mfr_mc, pc_model)
-        mean_pred_PC1 = np.mean(np.squeeze(trans_pred))
-        print('mean PC1 %.2f mean pred PC1 %.2f'%(mean_PC1, mean_pred_PC1))
+        mean_pred_PC1 = np.mean(trans_pred[:, 0])
+        print('mean PC1 %.2f, N = %d'%(mean_PC1, len(trans_true)))
+        print('mean pred PC1 %.2f, N = %d')%(mean_pred_PC1, len(trans_pred))
     else:
         mean_PC1 = 0; 
         mean_pred_PC1 = 0; 
@@ -634,8 +637,8 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
 
     ### UNCOMMENT TEMP ##
     if mean_sub_PC: 
-        axpca[0].set_ylim([-15, 25])
-        axpca[1].set_ylim([0, 15.5])
+        axpca[0].set_ylim([-25, 20])
+        axpca[1].set_ylim([-10, 8])
 
     else:
         axpca[0].set_ylim([14, 57])
@@ -754,7 +757,7 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
 
 def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0, 
     model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
-    only_sig_cc=False):
+    only_sig_cc=False, min_com_cond = 15, save = True):
     '''
     goal: 
         1. fraction of command/conditions sig. diff (population)
@@ -776,6 +779,11 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
     ylabels['fracN']  = 'frac. (neuron)  \nsig. predicted'
     ylabels['r2'] = 'r2 of condition-specific \ncomponent of command'
     ylabels['r2_shuff'] = 'r2 of condition-specific \ncomponent of command'
+
+    count = {}
+    count['fracCC'] = []
+    count['fracCom'] = []
+    count['fracN'] = []
 
     for ia, animal in enumerate(['grom', 'jeev']):
         bar_dict = dict(fracCC=[], fracCom=[], fracN=[], r2=[], r2_shuff=[])
@@ -870,7 +878,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                         ix_mc_all = ix_com[ix_mc] 
 
                         ### If enough of these then proceed; 
-                        if len(ix_mc) >= 15:    
+                        if len(ix_mc) >= min_com_cond:    
                             global_comm_indices[mov] = ix_mc_all
                             ix_com_global.append(ix_mc_all)
 
@@ -1004,12 +1012,16 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             #### Plot the dots 
             ax_fracCC.plot(ia, float(nCC_sig)/float(nCC), 'k.')
             bar_dict['fracCC'].append(float(nCC_sig)/float(nCC))
+            count['fracCC'].append(float(nCC_sig)/float(nCC))
+
 
             ax_fracCom.plot(ia, float(nCom_sig)/float(nCom), 'k.')
             bar_dict['fracCom'].append(float(nCom_sig)/float(nCom))
-
+            count['fracCom'].append(float(nCom_sig)/float(nCom))
+    
             ax_fracN.plot(ia, float(nNeur_sig)/float(nNeur), 'k.')
             bar_dict['fracN'].append(float(nNeur_sig)/float(nNeur))
+            count['fracN'].append(float(nNeur_sig) / float(nNeur))
             
             ##### do r2 -- condition-varitions for a given command ####
             mfr_true = np.vstack(([m[0] for m in mFR_for_r2]))
@@ -1107,11 +1119,14 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                 spine_side.set_visible(False)
 
         
-    for _, (f, yl) in enumerate(zip([f_fracCC, f_fracCom, f_fracN, f_r2],
-        ['pred_fracCC', 'pred_fracCom', 'pred_fracN', 'pred_r2'])):
-        
-        f.tight_layout()
-        util_fcns.savefig(f, yl)
+    if save: 
+        for _, (f, yl) in enumerate(zip([f_fracCC, f_fracCom, f_fracN, f_r2],
+            ['pred_fracCC', 'pred_fracCom', 'pred_fracN', 'pred_r2'])):
+            
+            f.tight_layout()
+            util_fcns.savefig(f, yl)
+
+    return count
 
 def perc_sig_neuron_comm_predictions(nshuffs = 10, min_bin_indices = 0, 
     model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'):
