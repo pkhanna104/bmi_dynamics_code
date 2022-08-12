@@ -201,12 +201,17 @@ def plot_R2_model_fig4_mn_maint_shuff(model_nm = 'hist_1pos_0psh_2spksm_1_spksp_
     util_fcns.savefig(f, 'mean_maint_r2')
 
 def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
-    nshuffs = 1000):
+    nshuffs = 1000, min_com_cond = 15, save = True):
 
     fcc, axcc = plt.subplots(figsize=(2, 3))
     fcom, axcom = plt.subplots(figsize=(2, 3))
     fccw, axccw= plt.subplots()
     fccw2, axccw2= plt.subplots(figsize=(2, 3))
+
+    count = {}
+    count['nCC'] = []
+    count['fracCC'] = []
+    count['fracCom'] = []
 
     for i_a, animal in enumerate(['grom', 'jeev']):
         frac_sig_animal_cc = []
@@ -248,7 +253,7 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
                     for mov in np.unique(dataObj.move):
                         ix = np.nonzero((dataObj.command_bins_tm1[:, 0] == mag) & (dataObj.command_bins_tm1[:, 1] == ang) & (dataObj.move_tm1 == mov))[0]
 
-                        if len(ix) >= 15: 
+                        if len(ix) >= min_com_cond: 
                             assess_command = True
 
                             #### Get true next MC; 
@@ -308,10 +313,13 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
             frac_sig = float(sig_mc)/float(all_mc)
             frac_sig_animal_cc.append(frac_sig)
             axcc.plot(i_a, frac_sig, 'k.')
-
+            count['nCC'].append(all_mc)
+            count['fracCC'].append(frac_sig)
+    
             frac_sig = float(sig_com)/float(all_com)
             frac_sig_animal_com.append(frac_sig)
             axcom.plot(i_a, frac_sig, 'k.')
+            count['fracCom'].append(frac_sig)
 
             frac_corr = float(cw_ccw_corr)/float(cw_ccw_all)
             shuff_frac_corr = []
@@ -360,11 +368,15 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         f.tight_layout()
-        util_fcns.savefig(f, 'frac_%s_w_sig_next_comm_pred'%lab)
+
+        if save: 
+            util_fcns.savefig(f, 'frac_%s_w_sig_next_comm_pred'%lab)
 
     axccw.set_xlim([-1, 14])
     axccw.set_ylabel('Frac. sig. command-movs predicting \nnext command in correct direction ')
     fccw.tight_layout()
+
+    return count
 
 def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6, nshuffs = 2,
     mag_eg=0, ang_eg=7):
