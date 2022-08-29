@@ -5,7 +5,8 @@ import os, copy
 import pandas
 import gc, time
 from online_analysis import util_fcns, generate_models, generate_models_list, generate_models_utils
-from online_analysis import plot_generated_models, plot_pred_fr_diffs, plot_fr_diffs
+from online_analysis import plot_generated_models, plot_fr_diffs
+#from online_analysis import plot_pred_fr_diffs
 import analysis_config
 
 import statsmodels.formula.api as smf
@@ -19,6 +20,8 @@ import matplotlib.transforms as transforms
 import scipy.io as sio
 import seaborn
 seaborn.set(font='Arial',context='talk',font_scale=1.1, style='white')
+
+from brokenaxes import brokenaxes
 
 #### Load mag_boundaries ####
 mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
@@ -234,7 +237,8 @@ class DataExtract(object):
         self.nneur = self.spks.shape[1]
 
         ### Get the valid analysis indices -- dont analyze mag 5 bins = mag ix 4
-        self.valid_analysis_ix = np.nonzero(self.command_bins[:, 0] < 10)[0]
+        #self.valid_analysis_ix = np.nonzero(self.command_bins[:, 0] < 10)[0]
+        self.valid_analysis_ix = np.nonzero(self.command_bins[:, 0] < 4)[0]
         
         ###############################################
         ###### Get predicted spikes from the model ####
@@ -1924,10 +1928,10 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
     null_opt: 
         -- null2null 
         -- full2null
-        -- nulldyn
+        -- nulldyn *** 
     nulldyn_opt: 
         -- 'alpha_adj'
-        -- 'alpha_opt'
+        -- 'alpha_opt' ***
     potent_addon: 
         -- True
         -- False 
@@ -1982,9 +1986,11 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
         if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0': 
             if null_opt == 'nulldyn':
                 
+                #### I think this means optimized for null model #####
                 if nulldyn_opt == 'alpha_opt':
                     NULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6__null_alpha.pkl'%animal), 'rb'))
                 
+                ### Adjust the alpha based on 2 fewer dimensions to optimze #### 
                 elif nulldyn_opt == 'alpha_adj': 
                     NULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6__null.pkl'%animal), 'rb'))
                 
@@ -2421,14 +2427,24 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
         return save_bars_dict
 
 def bar_plot_loo_r2_overall(save_dict, title, other_color = analysis_config.blue_rgb,
-    fig4 = False, fig5 = True):
+    fig4 = False, fig5 = True, shuff_norm = False, plot_command = False):
     
-    f, ax = plt.subplots(figsize=(4, 4))
+    f, ax = plt.subplots(figsize=(5, 4))
+
+    if fig5 and shuff_norm and plot_command: 
+        print('broken axes')
+        f = plt.figure(figsize=(5, 4))
+        ax = brokenaxes(ylims=((-.025, .025), (.9, 1.47)), hspace=.05)
+
 
     add_on_x = 0; 
 
     xlabel = []
     xticks = []
+
+    if plot_command: 
+        assert(fig5)
+        assert(not fig4)
 
     for i_a, animal in enumerate(['grom', 'jeev']):
 
@@ -2437,16 +2453,25 @@ def bar_plot_loo_r2_overall(save_dict, title, other_color = analysis_config.blue
             keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo_mov', 'r2_pred_lo_com','r2_pred_full']
             labels = ['output', 'shuffle', 'cond-lo', 'com-lo', 'full' ]
             colors = ['gray',   'k',       'purple', 'purple', other_color]
-        
+            ylim = dict()
+            ylim[False] = [0., .36]
+            ylim[True] = [.9, 1.7]
+
         if fig5: 
-            # keys = ['r2_null', 'r2_shuff', 'r2_pred_lo_mov', 'r2_pred_lo_com', 'r2_pred_full']
-            # labels = ['null', 'shuffle', 'cond-lo', 'com-lo', 'full' ]
-            # colors = ['deeppink', 'gray',  'purple', 'purple', other_color]
-
-            keys = ['r2_shuff', 'r2_null', 'r2_pred_lo_mov', 'r2_pred_lo_com', 'r2_pred_full']
-            labels = ['shuffle', 'null', 'cond-lo',  'com-lo', 'full' ]
-            colors = ['gray', 'deeppink', 'purple', 'purple', other_color]
-
+            ylim = dict()
+            if plot_command: 
+                keys = ['r2_null', 'r2_shuff', 'r2_pred_lo_mov', 'r2_pred_lo_com', 'r2_pred_full']
+                labels = ['null', 'shuffle', 'cond-lo', 'com-lo', 'full' ]
+                colors = ['deeppink', 'gray',  'purple', 'purple', other_color]
+                ylim[False] = [-0.1, .42]
+                ylim[True] = [.8, 1.5]
+            else:
+                keys = ['r2_shuff', 'r2_null', 'r2_pred_lo_mov', 'r2_pred_lo_com', 'r2_pred_full']
+                labels = ['shuffle', 'null', 'cond-lo',  'com-lo', 'full' ]
+                colors = ['gray', 'deeppink', 'purple', 'purple', other_color]
+                ylim[False] = [0., .26]
+                ylim[True] = [.9, 3.5]
+            
 
         day_lines = dict()
         for i_d in range(analysis_config.data_params[animal+'_ndays']):
@@ -2459,18 +2484,23 @@ def bar_plot_loo_r2_overall(save_dict, title, other_color = analysis_config.blue
             ### Datapoints per bar 
             for i_d in range(analysis_config.data_params[animal+'_ndays']): 
 
+                if shuff_norm: 
+                    divisor = np.percentile(save_dict[animal][i_d, 'r2_shuff'], 95)
+                else: 
+                    divisor = 1. 
+
                 if key == 'r2_shuff': 
-                    ax.plot(i_k + add_on_x, np.percentile(save_dict[animal][i_d, key], 95), 'k.',)
-                    bar_mean.append(np.percentile(save_dict[animal][i_d, key], 95))
-                    day_lines[i_d].append(np.percentile(save_dict[animal][i_d, key], 95))
+                    ax.plot(i_k + add_on_x, np.percentile(save_dict[animal][i_d, key], 95)/divisor, 'k.',)
+                    bar_mean.append(np.percentile(save_dict[animal][i_d, key], 95)/divisor)
+                    day_lines[i_d].append(np.percentile(save_dict[animal][i_d, key], 95)/divisor)
                 
                 else: 
-                    ax.plot(i_k + add_on_x, save_dict[animal][i_d, key], 'k.')
-                    bar_mean.append(save_dict[animal][i_d, key])
-                    day_lines[i_d].append(save_dict[animal][i_d, key])
+                    ax.plot(i_k + add_on_x, save_dict[animal][i_d, key]/divisor, 'k.')
+                    bar_mean.append(save_dict[animal][i_d, key]/divisor)
+                    day_lines[i_d].append(save_dict[animal][i_d, key]/divisor)
 
             ax.bar(i_k + add_on_x, np.mean(bar_mean), width=.8, color=colors[i_k], alpha=.6)
-
+            print('%s mean: %.2f' %(key, np.mean(bar_mean)))
             ### 
             #xlabel.append(labels[i_k])
             xlabel.append('')
@@ -2478,19 +2508,17 @@ def bar_plot_loo_r2_overall(save_dict, title, other_color = analysis_config.blue
 
         for i_d in range(analysis_config.data_params[animal+'_ndays']):
             ax.plot(np.arange(len(keys)) + add_on_x, day_lines[i_d], 'k-', linewidth=.5)
-
+            
         add_on_x += len(keys)
         add_on_x += 1
 
     ax.set_xticks(xticks)
     ax.set_xticklabels(xlabel, rotation=45)
     ax.set_ylabel('Model $R^2$')
+    #ax.set_ylim(ylim[shuff_norm])
 
-    f.tight_layout()
+    #f.tight_layout()
     util_fcns.savefig(f, 'leave_out_bar_%s.svg'%title)    
-
-
-
 
 def null_plots(lo_true_all, null_pred, nlo_pred_all, animal, day_ix):
     err_null = np.linalg.norm(lo_true_all - null_pred, axis=0); 
