@@ -1845,7 +1845,7 @@ def model_state_encoding(animal, model_set_number = 7, state_vars = ['pos_tm1', 
     pickle.dump(D, open(analysis_config.config[animal+'_pref'] + 'res_model_fit_state.pkl', 'wb'))
 
 ######## SLDS sweeping ###################
-def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
+def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True, n_dim_latent_try=None):
     ## ver: 
     ### model version: 1 == gaussian/gaussian 
     ### model version: 2 == diag gaussian / gaussian_ortho
@@ -1904,7 +1904,7 @@ def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
             
                     ### fit model ####
                     print('training model ver %d'%ver)
-                    rslds, elbos = fit_slds(trls_train, k, nit, alph, ver=ver, mean_sub=mean_sub) 
+                    rslds, elbos = fit_slds(trls_train, k, nit, alph, ver=ver, mean_sub=mean_sub, n_dim_latent_try=n_dim_latent_try) 
 
                     save_params_model[i_fold, k, nit, alph, 'elbo'] = elbos 
                     save_params_model[i_fold, k, nit, alph, 'model'] = rslds 
@@ -1943,10 +1943,17 @@ def sweep_slds_params(animal, day, n_folds=5, ver=1, mean_sub=True):
 
                             ### Save these each time (over writting so we can get intermediate plots)
                             d = dict(save_params_post=save_params_post, save_params_model=save_params_model)
-                            if mean_sub: 
-                                pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d_%d_mean_sub.pkl'%(animal, day, ver)), 'wb'))
+
+                            if n_dim_latent_try is not None: 
+                                ndlt = '_ndlt_'+str(n_dim_latent_try)
                             else: 
-                                pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d_%d.pkl'%(animal, day, ver)), 'wb'))
+                                ndlt = ''
+
+                            if mean_sub: 
+                                pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d_%d_mean_sub%s.pkl'%(animal, day, ver, ndlt)), 'wb'))
+                            else: 
+                                pickle.dump(d, open(os.path.join(analysis_config.config['BMI_DYN'], 'slds_sweep_%s_%d_%d%s.pkl'%(animal, day, ver, ndlt)), 'wb'))
+    return True
 
 def get_slds_data_train(data, trl_train_ix, type_of_model, i_fold, window_size_max):
 
@@ -2046,7 +2053,7 @@ def get_slds_data_test_full_trial(data, trl_test_ix, type_of_model, i_fold):
             
     return pts_test
 
-def fit_slds(trls_train, k, nit, alpha, ver=1, mean_sub=False): 
+def fit_slds(trls_train, k, nit, alpha, ver=1, mean_sub=False, n_dim_latent_try = None): 
     D_obs = trls_train[0].shape[1]
      
 
@@ -2065,7 +2072,8 @@ def fit_slds(trls_train, k, nit, alpha, ver=1, mean_sub=False):
         keep_ix = np.arange(D_obs)
         mean_sub = np.zeros((D_obs))
     
-    n_dim_latent_try = D_obs - 1;
+    if n_dim_latent_try is None: 
+        n_dim_latent_try = D_obs - 1;
 
 
     import ssm 
