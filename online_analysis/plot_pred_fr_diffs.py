@@ -1102,6 +1102,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             ax.set_ylabel(ylabels[key], fontsize=8)
             ax.set_xticks([0, 1])
             ax.set_xticklabels(['G', 'J'])
+            ax.hlines(0.05, -.5, 1.5, 'k', linewidth=.5, linestyle='dashed')
             if 'r2' in key: 
                 ax.set_xlim([-.3, 1.7])
             else:
