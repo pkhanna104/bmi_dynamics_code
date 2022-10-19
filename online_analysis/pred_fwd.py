@@ -11,7 +11,7 @@ from online_analysis import plot_actions
 
 from collections import defaultdict
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.5, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.0, style='white')
 
 def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 20, plot_action = False, nshuffs_roll = 100, keep_bin_spk_zsc = False):
@@ -362,6 +362,7 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
         ax.set_xticks([0, 1])
         ax.set_ylim([0., 1.05])
         ax.set_xticklabels(['G', 'J'])
+        ax.hlines(0.05, -.5, 1.5, 'k', linewidth=.5, linestyle='dashed')
         ax.set_yticks([0., .25, .50, .75, 1.0])
         ax.set_yticklabels([0., .25, .50, .75, 1.0])
         ax.set_ylabel(ylab, fontsize=10)

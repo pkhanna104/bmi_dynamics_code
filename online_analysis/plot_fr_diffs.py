@@ -11,7 +11,7 @@ import pandas as pd
 
 import pickle
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.2, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.0, style='white')
 
 import statsmodels.api as sm
 
@@ -473,8 +473,8 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
                 ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all, [3, 5])], 
                                                          push[np.ix_(ix_com_global, [3, 5])])
             
-            print('Mov %.1f, # Iters %d to match global, len global_ix_ok %d, len_com %d'%(mov, 
-                niter, len(ix_ok), len(ix_mc_all)))
+            #print('Mov %.1f, # Iters %d to match global, len global_ix_ok %d, len_com %d, global mFR %.2f'%(mov, 
+            #    niter, len(ix_ok), len(ix_mc_all), np.mean(spks[ix_com_global[ix_ok], neuron_ix], axis=0)))
             
             if len(ix_ok) > 0: 
                 ### which indices we can use in global distribution for this shuffle ----> #### 
@@ -554,13 +554,32 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
                 linewidth=1., linestyle='dashed')
 
             ### Single neuron --> sampling distribution 
-            spk_mn = np.mean(spks[ix_com_global, neuron_ix])
+            spk_mn = np.mean(spks[ix_com_global, neuron_ix]) # change from ix_com_global --> ix_com_global_ok
 
             util_fcns.draw_plot(x, np.abs(mFR_shuffle[mov] ), 'gray', np.array([0., 0., 0., 0.]), ax)
             ax.plot(x, np.abs(mFR[mov] ), '.', color=colrgb, markersize=20)
             ax.hlines(spk_mn, xlim[0], xlim[-1], color='gray',
                 linewidth=1., linestyle='dashed')
             
+            ###### Test out z-score thing : 8/2022 #######
+            # ax.plot(x, np.mean(np.abs(mFR_shuffle[mov])), 'k.')
+
+            # ##### 
+            # global_mean_FR = np.mean(spks[ix_com_global_ok, neuron_ix])
+            # ax.plot(x + .2, global_mean_FR, 'r.')
+
+            # dmean_FR = np.abs(mFR[mov] - global_mean_FR)
+            # shf = []
+            # for xi in mFR_shuffle[mov]: 
+            #     shf.append(np.abs(xi - global_mean_FR))
+
+            #util_fcns.draw_plot(x + .2, shf, 'red', np.array([0., 0., 0., 0.]), ax)
+            #ax.plot(x + .2, dmean_FR, 'r.')
+
+            #zsc = (dmean_FR - np.mean(shf)) / np.std(shf)
+            #print('X %d, mov %.1f, zsc %.1f'%(x, mov, zsc))
+
+
             ### Population centered by shuffle mean 
             mFR_shuffle_vect[mov] = np.hstack((mFR_shuffle_vect[mov]))
             mn_shuf = np.mean(mFR_shuffle_vect[mov])
@@ -597,7 +616,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
         ax.set_title('Neuron %d' %(neuron_ix))
 
         if mag == 0 and ang == 7 and animal == 'grom' and day_ix == 0 and neuron_ix == 36:
-            ax.set_ylim([5, 35])
+           ax.set_ylim([5, 35])
     
         f.tight_layout()
         if save:
@@ -1200,6 +1219,7 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
             ax.set_ylabel(ylabels[key], fontsize=8)
             ax.set_xticks([0, 1])
             ax.set_xticklabels(['G', 'J'])
+            ax.hlines(0.05, -.5, 1.5, 'k', linewidth=.5, linestyle='dashed')
 
             if key == 'fracdist_shuff_sig':
                 ax.set_xlim([-.3, 1.7])
@@ -1439,7 +1459,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
                                         ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov] ### This step needs to make sure global >> mov
                                         mn_tmp = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
                                         
-                                        dmFR_shuffle.append(np.abs(mn_tmp - global_mean_FR))
+                                        dmFR_shuffle.append(np.abs(mn_tmp - global_mean_FR)) 
                                         mFR_shuffle.append(mn_tmp)
 
                                     ### Stack ####
@@ -1463,15 +1483,16 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
                                         n_lte = len(np.nonzero(dmFR_shuffle[:, i_neur] >= dmean_FR[i_neur])[0])
                                         pv = float(n_lte) / float(nshuffs)
 
-                                        ## Z-score ### 
-                                        zsc = np.abs(np.mean(dmFR_shuffle[:, i_neur]) - dmean_FR[i_neur]) / np.std(dmFR_shuffle[:, i_neur])
+                                        ## Z-score ### Which distances are bigger? Could be negative if mean shuffle distance >> mean neuron distance; 
+                                        zsc = (dmean_FR[i_neur] - np.mean(dmFR_shuffle[:, i_neur])) / np.std(dmFR_shuffle[:, i_neur])
 
                                         if np.isnan(zsc): 
                                             zsc = 0.
 
                                         ### find difference from the global mean 
                                         dFR = np.abs(mov_mean_FR[i_neur] - global_mean_FR[i_neur])
-                                        perc_sig[animal, day_ix][mag, ang, mov].append(np.array((pv, dFR, dFR/global_mean_FR[i_neur], global_mean_FR[i_neur], zsc), dtype=dtype_su))
+                                        perc_sig[animal, day_ix][mag, ang, mov].append(np.array((pv, dFR, 
+                                            dFR/global_mean_FR[i_neur], global_mean_FR[i_neur], zsc), dtype=dtype_su))
                                         
                                     #### Vector #####
                                     n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle, axis=1) >= np.linalg.norm(dmean_FR))[0])
@@ -1480,14 +1501,16 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
                                     
                                     ## Z-score ### 
                                     shf = np.linalg.norm(dmFR_shuffle, axis=1)
-                                    zsc = np.abs(np.mean(shf) - np.linalg.norm(dmean_FR) ) / np.std(shf)
+                                    assert(len(shf) == nshuffs)
 
+                                    zsc = (np.linalg.norm(dmean_FR) - np.mean(shf)) / np.std(shf)
 
                                     ### Make sure this is the same thign ###
                                     assert(dist == np.linalg.norm(dmean_FR))
 
                                     ### Fraction difference; 
-                                    perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist/nneur, dist/np.linalg.norm(global_mean_FR), zsc), dtype=dtype_pop)
+                                    perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist/nneur, 
+                                        dist/np.linalg.norm(global_mean_FR), zsc), dtype=dtype_pop)
 
                 #print('Mag Cnt, mag = %d, monk = %s, day = %d, cnt = %d' %(mag, animal, day_ix, mag_cnt))
                 mag_cnt = 0
@@ -1784,6 +1807,7 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
             ax.set_ylabel(ylabels[key], fontsize=8)
             ax.set_xticks([0, 1])
             ax.set_xticklabels(['G', 'J'])
+            ax.hlines(0.05, -.5, 1.5, 'k', linewidth=.5, linestyle='dashed')
 
             if key == 'fracdist_shuff_sig':
                 ax.set_xlim([-.3, 1.7])
@@ -1892,13 +1916,15 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                                     color[-1] = 1.0
 
                                 color_rgb = util_fcns.rgba2rgb(color)
-                                print('mov %.2f, color w alpha %s, color wo alpha %s '%(k[2], color_rgb, color))
+                                #print('mov %.2f, color w alpha %s, color wo alpha %s '%(k[2], color_rgb, color))
                                 x_ = [day_ix + 10*ia - 1, day_ix + 10*ia - 0.5]
                                 y_ = [float(varr['abs_diff_fr'][j]), float(varr['abs_diff_fr'][j])]
                                 axeff.plot(x_, y_, '-', color=color_rgb)
 
                                 y_1 = [float(varr['zsc'][j]), float(varr['zsc'][j])]
                                 axeff1.plot(x_, y_1, '-', color=color_rgb)
+                                print('plotting zsc: targ %d, zsc: %.1f, abs diff %.1f'%(k[2], y_1[0], y_[0]))
+
 
                             if float(varr['glob_fr'][j]) >= min_fr_frac_neur_diff:
                                 NCM_sig_frac_diff.append(float(varr['frac_diff_fr'][j]))
@@ -1920,6 +1946,20 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                                     #### Make sure global FR > 0.5 Hz; 
                                     if float(varr['glob_fr'][j]) >= min_fr_frac_neur_diff:
                                         NCM_behsig_frac_diff.append(float(varr['frac_diff_fr'][j]))
+
+
+                        ### Plot colored plots for all dots 
+                        if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
+                            color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
+                            if k[2] >= 10.:
+                                color[-1] = 0.5
+                            else:
+                                color[-1] = 1.0
+
+                            color_rgb = util_fcns.rgba2rgb(color)
+                            x_ = [day_ix + 10*ia - 1, day_ix + 10*ia - 0.5]
+                            y_1 = [float(varr['zsc'][j]), float(varr['zsc'][j])]
+                            axeff1.plot(x_, y_1, '-', color=color_rgb)
 
                         NCM_tot += 1
                         if sig_move_diffs is not None: 
@@ -1949,9 +1989,8 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
 
             ### Zsc
             Zsc_su = np.hstack((Zsc_su))
-            if day_ix > 0: 
-                import pdb; pdb.set_trace()
             util_fcns.draw_plot(day_ix + 10*ia, Zsc_su, 'k', np.array([1., 1., 1., 0.]), axeff1)
+            axeff1.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
 
             util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_hz_diff, 'k', np.array([1., 1., 1., 0.]), axeff_bsig)
             util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_frac_diff, 'k', np.array([1., 1., 1., 0.]), axeff_bsig_frac)
@@ -2012,16 +2051,27 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
 
                         color_rgb = util_fcns.rgba2rgb(color)
                         x_ = [ia*10 + day_ix - 1, ia*10 + day_ix -0.5]
-                        y_ =  [float(varr['zsc']), float(varr['zsc'])]
                         y_1 = [float(varr['norm_diff_fr']), float(varr['norm_diff_fr'])]
                         y_2 = [float(varr['frac_norm_diff_fr']), float(varr['frac_norm_diff_fr'])]
 
                         axveff.plot(x_, y_1,  '-', color=color_rgb)
-                        axveff1.plot(x_, y_, '-', color=color_rgb)
                         axveff2.plot(x_, y_2, '-', color=color_rgb)
                 else:
                     if plot_sig_mov_comm_grid:
                         axsig[k[0]].plot(k[2], k[1], '.', color='k')
+
+                if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7: 
+                    color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
+                    if k[2] >= 10:
+                        color[-1] = 0.5
+                    else:
+                        color[-1] = 1.0
+
+                    color_rgb = util_fcns.rgba2rgb(color)
+                    x_ = [ia*10 + day_ix - 1, ia*10 + day_ix -0.5]
+                    y_ =  [float(varr['zsc']), float(varr['zsc'])]
+                    axveff1.plot(x_, y_, '-', color=color_rgb)
+
                 
                 command_cnt[k[0], k[1]] += 1
                 vect_tot += 1
@@ -2050,6 +2100,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
             ### Distribution of population ###
             util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect, 'k', np.array([1., 1., 1., 0.]), axveff)
             util_fcns.draw_plot(ia*10 + day_ix, zsc_diff,         'k', np.array([1., 1., 1., 0.]), axveff1)
+            axveff1.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
             
             util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect_frac, 'k', np.array([1., 1., 1., 0.]), axveff2)
             util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect_bsig, 'k', np.array([1., 1., 1., 0.]), axveff_bsig)
@@ -2058,11 +2109,11 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
             tmp_frc = float(vect_sig_beh_sig) / float(vect_tot_beh_sig)
             axsig_pop.plot(ia, tmp_frc, 'k.')
             bar_dict['percCMsig_behsig'].append(tmp_frc)
-            print('A %s, D %d, perc sig. tot %d/%d  =%.2f' %(animal, day_ix, vect_sig, vect_tot, float(vect_sig)/float(vect_tot)))
-            try:
-                print('A %s, D %d, perc sig. of beh sig %d/%d  =%.2f' %(animal, day_ix, vect_sig_beh_sig, vect_tot_beh_sig, tmp_frc))
-            except:
-                pass
+            #print('A %s, D %d, perc sig. tot %d/%d  =%.2f' %(animal, day_ix, vect_sig, vect_tot, float(vect_sig)/float(vect_tot)))
+            #try:
+            #    print('A %s, D %d, perc sig. of beh sig %d/%d  =%.2f' %(animal, day_ix, vect_sig_beh_sig, vect_tot_beh_sig, tmp_frc))
+            #except:
+            #    pass
 
         ####### Single neuron summary for the day #####
         ax.bar(ia, np.mean(bar_dict['percNCMsig']), width=.8,alpha=0.2, color='k')
@@ -2109,11 +2160,13 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
 
     ###### Effect size plots #######
     for ax_ in [axeff, axeff1, axeff2, axveff, axveff1, axveff2, axveff_bsig, axeff_bsig, axeff_bsig_frac]:
-        ax_.set_xlim([-1, 25])
+        ax_.set_xlim([-1, 13.5])
     
     axeff.set_ylim([0, 10.])
     axeff.set_xlim([-1.5, 25.])
     axeff_bsig.set_ylim([0., 10.])
+
+    axeff1.set_ylim([-1.5, 8.])
 
     axeff2.set_ylim([0, 3.0])
     axeff2.set_xlim([-1.5, 25])
@@ -2121,6 +2174,10 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
 
     axveff.set_ylim([0, .8])
     axveff.set_xlim([-1.5, 25])
+
+    axveff1.set_ylim([-1.5, 12])
+    axveff1.set_xlim([-1.5, 13.5])
+
     axveff2.set_ylim([0, .71])
     axveff2.set_xlim([-1.5, 25])
     axveff_bsig.set_ylim([0, .8])
@@ -2128,7 +2185,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     axeff.set_ylabel('Activity Diff from Command  Act. Mean (Hz)')
     axeff.set_title('Sig. Diff Neurons/Command/Move')
     
-    axeff1.set_ylabel('Z-scored activity with reference to shuffle')
+    axeff1.set_ylabel('Z-scored single neuron activity from condition-pooled mean \n with reference to shuffle')
     axeff1.set_title('Neurons/Command/Move Zsc diffs')
 
     axeff2.set_ylabel('Frac. Diff Activity from Command Act. Mean')
@@ -2139,8 +2196,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     #axveff.set_title('Sig. Diff. Command/Moves')
     axveff_bsig.set_ylabel('Pop. Activity Diff for Beh Sig. ')
 
-    
-    axveff1.set_ylabel('Z-scored pop. activity with reference to shuffle')
+    axveff1.set_ylabel('Z-scored pop. distance from condition-pooled mean \n with reference to shuffle')
     axveff1.set_title('Command/Move Zsc diffs')
 
 
@@ -2155,6 +2211,12 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     for i_, (f_, l_) in enumerate(zip(F, lab)):
         pass
         #util_fcns.savefig(f_, l_)
+    
+    lab = ['zsc_su', 'zsc_pop']
+    F=[feff1, fveff1]
+    for i_, (f_, l_) in enumerate(zip(F, lab)):
+        util_fcns.savefig(f_, l_, png=True)
+        util_fcns.savefig(f_, l_, png=False)
 
 def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, save=True,
     use_saved_move_command_sig = False):
