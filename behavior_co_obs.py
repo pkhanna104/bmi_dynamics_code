@@ -2213,7 +2213,7 @@ def def_nk_AB(An, bn, Kn, F, num_neurons, num_kin):
     #A_bot: [Kn, F]
     #
     #Assemble A matrices with zero-ed out neural dynamics and neural offset 
-    A_list = ['n_do', 'n_o', 'n_null', 'n_d']
+    A_list = ['n_do', 'n_o', 'n_null', 'n_d', 'n_decoder_null']
     A_dic = {}
 
     num_kin = 4
@@ -2233,7 +2233,7 @@ def def_nk_AB(An, bn, Kn, F, num_neurons, num_kin):
     A_dic['n_null'] = np.vstack((A_top_n_null, A_bot))
 
     A_top_n_d = np.hstack((An, n_k_z, no_z))
-    A_dic['n_d'] = np.vstack((A_top_n_d, A_bot))    
+    A_dic['n_d'] = np.vstack((A_top_n_d, A_bot)) 
 
     n_init_dic = {}
     for m in A_list:
