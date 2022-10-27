@@ -143,8 +143,14 @@ def bin_vec_data(vec_data, bin_dic):
     bin_result = np.zeros(vec_data.shape)
     #loop each dimension and bin data
     for dim_i in np.arange(0,num_dim):
-        bin_fn =lambda x: np.where((x >= bin_dic[dim_i][0,:]) & (x <= bin_dic[dim_i][1,:]))[0] 
-        bin_result[:,dim_i] = np.hstack(map(bin_fn, vec_data[:,dim_i]))
+        data_i = vec_data[:,dim_i]
+
+        bin_xmin = bin_dic[dim_i][0,:]
+        bin_xmax = bin_dic[dim_i][1,:]
+
+        bin_fn =lambda x: np.where((x >= bin_xmin) & (x <= bin_xmax))[0][0] 
+        binned = np.hstack(map(bin_fn, data_i))
+        bin_result[:,dim_i] = binned
     
     #loop each observation and make histogram
     # print(num_bin_over_dim)
@@ -1352,7 +1358,10 @@ def df_bin_command(df, mag_bin_edges, angle_bin_edges):
     bin_dic[1] = angle_bin_edges
 
     data2bin = np.array(df[['u_v_mag','u_v_angle']])
+    # print(data2bin.shape)
     bin_r, hist_r = bin_vec_data(data2bin, bin_dic)
+    # print(bin_r.shape)
+
     df['u_v_mag_bin']=bin_r[:,0]
     df['u_v_angle_bin']=bin_r[:,1]
 
