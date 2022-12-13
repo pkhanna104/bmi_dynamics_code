@@ -2730,7 +2730,7 @@ def sim_lqr_move_noise(num_trials, move_horizon, model_list, A_dic, B, Q, R, Q_f
                 move_lqr[target, task, m]['Q_f'] = Q_f
                 move_lqr[target, task, m]['R'] = R
                 #simulations:
-                move_lqr[target, task, m]['state_noise_list'] = state_noise_da
+                move_lqr[target, task, m]['state_noise_list'] = state_noise_list #state_noise_da
                 move_lqr[target, task, m]['u_list'] = u_list
                 move_lqr[target, task, m]['state_list'] = state_list
                 move_lqr[target, task, m]['state_e_list'] = state_e_list

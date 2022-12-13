@@ -197,7 +197,7 @@ def match_pool_activity_to_command_movement(model_cm, df, model_list, c_list, m_
 				cm_da = bmi_b.df_idx2da(df,cm_idx,var)
 
 				success, kept_list, discard_list, df_match, ttest_r, mean_r = \
-						bmi_b.subsample_dataset_to_match_mean_target_dataset(match_var, d_ss=c_da, d_target=cm_da, p_sig=p_sig, frac_data_exclude_per_iter=0.05, min_frac_remain=0.1)            
+						bmi_b.subsample_dataset_to_match_mean_target_dataset(match_var, d_ss=c_da, d_target=cm_da, p_sig=p_sig, frac_data_exclude_per_iter=0.1, min_frac_remain=0.1) #frac_data_exclude_per_iter=0.05
 				model_cm[model,c,m,'pool_match_idx'] = kept_list[0]
 				model_cm[model,c,m,'pool_match_success'] = success
 				model_cm[model,c,m,'pool_match_discard'] = discard_list[0]
@@ -234,6 +234,8 @@ def def_shuffle_mat(model_cm, model_list, c_list, m_list, num_shuffle):
 
 def compute_neural_command_diff(model_cm, df, Kn, model_list, m_list, c_list, n_list, shuffle_bool, num_shuffle):
 	#---------------------------------------------------------------------------------------------------------------------
+	proj_list = ['full', 'potent', 'null'] #projections of neural activity
+
 	t_start = timeit.default_timer()
 	n_df = np.array(df[n_list])
 
@@ -241,8 +243,7 @@ def compute_neural_command_diff(model_cm, df, Kn, model_list, m_list, c_list, n_
 	for model in model_list: #model
 		for ic, c in enumerate(c_list): #command    
 			for im, m in enumerate(m_list): #movement
-
-				if model_cm[model,c,m,'pool_match_success']:    
+				if (model_cm[model,c,m,'pool_match_success']):    
 					print(model,c,m)
 					c_idxs = model_cm[model,c,m,'pool_match_idx']#use these idxs for average
 	#                 mu_c = df.loc[c_idxs, mean_var].mean()
@@ -259,7 +260,7 @@ def compute_neural_command_diff(model_cm, df, Kn, model_list, m_list, c_list, n_
 						nan_mat = np.ones((len(mean_var), num_shuffle))*np.nan
 						s_mean = xr.DataArray(nan_mat, 
 										  coords={'v':mean_var,'shuffle':range(num_shuffle)},
-										  dims=['v','shuffle'])
+										  dims=['v','shuffle']) #num_neurons X num_shuffle
 						for s in range(num_shuffle):
 							s_idxs = model_cm[model,c,m,'shuffle_mat'][:,s].astype(int)
 	#                         mu_s = df.loc[s_idxs, mean_var].mean()
@@ -275,17 +276,41 @@ def compute_neural_command_diff(model_cm, df, Kn, model_list, m_list, c_list, n_
 
 					diff_i = mu_c-mu_cm   
 					diff_potent_i, diff_null_i, _ = bmi_util.proj_null_potent(Kn[2:4,:].T, np.array(diff_i).reshape((-1,1)))
-					model_cm[model,c,m,'n_diff_true'] = diff_i             
-					model_cm[model,c,m,'n_diff_norm_true'] = np.linalg.norm(diff_i)
-					model_cm[model,c,m,'n_diff_norm_potent'] = np.linalg.norm(diff_potent_i)
-					model_cm[model,c,m,'n_diff_norm_null'] = np.linalg.norm(diff_null_i)
+
+					#Diff
+					model_cm[model,c,m,'n_diff','obs','full'] = diff_i
+					model_cm[model,c,m,'n_diff','obs','potent'] = diff_potent_i
+					model_cm[model,c,m,'n_diff','obs','null'] = diff_null_i
+
+					#Diff norm
+					for proj in proj_list: 
+						model_cm[model,c,m,'n_diff_norm', 'obs', proj] = \
+						np.linalg.norm(model_cm[model,c,m,'n_diff','obs', proj])
 
 					if shuffle_bool: 
-						model_cm[model,c,m,'n_s'] = s_mean              
+						model_cm[model,c,m,'n_s'] = s_mean #num_neurons X num_shuffle              
 						n_c_rep = np.array(mu_c)[...,None]
-						model_cm[model,c,m,'n_diff_s'] = n_c_rep-s_mean
-						model_cm[model,c,m,'n_diff_s_norm'] = np.linalg.norm(model_cm[model,c,m,'n_diff_s'], axis=0)
-						model_cm[model,c,m,'n_diff_s_norm_mean'] = model_cm[model,c,m,'n_diff_s_norm'].mean()
+
+						diff_i = n_c_rep-s_mean
+						diff_potent_i, diff_null_i, _ = bmi_util.proj_null_potent(Kn[2:4,:].T, np.array(diff_i))
+
+						#Diff
+						model_cm[model,c,m,'n_diff','s','full'] = diff_i
+						model_cm[model,c,m,'n_diff','s','potent'] = diff_potent_i
+						model_cm[model,c,m,'n_diff','s','null'] = diff_null_i
+
+						for proj in proj_list:
+							#Diff norm
+							model_cm[model,c,m,'n_diff_norm','s',proj] = \
+							np.linalg.norm(model_cm[model,c,m,'n_diff','s',proj], axis=0)
+
+							#Diff norm mean
+							model_cm[model,c,m,'n_diff_norm_mean','s',proj] = \
+							model_cm[model,c,m,'n_diff_norm','s',proj].mean()
+
+							#Diff norm std
+							model_cm[model,c,m,'n_diff_norm_std','s',proj] = \
+							model_cm[model,c,m,'n_diff_norm','s',proj].std()
 
 	t_elapsed = timeit.default_timer()-t_start
 	print(t_elapsed)
@@ -295,30 +320,34 @@ def compute_neural_command_diff(model_cm, df, Kn, model_list, m_list, c_list, n_
 def collect_neural_command_diff(model_cm, Kn, model_list, c_list, m_list, min_obs, shuffle_bool):
 	#---------------------------------------------------------------------------------------------------------------------
 	#loop over all conditions, collect a list of differences:
+
+	#Need the obs norm, s norm_mean, s norm_std, for each projection
+	proj_list = ['full', 'potent', 'null']
 	
 	model_diff = {}
 	for model in model_list: #model
-		model_diff[model] = {'total':[], 'potent':[],'null':[], 'shuffle':[]}
-		for ic, c in enumerate(c_list): #command    
-			for im, m in enumerate(m_list): #movement
-				if model_cm[model,c,m,'pool_match_success']:  
-					#project the diff
+		for proj in proj_list:
+			model_diff[model,proj] = {'obs':[], 's_mean':[], 's_std':[]}
 
-					diff_i = model_cm[model,c,m,'n_diff_true']
+			for ic, c in enumerate(c_list): #command    
+				for im, m in enumerate(m_list): #movement
+					pool_matched = model_cm[model,c,m,'pool_match_success']
+					obs_bool = model_cm[model,c,m,'num_obs'] > min_obs
+					if pool_matched and obs_bool:  
+						print('was included', model,c,m)
 
-					if model_cm[model,c,m,'num_obs'] > min_obs:
-						if not np.isnan(diff_i).any():
-							diff_potent_i, diff_null_i, _ = bmi_util.proj_null_potent(Kn[2:4,:].T, np.array(diff_i).reshape((-1,1)))
-							norm_potent_i = np.linalg.norm(diff_potent_i)
-							norm_null_i = np.linalg.norm(diff_null_i)
+						obs = model_cm[model,c,m,'n_diff_norm', 'obs', proj]
+						s_mean = model_cm[model,c,m,'n_diff_norm_mean', 's', proj]
+						s_std = model_cm[model,c,m,'n_diff_norm_std', 's', proj]
 
-							model_diff[model]['total'].append(model_cm[model,c,m,'n_diff_norm_true'])
-							model_diff[model]['potent'].append(norm_potent_i)
-							model_diff[model]['null'].append(norm_null_i)
-
-							if shuffle_bool: 
-								model_diff[model]['shuffle'].append(model_cm[model,c,m,'n_diff_s_norm_mean']) 
+						#assign:
+						model_diff[model,proj]['obs'].append(obs)
+						model_diff[model,proj]['s_mean'].append(s_mean)
+						model_diff[model,proj]['s_std'].append(s_std)
+					#else:
+						#print('not included', model,c,m)
 	return model_diff
+
 
 def analyze_n_diff(model_diff, model_list, model_pairs):
 	'''
@@ -326,22 +355,26 @@ def analyze_n_diff(model_diff, model_list, model_pairs):
 	models in model_pairs are compared against each other
 
 	'''
+	proj_list = ['full', 'potent', 'null']
 
 	r_n = {}
-	#1. collect individual models' data: 
+	#1. collect individual models' data, compare to shuffle: 
 	for m in model_list:
-		r_n[m, 'total'] = np.array(model_diff[m]['total'])
+		for proj in proj_list:
+			r_n[m, proj, 'obs'] = np.array(model_diff[m,proj]['obs'])
+			r_n[m, proj, 's'] = np.array(model_diff[m,proj]['s_mean'])
+
+			#Compare model to shuffle
+			r_n[m, 'proj', 'model_shuffle_ks'] = scipy.stats.ks_2samp(r_n[m, proj, 'obs'], r_n[m, proj, 's'])
+
 
 	#2. compare models
 	for pair in model_pairs:
-		r_n[pair, 'model_pair_ks'] = scipy.stats.ks_2samp(np.array(r_n[pair[0], 'total']), np.array(r_n[pair[1], 'total']))
+		for proj in proj_list:
+			d1 = np.array(r_n[pair[0], proj, 'obs'])
+			d2 = np.array(r_n[pair[1], proj, 'obs'])
+			r_n[pair, proj, 'model_pair_ks'] = scipy.stats.ks_2samp(d1,d2)
 
-	#3. compare model to its own shuffle
-	for m in model_list:
-		m_i = r_n[m,'total']
-		s_i = np.array(model_diff[m]['shuffle'])
-		r_n[m, 'shuffle'] = s_i
-		r_n[m, 'model_shuffle_ks'] = scipy.stats.ks_2samp(m_i, s_i)
 	return r_n
 
 #---------------------------------------------------------------------------------------------------------------------
