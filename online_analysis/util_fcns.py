@@ -19,7 +19,7 @@ py_ver = sys.version
 
 if '3.6.15' in py_ver:
     pkl_kw = dict(encoding='latin1')
-elif '2.7.8' in py_ver: 
+elif '2.7.8' in py_ver or '2.7.18' in py_ver: 
     pkl_kw = dict()
 
 def get_cov_diffs(ix_co, ix_ob, spks, diffs, method = 1):
@@ -523,13 +523,13 @@ def get_color(mov, alpha=None):
 
 
 ### Plotting ###
-def draw_plot(xax, data, edge_color, fill_color, ax, width = .5, skip_median=False):
+def draw_plot(xax, data, edge_color, fill_color, ax, width = .5, skip_median=False,
+    whisk_min = 5, whisk_max=95):
     bp = ax.boxplot(data, patch_artist=True, positions = [xax], widths=[width],
-        whis = [5, 95])
+        whis = [whisk_min, whisk_max], sym='')
 
     for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
         plt.setp(bp[element], color=edge_color)
-
     if skip_median:
         plt.setp(bp['medians'], color=np.array([1., 1., 1., 0.]))
 
