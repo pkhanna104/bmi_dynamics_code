@@ -4,13 +4,16 @@ import scipy.stats
 import matplotlib.pyplot as plt 
 import copy
 
-def return_lqr_data(model = 'n_do', simulation='df_lqr_n', dyn='full'): 
+from sklearn.linear_model import LinearRegression
+
+def return_lqr_data(model = 'n_do', simulation='df_lqr_n', dyn='full', add_noise_no = False): 
     '''
     options to get out data from vivek's DF
     inputs: 
         model: 'n_do' or 'n_o' --> dynamics +offset or just offset
         simulation: 'df_lqr_n' or 'df_lqr_nl' --> noisy or noiseless
         dyn: 'full', 'null'
+        add_noise_no: whether or not to add extra null noise to the n_o simulation
     '''
     ## Fixed point simulations -- 
     if dyn == 'null':   
@@ -55,7 +58,7 @@ def return_lqr_data(model = 'n_do', simulation='df_lqr_n', dyn='full'):
     potent = np.dot(KG_vel, act.T).T
     
     ### Get decompositiions of activity 
-    KG_null, KG_pot = get_null_pot_decomp(KG_vel)
+    KG_null, KG_pot, KG_nullNtoNmin2 = get_null_pot_decomp(KG_vel)
     
     null_act = np.dot(KG_null, act.T).T
     pot_act = np.dot(KG_pot, act.T).T
@@ -66,7 +69,65 @@ def return_lqr_data(model = 'n_do', simulation='df_lqr_n', dyn='full'):
     ### check all potent data is equal to potent
     assert(np.allclose(np.dot(KG_vel, pot_act.T).T, potent))
 
-    return act[ix_, :], command[ix_], condition[ix_], potent[ix_], null_act[ix_], pot_act[ix_]
+    #### Check that null and potent activity are not correlated; 
+    potent2D = potent[ix_, :] # N x 2 
+    nullNmin2D = np.dot(KG_nullNtoNmin2.T, act[ix_, :].T).T 
+    assert(potent2D.shape[0] == nullNmin2D.shape[0])
+    assert(potent2D.shape[1] == 2)
+    assert(nullNmin2D.shape[1] == act.shape[1] - 2)
+
+    ### linear correlation b/w potent and null noise; 
+    ### x / y --> samples x features
+    n_folds = 2; 
+    Ntot = nullNmin2D.shape[0]
+    Nperfold = int(np.floor(Ntot/float(n_folds)))
+    
+    #print('Total pts : %d, Pts per fold %d'%(Ntot, Nperfold))
+    ix_all = np.arange(Ntot)
+    scores = []
+    
+    for nf in range(n_folds-1): 
+        train_ix_sub = ix_all[(nf*Nperfold):((nf+1)*Nperfold)]
+        test_ix_sub = ix_all[((nf+1)*Nperfold):((nf+2)*Nperfold)]
+        #print('Fold %d, start %d, end %d'%(nf, ix_sub[0], ix_sub[-1]))
+
+        y_mn = np.mean(potent2D[train_ix_sub, :], axis=0)
+        y_demean_train = potent2D[train_ix_sub, :] - y_mn[np.newaxis, :]
+        assert(np.allclose(np.mean(y_demean_train, axis=0), 0.))
+
+        ## Regression 
+        reg = LinearRegression().fit(nullNmin2D[train_ix_sub, :], y_demean_train)
+        
+        ### Scores on held-out data 
+        scores.append(reg.score(nullNmin2D[test_ix_sub, :], potent2D[test_ix_sub, :] - y_mn[np.newaxis, :]))
+        print(reg.coef_)
+        print(reg.intercept_)
+        
+        print('Fold %d, Model %s, score %.5f'%(nf, model, scores[nf]))
+    print('MEAN: Model %s, score %.5f'%( model, np.mean(scores)))
+
+    print('Model %s, index size: %d'%(model, Ntot))
+
+    if add_noise_no:# and model == 'n_o': 
+        nNeurons = act.shape[1]
+        noise = 10*np.random.randn(len(ix_), nNeurons)
+
+        ## Project to nullspace -- KG_null is n x N 
+        null_noise = np.dot(KG_null, noise.T).T
+
+        assert(null_noise.shape[1] == nNeurons)
+        assert(null_noise.shape[0] == len(ix_))
+
+        ### add to activity 
+        act[ix_, :] = act[ix_, :] + null_noise 
+
+        ## add to null : 
+        print(model)
+        print(' before adding noise: var null : %.4f'%(np.sum(np.var(null_act[ix_, :], axis=0))))
+        null_act[ix_, :] = null_act[ix_, :] + null_noise
+        print(' after adding noise: var null : %.4f'%(np.sum(np.var(null_act[ix_, :], axis=0))))
+
+    return act[ix_, :], command[ix_], condition[ix_], potent[ix_], null_act[ix_], pot_act[ix_], scores
 
 def get_null_pot_decomp(KG_potent): 
     '''
@@ -84,16 +145,19 @@ def get_null_pot_decomp(KG_potent):
     Va = np.zeros_like(Vh) # N x N
     Va[:2, :] = Vh[:2, :] # N x N 
     KG_potent_orth = np.dot(Va.T, Va) # N x N 
-    return KG_null_proj, KG_potent_orth
+    return KG_null_proj, KG_potent_orth, KG_null
 
 def get_cond_com_pls_matched_inds(commands, condition, activity, potent, nshuff=10, pv=.5, 
-    pool_factor=1., min_commands = 15): 
+    min_pool_factor=1., max_pool_factor = 10000., min_commands = 15, max_commands = 1000): 
     '''
     method that takes in command numbers // condition number // activity 
     '''
     assert(len(commands) == len(condition) == activity.shape[0])
     cc_dist = {}
-    shuff_cc_dist = {} 
+    shuff_cc_dist = {}
+    
+    cc_var = {}
+    pool_var = {}
 
     for com in np.arange(32): # dont' include commands for 4*8 onwards 
         assert(com < 32)
@@ -103,7 +167,7 @@ def get_cond_com_pls_matched_inds(commands, condition, activity, potent, nshuff=
             ## command-condition 
             ix_cc = np.nonzero(np.logical_and(commands == com, condition == cond))[0]
             
-            if len(ix_cc) > min_commands: 
+            if len(ix_cc) > min_commands and len(ix_cc) < max_commands: 
                 
                 ## Find condition pool that matches this 
                 ix_com = np.nonzero(commands == com)[0]
@@ -111,57 +175,67 @@ def get_cond_com_pls_matched_inds(commands, condition, activity, potent, nshuff=
                 ## Return indices that match 
                 #print('Starting match cond: %d, com %d'%(cond, com))
                 ix_com = match_ix(ix_cc, ix_com, potent, pv=pv)
-                    
-                if ix_com is not None and (float(len(ix_com))/float(len(ix_cc))) > pool_factor: 
-                    #print('Command %d Cond %d, ix_cc N=%d, ix_com N=%d'%(com, cond, len(ix_cc), len(ix_com)))
+                
+                if ix_com is not None:
 
-                    shuff_cc_dist[com, cond] = []
+                    pool_factor = float(len(ix_com))/float(len(ix_cc))
 
-                    # Global pool
-                    pool_mn = np.mean(activity[ix_com, :], axis=0)
+                    if np.logical_and(pool_factor > min_pool_factor, pool_factor < max_pool_factor): 
+                        #print('Command %d Cond %d, ix_cc N=%d, ix_com N=%d'%(com, cond, len(ix_cc), len(ix_com)))
 
-                    ### ix_cc is maybe not in ix_com? 
-                    ix_cc2 = np.array([i for i in ix_cc if i in ix_com])
+                        shuff_cc_dist[com, cond] = []
+                        pool_var[com, cond] = np.sum(np.var(activity[ix_com, :], axis=0))
 
-                    assert(len(ix_cc2) == len(ix_cc))
+                        # Global pool
+                        pool_mn = np.mean(activity[ix_com, :], axis=0)
 
-                    if len(ix_cc2) > 0: 
-    
-                        # Shuffle_dist
-                        tmp_mn = []; 
-                        for i_shuff in range(nshuff): 
+                        ### ix_cc is maybe not in ix_com? 
+                        ix_cc2 = np.array([i for i in ix_cc if i in ix_com])
 
-                           ## which indices 
-                            ix_ = np.random.permutation(len(ix_com))[:len(ix_cc2)]
-                            mn_ = np.mean(activity[ix_com[ix_], :], axis=0)
-                            tmp_mn.append(mn_)
-                            shuff_cc_dist[com,cond].append(np.linalg.norm(pool_mn - mn_))
+                        assert(len(ix_cc2) == len(ix_cc))
 
-                        cc_dist[com, cond] = np.linalg.norm(pool_mn - np.mean(activity[ix_cc2, :], axis=0))
+                        if len(ix_cc2) > 0: 
+        
+                            # Shuffle_dist
+                            tmp_mn = []; 
+                            for i_shuff in range(nshuff): 
 
-                    if com > 30: 
-                        pot_cc = potent[ix_cc, :]
+                               ## which indices 
+                                ix_ = np.random.permutation(len(ix_com))[:len(ix_cc2)]
+                                mn_ = np.mean(activity[ix_com[ix_], :], axis=0)
+                                tmp_mn.append(mn_)
+                                shuff_cc_dist[com,cond].append(np.linalg.norm(pool_mn - mn_))
 
-                        ix_com_og = np.nonzero(commands == com)[0]
-                        pool_cc_og = potent[ix_com_og, :]
+                            cc_dist[com, cond] = np.linalg.norm(pool_mn - np.mean(activity[ix_cc2, :], axis=0))
+                            cc_var[com, cond] = np.sum(np.var(activity[ix_cc2, :], axis=0))
 
-                        pool_cc = potent[ix_com, :]
+                            mn = np.mean(shuff_cc_dist[com,cond])
+                            std = np.std(shuff_cc_dist[com,cond])
+                            z_dat = (cc_dist[com, cond] - mn) / std
 
-                        f, ax= plt.subplots()
-                        ax.set_title('K=Pool og, B=cond, R=new pool\n com%d cond %.1f'%(com, cond))
-                        ax.plot(pool_cc_og[:, 0], pool_cc_og[:, 1], 'k.')
-                        ax.plot(pool_cc[:, 0], pool_cc[:, 1], 'r.')
-                        ax.plot(pot_cc[:, 0], pot_cc[:, 1], 'b.', alpha=.5)
+                            if z_dat <-10 : 
+                                pot_cc = potent[ix_cc, :]
 
-                        pot_mn = np.mean(pool_cc, axis=0)
-                        pot_mn2 = np.mean(pot_cc, axis=0)
+                                ix_com_og = np.nonzero(commands == com)[0]
+                                pool_cc_og = potent[ix_com_og, :]
 
-                        ax.plot(pot_mn[0], pot_mn[1], 'r*') ### pool; 
-                        ax.plot(pot_mn2[0], pot_mn2[1], 'b*') ### command-cond 
+                                pool_cc = potent[ix_com, :]
 
-                        ax.plot([pot_mn[0], pot_mn2[0]], [pot_mn[1], pot_mn2[1]], 'b-')
-                        ax.set_xlabel('X vel')
-                        ax.set_ylabel('Y vel')
+                                f, ax= plt.subplots()
+                                ax.set_title('K=Pool og, B=cond, R=new pool\n com%d cond %.1f'%(com, cond))
+                                ax.plot(pool_cc_og[:, 0], pool_cc_og[:, 1], 'k.')
+                                ax.plot(pool_cc[:, 0], pool_cc[:, 1], 'r.')
+                                ax.plot(pot_cc[:, 0], pot_cc[:, 1], 'b.', alpha=.5)
+
+                                pot_mn = np.mean(pool_cc, axis=0)
+                                pot_mn2 = np.mean(pot_cc, axis=0)
+
+                                ax.plot(pot_mn[0], pot_mn[1], 'r*') ### pool; 
+                                ax.plot(pot_mn2[0], pot_mn2[1], 'b*') ### command-cond 
+
+                                ax.plot([pot_mn[0], pot_mn2[0]], [pot_mn[1], pot_mn2[1]], 'b-')
+                                ax.set_xlabel('X vel')
+                                ax.set_ylabel('Y vel')
                         
                         
                         #z = (cc_dist[com, cond] - np.mean(shuff_cc_dist[com,cond])) / np.std(shuff_cc_dist[com,cond])
@@ -179,7 +253,7 @@ def get_cond_com_pls_matched_inds(commands, condition, activity, potent, nshuff=
                         #     ax.plot(df_tru, '-*')
                         #     ax.set_title('Com %d, Cond %d' %(com,cond))
 
-    return cc_dist, shuff_cc_dist
+    return cc_dist, shuff_cc_dist, cc_var, pool_var
 
 def match_ix(ix0, ix1, val, pv=.5): 
     '''
@@ -259,11 +333,12 @@ def plot2(cc_dist, shuff_cc_dist, x, axi):
         st_shuff = np.std(shuff_cc_dist[k])
         dat = cc_dist[k]
         z_dat = (dat - mn_shuff) / st_shuff
-        if z_dat > 8: 
-            print('GT20: %s'%str(k))
-
+        
+        # if z_dat > 4:
+        #     print('Dropping %s, z_dat=%.2f'%(str(k), z_dat))
+        # else: 
         axi.plot(x+np.random.randn()*.1, z_dat, 'b.')
-    	Z.append(z_dat)
+        Z.append(z_dat)
     
     axi.bar(x, np.mean(Z), color='b', alpha=.5)
     mn = np.mean(Z) - 2*np.std(Z)
