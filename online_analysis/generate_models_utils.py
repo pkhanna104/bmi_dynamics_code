@@ -33,7 +33,7 @@ py_ver = sys.version
 
 if '3.6.15' in py_ver:
     pkl_kw = dict(encoding='latin1')
-elif '2.7.8' in py_ver: 
+elif '2.7.8' in py_ver or '2.7.18' in py_ver:
     pkl_kw = dict()
 
 class Model_Table(tables.IsDescription):

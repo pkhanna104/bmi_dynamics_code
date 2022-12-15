@@ -28,8 +28,9 @@ if '3.6.15' in py_ver:
     from autograd.scipy.special import logsumexp
 
 else:
-    from pylds.models import DefaultLDS
-    from pylds.states import kalman_filter
+    pass
+    #from pylds.models import DefaultLDS
+    #from pylds.states import kalman_filter
 
 
 
