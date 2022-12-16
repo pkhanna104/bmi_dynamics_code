@@ -1278,7 +1278,6 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
             ax_fracN.plot(ia, float(nNeur_sig)/float(nNeur), 'k.')
             bar_dict['fracN'].append(float(nNeur_sig)/float(nNeur))
 
-
         #### Plot bar plots 
         for _, (key, ax, wid, offs, alpha) in enumerate(zip(
             ['fracCC', 'fracCom', 'fracN'],# 'fracdist', 'fracdist_shuff', 'fracdist_sig', 'fracdist_shuff_sig'], 
@@ -1348,7 +1347,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
     perc_sig_vect = {}; 
 
     dtype_su = [('pv', float), ('abs_diff_fr', float), ('frac_diff_fr', float), ('glob_fr', float), ('zsc', float)]
-    dtype_pop = [('pv', float), ('norm_diff_fr', float), ('frac_norm_diff_fr', float), ('zsc', float)]
+    dtype_pop = [('pv', float), ('dist_norm_shuffmn', float), ('dist_norm_condpool', float), ('zsc', float)]
 
     niter2match = {}
 
@@ -1676,12 +1675,14 @@ def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
             # nshuffs x neurons -2 --> nshuffs x nCC --> nshuffs
             cm_shuff_diffs = np.mean(np.vstack(([np.linalg.norm(d[7], axis=1) for d in pooled_stats[animal, day_ix]])), axis=0)
             assert(len(cm_shuff_diffs) == nshuffs)
-            CM.append([cm_diff, cm_shuff_diffs])
+            mn_shuff = np.mean(cm_shuff_diffs)
+
+            CM.append([cm_diff/mn_shuff, cm_shuff_diffs/mn_shuff])
             
-            cm_ix = np.nonzero(cm_diff <= cm_shuff_diffs)[0]
-            pv_cm = float(len(cm_ix)) / float(len(cm_shuff_diffs))
-            print('pv_cm = %.5f, mn_cm = %.3f, mn_shuff = %.3f (95th = %.3f)' %(pv_cm, cm_diff, np.mean(cm_shuff_diffs),
-                np.percentile(cm_shuff_diffs, 95)))
+            cm_ix = np.nonzero(cm_diff/mn_shuff <= cm_shuff_diffs/mn_shuff)[0]
+            pv_cm = float(len(cm_ix)) / nshuffs 
+            print('pv_cm = %.5f, mn_cm = %.3f, mn_shuff = %.3f (95th = %.3f)' %(pv_cm, cm_diff/mn_shuff, np.mean(cm_shuff_diffs)/mn_shuff,
+                np.percentile(cm_shuff_diffs/mn_shuff, 95)))
 
         ### Pooled pooled; 
         ncm_pool = np.mean([d[0] for d in NCM])
@@ -1692,6 +1693,7 @@ def print_pooled_stats_fig3(pooled_stats, nshuffs = 1000):
         print('')
         print('POOL %s, pv_ncm = %.5f, mn_ncm = %.3f, mn_shuff = %.3f (%.3f)' %(animal, float(len(ix))/nshuffs, 
             ncm_pool, np.mean(np.mean(ncm_shuff_pool, axis=0)), np.percentile(np.mean(ncm_shuff_pool, axis=0), 95)))
+        
         ### Pooled pooled; 
         cm_pool = np.mean([d[0] for d in CM])
         cm_shuff_pool = np.vstack(([d[1] for d in CM]))
@@ -1709,15 +1711,37 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
         1. fraction of command/conditions sig. diff (population)
         2. fraction of commands           sig. diff (population, pooled over conditions)
         3. fraction of neurons            sig. diff (single neurons, pooled over command/conditions)
+
         4. fraction distance from condition-pooled (population)
+        5. fraction distance from shuffle-mean (population) 
+
+    ###### KEYS for pooled stats ###########
+    ### mean_FR_diffs 0 || mean_FR_diffs_shuffle 1 || mag 2 || ang 3 || mov 4 || cond-pool FR 5
+        || mean_FR_diff_null 6 || mean_FR_diff_null_shuff 7 || cond-pool null FR 8
+    pooled_stats[animal, day_ix].append([dmean_FR, dmFR_shuffle, mag, ang, mov, global_mean_FR, 
+        dmean_FR_null, dmFR_shuffle_null, global_mean_FR_null])
+
+    ### PV || diff FR (hz) || diff FR /cond-pool || cond-pool mean || zscore
+    perc_sig[animal, day_ix][mag, ang, mov].append(np.array((pv, dFR, 
+    dFR/global_mean_FR[i_neur], global_mean_FR[i_neur], zsc), dtype=dtype_su))
+
+    ### PV || pop_dist / shuff_dist || pop_dist / cond-pool || zscore
+    perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist_null/np.mean(shuff_dist_null), 
+    dist_null/np.linalg.norm(global_mean_FR_null), zsc), dtype=dtype_pop)
+
     '''
 
     #### Each plot ####
     f_fracCC, ax_fracCC = plt.subplots(figsize=(2, 3))
     f_fracCom, ax_fracCom = plt.subplots(figsize=(2, 3))
     f_fracN, ax_fracN = plt.subplots(figsize=(2, 3))
+    
     f_fracdist, ax_fracdist = plt.subplots(figsize=(2, 3))
     f_fracdist_sig, ax_fracdist_sig = plt.subplots(figsize=(2, 3))
+
+    ### All 
+    f_fracdistshuff, ax_fracdistshuff = plt.subplots(figsize=(2, 3))
+
 
     ylabels = dict()
     ylabels['fracCC'] = 'frac. (command,condition) \nw. sig. deviations'
@@ -1728,6 +1752,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
     ylabels['fracdist_sig'] = ''
     ylabels['fracdist_shuff_sig']  = 'norm. pop. dist for sig. (command,condition)'
 
+    ylabels['fracdist_normshuff']  = 'pop. dist (fraction)'
+
     count = {}
     count['fracCC'] = []
     count['fracCom'] = []
@@ -1735,10 +1761,9 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
     count['CC'] = []
     count['Cond_per_com'] = []
 
-
-
     for ia, animal in enumerate(['grom', 'jeev']):
-        bar_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist=[], fracdist_shuff=[], fracdist_sig=[], fracdist_shuff_sig=[])
+        bar_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist=[], fracdist_shuff=[], fracdist_sig=[], fracdist_shuff_sig=[], 
+            fracdist_normshuff=[])
         stats_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist_sig=[], fracdist_shuff_sig=[])
 
         if nsessions is None: 
@@ -1759,25 +1784,38 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
             frac_pop_dist_sig = []; 
             frac_pop_dist_shuff_sig = []; 
 
+            frac_pop_dist_normshuff = []; 
+            #frac_pop_dist_shuff_shuff = []
+
             #### For each mag/ang/mov #####
             for _, val in enumerate(pop_stats):
-                dFR, dFR_shuff, _, _, _, gFR = val
-                frac_pop_dist.append(np.linalg.norm(dFR)/np.linalg.norm(gFR))
+
+                dFR, dFR_shuff, _, _, _, gFR, dFR_null, dFR_shuff_null, gFR_null = val
+                frac_pop_dist.append(np.linalg.norm(dFR_null)/np.linalg.norm(gFR_null))
                 
                 assert(dFR_shuff.shape[0] == Nshuffs)
                 assert(dFR_shuff.shape[1] == Nneur)
+                assert(dFR_shuff_null.shape[0] == Nshuffs)
+                assert(dFR_shuff_null.shape[1] == Nneur - 2)
                 
-                frac_pop_dist_shuff.append(np.percentile(np.linalg.norm(dFR_shuff, axis=1)/np.linalg.norm(gFR), 50))
+                # Should probably do mean... 
+                frac_pop_dist_shuff.append(np.mean(np.linalg.norm(dFR_shuff_null, axis=1)/np.linalg.norm(gFR_null)))
+                #frac_pop_dist_shuff.append(np.percentile(np.linalg.norm(dFR_shuff, axis=1)/np.linalg.norm(gFR), 50))
 
                 ### Is this a sig commands/cond? 
-                n_lte = len(np.nonzero(np.linalg.norm(dFR_shuff, axis=1) >= np.linalg.norm(dFR))[0])
+                n_lte = len(np.nonzero(np.linalg.norm(dFR_shuff_null, axis=1) >= np.linalg.norm(dFR_null))[0])
                 pv_cc = float(n_lte) / float(Nshuffs)
 
                 #### If yes, add it to the plot 
                 if pv_cc < 0.05:
-                    frac_pop_dist_sig.append(np.linalg.norm(dFR)/np.linalg.norm(gFR))
-                    frac_pop_dist_shuff_sig.append(np.percentile(np.linalg.norm(dFR_shuff, axis=1)/np.linalg.norm(gFR), 50))
+                    frac_pop_dist_sig.append(np.linalg.norm(dFR_null)/np.linalg.norm(gFR_null))
+                    frac_pop_dist_shuff_sig.append(np.mean(np.linalg.norm(dFR_shuff_null, axis=1)/np.linalg.norm(gFR_null)))
             
+                ##### Distances normalized by mean of shuff 
+                mn_shuff = np.mean(np.linalg.norm(dFR_shuff_null, axis=1))
+                frac_pop_dist_normshuff.append(np.linalg.norm(dFR_null) / mn_shuff)
+                #frac_pop_dist_shuff_shuff.append(mn_shuff/mn_shuff) # one 
+
             bar_dict['fracdist'].append(np.mean(frac_pop_dist))
             ax_fracdist.plot(ia, np.mean(frac_pop_dist), 'k.')
             
@@ -1793,6 +1831,10 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
             ax_fracdist_sig.plot([ia, ia+0.4], [np.mean(frac_pop_dist_sig), np.mean(frac_pop_dist_shuff_sig)], 'k-', linewidth=1.)
             ax_fracdist_sig.plot(ia+0.4, np.mean(frac_pop_dist_shuff_sig), '.', markerfacecolor='white', 
                 markeredgewidth=1.0, markeredgecolor='k', markersize=12)
+
+            ### Last bars --> fraction pop dists w.r.t. shuffle  
+            bar_dict['fracdist_normshuff'].append(np.mean(frac_pop_dist_normshuff))
+            ax_fracdistshuff.plot(ia, np.mean(frac_pop_dist_normshuff), 'k.')
 
             ########## # of Cond/com sig. and # of com sig. ###########
             nCC = 0
@@ -1818,28 +1860,31 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
             for i_nComCond in range(NComCond): 
 
                 ### unpack 
-                dmean_FR, dmFR_shuffle, mag, ang, mov, _ = stats[i_nComCond]
+                dmean_FR, dmFR_shuffle, mag, ang, mov, _, dmean_FRnull, dmFR_shuff_null, _ = stats[i_nComCond]
 
                 assert(Nshuffs == dmFR_shuffle.shape[0])
+                assert(Nshuffs == dmFR_shuff_null.shape[0])
                 assert(len(dmean_FR) == dmFR_shuffle.shape[1] == Nneur)
+                assert(len(dmean_FRnull) == dmFR_shuff_null.shape[1] == Nneur-2)
 
                 ### pv for command/conditions ### 
-                n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle, axis=1) >= np.linalg.norm(dmean_FR))[0])
+                n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuff_null, axis=1) >= np.linalg.norm(dmean_FRnull))[0])
                 pv_cc = float(n_lte) / float(Nshuffs)
 
                 if pv_cc < 0.05:
                     nCC_sig += 1
                 nCC+= 1
 
-                #### Add to command sig 
+                #### Add to command sig -- all commands/conditions
                 if [mag, ang] not in commands_already:
                     command_sig[tuple([mag, ang])] = dict(vals=[], shuffs=[])
                     commands_already.append([mag, ang])
 
-                command_sig[tuple([mag, ang])]['vals'].append(np.linalg.norm(dmean_FR))
-                command_sig[tuple([mag, ang])]['shuffs'].append(np.linalg.norm(dmFR_shuffle, axis=1))
+                command_sig[tuple([mag, ang])]['vals'].append(np.linalg.norm(dmean_FRnull))
+                command_sig[tuple([mag, ang])]['shuffs'].append(np.linalg.norm(dmFR_shuff_null, axis=1))
                     
-                ##### Add to neuron values if signficant ### 
+                ##### Add to neuron values if signficant -- only SIG. commands/conditions
+                ##### Fine w/ non-null; 
                 if pv_cc < 0.05: 
                     for nneur in range(Nneur):
                         neuron_sig[nneur]['vals'].append(np.abs(dmean_FR[nneur]))
@@ -1861,7 +1906,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
                 shuf = command_sig[tuple(com)]['shuffs']
                 
                 assert(len(vals) == len(shuf))
-                ### Average over ###
+                
+                ### Average over all conditions (even non-sig ones) ###
                 cond_per_com.append(len(vals))
 
                 shuf = np.vstack((shuf))
@@ -1928,13 +1974,15 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
             bar_dict['fracN'].append(float(nNeur_sig)/float(nNeur))
             count['fracN'].append(float(nNeur_sig)/float(nNeur))
 
+
         #### Plot bar plots 
         for _, (key, ax, wid, offs, alpha) in enumerate(zip(
-            ['fracCC', 'fracCom', 'fracN', 'fracdist', 'fracdist_shuff', 'fracdist_sig', 'fracdist_shuff_sig'], 
-            [ax_fracCC, ax_fracCom, ax_fracN, ax_fracdist, ax_fracdist, ax_fracdist_sig, ax_fracdist_sig], 
-            [.8, .8, .8, .4, .4, .4, .4], 
-            [0, 0, 0, 0, .4, 0, .4],
-            [.2, .2, .2, .2, 0., .2, 0.])):
+            ['fracCC', 'fracCom', 'fracN', 'fracdist', 'fracdist_shuff', 'fracdist_sig', 'fracdist_shuff_sig', 'fracdist_normshuff'], 
+            [ax_fracCC, ax_fracCom, ax_fracN, ax_fracdist, ax_fracdist, ax_fracdist_sig, ax_fracdist_sig, ax_fracdistshuff], 
+            [.8, .8, .8, .4, .4, .4, .4, .8], 
+            [0,   0,  0,  0, .4,  0, .4,  0],
+            [.2, .2, .2, .2, 0., .2, 0., .2])):
+            
             if alpha == 0.:
                 ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, color='w', edgecolor='k',
                     linewidth=.5)
@@ -1943,12 +1991,15 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
             ax.set_ylabel(ylabels[key], fontsize=8)
             ax.set_xticks([0, 1])
             ax.set_xticklabels(['G', 'J'])
-            ax.hlines(0.05, -.5, 1.5, 'k', linewidth=.5, linestyle='dashed')
+
+            if 'normshuff' not in key: 
+                ax.hlines(0.05, -.5, 1.5, 'k', linewidth=.5, linestyle='dashed')
 
             if key == 'fracdist_shuff_sig':
                 ax.set_xlim([-.3, 1.7])
             else:
                 ax.set_xlim([-1, 2])
+            
             if 'dist' not in key:
                 ax.set_yticks([0., 0.2, .4, .6, .8, 1.0])
                 ax.set_ylim([0., 1.05])
@@ -1959,8 +2010,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
                 spine_side.set_visible(False)
 
         
-    for _, (f, yl) in enumerate(zip([f_fracCC, f_fracCom, f_fracN, f_fracdist, f_fracdist_sig],
-        ['fracCC', 'fracCom', 'fracN_sig', 'fracdist', 'fracdist_sig'])):
+    for _, (f, yl) in enumerate(zip([f_fracCC, f_fracCom, f_fracN, f_fracdist, f_fracdist_sig, f_fracdistshuff],
+        ['fracCC', 'fracCom', 'fracN_sig', 'fracdist', 'fracdist_sig', 'fracdist_normshuff'])):
         
         f.tight_layout()
         if save: 
@@ -1970,212 +2021,89 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
 
 def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None, 
     plot_sig_mov_comm_grid = False, min_fr_frac_neur_diff = 0.5, neur_ix = 36):
+    
+    '''
+    plot to make supp fig 2 --> mean diffs in paper 
+    many of thse plotse are now in "plot_pooled_stats_fig3_science_compression'" so some have been removed; 
+
+
+    ###### KEYS for pooled stats ###########
+    ### mean_FR_diffs 0 || mean_FR_diffs_shuffle 1 || mag 2 || ang 3 || mov 4 || cond-pool FR 5
+        || mean_FR_diff_null 6 || mean_FR_diff_null_shuff 7 || cond-pool null FR 8
+    pooled_stats[animal, day_ix].append([dmean_FR, dmFR_shuffle, mag, ang, mov, global_mean_FR, 
+        dmean_FR_null, dmFR_shuffle_null, global_mean_FR_null])
+
+    ### PV || diff FR (hz) || diff FR /cond-pool || cond-pool mean || zscore
+    perc_sig[animal, day_ix][mag, ang, mov].append(np.array((pv, dFR, 
+    dFR/global_mean_FR[i_neur], global_mean_FR[i_neur], zsc), dtype=dtype_su))
+
+    ### PV || pop_dist / shuff_dist || pop_dist / cond-pool || zscore
+    perc_sig_vect[animal, day_ix][mag, ang, mov] = np.array((pv, dist_null/np.mean(shuff_dist_null), 
+    dist_null/np.linalg.norm(global_mean_FR_null), zsc), dtype=dtype_pop)
+
+    '''
 
     #### Plot this; 
     ############ Single neuron plots ##############
-    f, ax = plt.subplots(figsize=(2, 3)) ### Percent sig; 
-    f2, ax2 = plt.subplots(figsize=(2, 3)) ### Percent neurons with > 0 sig; 
+    # f, ax = plt.subplots(figsize=(2, 3)) ### Percent sig; 
+    # f2, ax2 = plt.subplots(figsize=(2, 3)) ### Percent neurons with > 0 sig; 
     
-    ### Percent sig of sig diff mov-commands SU and Vect; 
-    fsig_su, axsig_su = plt.subplots(figsize=(2, 3))
+    # ### Percent sig of sig diff mov-commands SU and Vect; 
+    # fsig_su, axsig_su = plt.subplots(figsize=(2, 3))
+    f_su_zsc_all,    ax_su_zsc_all =    plt.subplots(figsize=(3, 3)) ### z-score distribution of all neurons over all CCs
+    f_su_zsc_sig_cc, ax_su_zsc_sig_cc = plt.subplots(figsize=(3, 3)) ### z-score distribution of all neurons over sig CCs
 
-    feff1, axeff1 = plt.subplots(figsize=(3, 3)) ### z-score distribution of all neurons 
-    feff, axeff = plt.subplots(figsize=(3, 3)) ### Effect size for sig. neurons 
-    feff2, axeff2 = plt.subplots(figsize=(3, 3)) ### Effect size (frac diff)
+    f_su_diffhz_sig_NCC, ax_su_diffhz_sig_NCC = plt.subplots(figsize=(3, 3))   ### Effect size (diff in Hz) for single neurons for sig NCCs 
+    f_su_frac_sig_NCC,   ax_su_frac_sig_NCC =   plt.subplots(figsize=(3, 3)) ### Effect size (frac diff vs. cond-pool mean) for single neurons for sig NCCs 
 
-    ### Significant onesl 
-    feff_bsig, axeff_bsig = plt.subplots(figsize=(3, 3))
-    feff_bsig_frac, axeff_bsig_frac = plt.subplots(figsize=(3, 3))
+    ### Significant ones 
+    # feff_bsig, axeff_bsig = plt.subplots(figsize=(3, 3))
+    # feff_bsig_frac, axeff_bsig_frac = plt.subplots(figsize=(3, 3))
 
     ############ Vector plots ##############
-    fv, axv = plt.subplots(figsize=(2, 3)) ### Perc sig. command/movs
-    fv2, axv2 = plt.subplots(figsize=(2, 3)) ### Perc commands with > 0 sig mov
+    #fv, axv = plt.subplots(figsize=(2, 3)) ### Perc sig. command/movs
+    #fv2, axv2 = plt.subplots(figsize=(2, 3)) ### Perc commands with > 0 sig mov
 
     # Just show abstract vector norm diff ? 
-    fveff1, axveff1 = plt.subplots(figsize=(3, 3)) ### z-score distribution of population distances
-    fveff, axveff = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov
-    fveff2, axveff2 = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov
-    fveff_bsig, axveff_bsig = plt.subplots(figsize=(3, 3)) ###
-
-    ### Percent sig of sig diff mov-commands  Vect; 
-    fsig_pop, axsig_pop = plt.subplots(figsize=(2, 3))
-
+    fpop_zsc_all, axpop_zsc_all= plt.subplots(figsize=(3, 3)) ### z-score distribution of population distances
+    
+    fpop_dist_frac_shuff, axpop_dist_frac_shuff = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov -- pop_dist/shuff
+    fpop_dist_frac_pool , axpop_dist_frac_pool  = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov -- pop_dist/cond-pooled 
+    
     #### For each animal 
-    for ia, animal in enumerate(['grom', 'jeev']):#, 'home']):
-
-        ### Bar plots ####
-        bar_dict = dict(percNCMsig = [], percNgte1CMsig = [], percCMsig=[], percCgte1Msig = [], 
-            percNCMsig_behsig = [], percCMsig_behsig = [])
+    for ia, animal in enumerate(['grom', 'jeev']):
 
         ### For each date ####        
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
             
-            nneur = perc_sig[animal, day_ix, 'nneur']
-            num_sig = np.zeros((nneur, ))
-
-            NCM_sig = 0
-            NCM_tot = 0 
-
-            NCM_sig_beh_sig = 0
-            NCM_tot_beh_sig = 0
-
-            NCM_sig_hz_diff = []
-            NCM_sig_frac_diff = []
-
-            NCM_behsig_hz_diff = []
-            NCM_behsig_frac_diff = []
-
-            Zsc_su = []
-
-            ###### Single neuron ########
-            for i, (k, varr) in enumerate(perc_sig[animal, day_ix].items()):
-                
-                ### Pvalues ####
-                if len(varr) > 0: 
-                    varr = np.vstack((varr))
-                    v = np.squeeze(varr['pv'])
-                    
-                    for j, vi in enumerate(v): 
-
-                        if vi < 0.05:
-                            NCM_sig += 1
-                            num_sig[j] += 1
-                            
-                            NCM_sig_hz_diff.append(float(varr['abs_diff_fr'][j]))
-
-                            ### PLot the dot if relevant ###
-                            if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
-                                color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
-                                if k[2] >= 10.:
-                                    color[-1] = 0.5
-                                else:
-                                    color[-1] = 1.0
-
-                                color_rgb = util_fcns.rgba2rgb(color)
-                                #print('mov %.2f, color w alpha %s, color wo alpha %s '%(k[2], color_rgb, color))
-                                x_ = [day_ix + 10*ia - 1, day_ix + 10*ia - 0.5]
-                                y_ = [float(varr['abs_diff_fr'][j]), float(varr['abs_diff_fr'][j])]
-                                axeff.plot(x_, y_, '-', color=color_rgb)
-
-                                y_1 = [float(varr['zsc'][j]), float(varr['zsc'][j])]
-                                axeff1.plot(x_, y_1, '-', color=color_rgb)
-                                print('plotting zsc: targ %d, zsc: %.1f, abs diff %.1f'%(k[2], y_1[0], y_[0]))
-
-
-                            if float(varr['glob_fr'][j]) >= min_fr_frac_neur_diff:
-                                NCM_sig_frac_diff.append(float(varr['frac_diff_fr'][j]))
-
-                                if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
-                                    x_ = [day_ix + 10*ia - 1, day_ix + 10*ia -0.5]
-                                    y_ = [float(varr['frac_diff_fr'][j]), float(varr['frac_diff_fr'][j])]
-                                    axeff2.plot(x_, y_, '-', color=color_rgb)
-                                
-
-                            assert(vi == varr['pv'][j])
-                            
-                            ### See if behavior is sig: 
-                            if sig_move_diffs is not None: 
-                                if list(k) in sig_move_diffs[animal, day_ix]: 
-                                    NCM_sig_beh_sig += 1
-                                    NCM_behsig_hz_diff.append(float(varr['abs_diff_fr'][j]))
-                                    
-                                    #### Make sure global FR > 0.5 Hz; 
-                                    if float(varr['glob_fr'][j]) >= min_fr_frac_neur_diff:
-                                        NCM_behsig_frac_diff.append(float(varr['frac_diff_fr'][j]))
-
-
-                        ### Plot colored plots for all dots 
-                        if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
-                            color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
-                            if k[2] >= 10.:
-                                color[-1] = 0.5
-                            else:
-                                color[-1] = 1.0
-
-                            color_rgb = util_fcns.rgba2rgb(color)
-                            x_ = [day_ix + 10*ia - 1, day_ix + 10*ia - 0.5]
-                            y_1 = [float(varr['zsc'][j]), float(varr['zsc'][j])]
-                            axeff1.plot(x_, y_1, '-', color=color_rgb)
-
-                        NCM_tot += 1
-                        if sig_move_diffs is not None: 
-                            if list(k) in sig_move_diffs[animal, day_ix]:
-                                NCM_tot_beh_sig += 1
-                        else:
-                            NCM_tot_beh_sig = np.nan
-                    
-                    ### Other stuff besides PV: 
-                    Zsc_su.append(np.squeeze(varr['zsc']))
-
-            ####### Single Neuorns ######
-            ax.plot(ia, float(NCM_sig)/float(NCM_tot), 'k.')
-            bar_dict['percNCMsig'].append(float(NCM_sig)/float(NCM_tot))
-            
-            sig_n = len(np.nonzero(num_sig > 0)[0])
-            bar_dict['percNgte1CMsig'].append(float(sig_n) / float(nneur))
-            ax2.plot(ia, float(sig_n) / float(nneur), 'k.')
-
-            frac_sig_beh_sig = float(NCM_sig_beh_sig)/float(NCM_tot_beh_sig)
-            axsig_su.plot(ia, frac_sig_beh_sig, 'k.')
-            bar_dict['percNCMsig_behsig'].append(frac_sig_beh_sig)
-
-            ##### Plot the effect size #######
-            util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_hz_diff, 'k', np.array([1., 1., 1., 0.]), axeff)
-            util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_frac_diff, 'k', np.array([1., 1., 1., 0.]), axeff2)
-
-            ### Zsc
-            Zsc_su = np.hstack((Zsc_su))
-            util_fcns.draw_plot(day_ix + 10*ia, Zsc_su, 'k', np.array([1., 1., 1., 0.]), axeff1)
-            axeff1.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
-
-            util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_hz_diff, 'k', np.array([1., 1., 1., 0.]), axeff_bsig)
-            util_fcns.draw_plot(day_ix + 10*ia, NCM_behsig_frac_diff, 'k', np.array([1., 1., 1., 0.]), axeff_bsig_frac)
-
-            
-            ##### Vector ########
-            vect_sig = 0 
-            vect_tot = 0 
-
-            vect_sig_beh_sig = 0
-            vect_tot_beh_sig = 0
-                        
+            ##### Vector ########                        
             ####################
-            commands_w_sig = np.zeros((4, 8)) ### How many are sig? 
-            command_cnt = np.zeros((4, 8)) ### How many movements count? 
-            sig_hz_diff_vect = []
-            sig_hz_diff_vect_frac = []
-            sig_hz_diff_vect_bsig = []
+            #commands_w_sig = np.zeros((4, 8)) ### How many are sig? 
+            #command_cnt = np.zeros((4, 8)) ### How many movements count? 
+            sigCC_vect_frac_shuffmn = []
+            sigCC_vect_frac_condpool = []
             zsc_diff = []
+            CC_sig = []
 
-            if plot_sig_mov_comm_grid:
-                f, axsig = plt.subplots(ncols = 4, figsize = (12, 4))
-                for ia, axi in enumerate(axsig):
-                    axi.set_xlabel('Movements \n (Mag=%d)'%ia)
-                    axi.set_ylabel('Angle')
-                axsig[0].set_title('%s, Day%d'%(animal, day_ix))
+            # if plot_sig_mov_comm_grid:
+            #     f, axsig = plt.subplots(ncols = 4, figsize = (12, 4))
+            #     for ia, axi in enumerate(axsig):
+            #         axi.set_xlabel('Movements \n (Mag=%d)'%ia)
+            #         axi.set_ylabel('Angle')
+            #     axsig[0].set_title('%s, Day%d'%(animal, day_ix))
 
+            ### varr: PV || pop_dist / shuff_dist || pop_dist / cond-pool || zscore
+            ### dtype_pop = [('pv', float), ('dist_norm_shuffmn', float), ('dist_norm_condpool', float), ('zsc', float)]
             for i, (k, varr) in enumerate(perc_sig_vect[animal, day_ix].items()):
                 v = float(varr['pv'])
 
                 zsc_diff.append(float(varr['zsc']))
 
                 if v < 0.05:
-                    vect_sig += 1
-                    commands_w_sig[k[0], k[1]] += 1
-
-                    if plot_sig_mov_comm_grid:
-                        axsig[k[0]].plot(k[2], k[1], '.', color='orangered')
-                    
                     ### For commands / moves that are different what is the np.linalg.norm? 
-                    sig_hz_diff_vect.append(float(varr['norm_diff_fr']))
-                    sig_hz_diff_vect_frac.append(float(varr['frac_norm_diff_fr']))
-
-                    if sig_move_diffs is not None: 
-                        if list(k) in sig_move_diffs[animal, day_ix]:
-                            vect_sig_beh_sig += 1
-                            sig_hz_diff_vect_bsig.append(float(varr['norm_diff_fr']))
-                    else:
-                        vect_sig_beh_sig = np.nan
+                    CC_sig.append(k)
+                    sigCC_vect_frac_shuffmn.append(float(varr['dist_norm_shuffmn']))
+                    sigCC_vect_frac_condpool.append(float(varr['dist_norm_condpool']))
 
                     ##### Plot the dots on the population ######
                     if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7: 
@@ -2187,14 +2115,11 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
 
                         color_rgb = util_fcns.rgba2rgb(color)
                         x_ = [ia*10 + day_ix - 1, ia*10 + day_ix -0.5]
-                        y_1 = [float(varr['norm_diff_fr']), float(varr['norm_diff_fr'])]
-                        y_2 = [float(varr['frac_norm_diff_fr']), float(varr['frac_norm_diff_fr'])]
+                        y_1 = [float(varr['dist_norm_shuffmn']), float(varr['dist_norm_shuffmn'])]
+                        y_2 = [float(varr['dist_norm_condpool']), float(varr['dist_norm_condpool'])]
 
-                        axveff.plot(x_, y_1,  '-', color=color_rgb)
-                        axveff2.plot(x_, y_2, '-', color=color_rgb)
-                else:
-                    if plot_sig_mov_comm_grid:
-                        axsig[k[0]].plot(k[2], k[1], '.', color='k')
+                        axpop_dist_frac_shuff.plot(x_, y_1,  '-', color=color_rgb)
+                        axpop_dist_frac_pool.plot(x_, y_2, '-', color=color_rgb)
 
                 if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7: 
                     color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
@@ -2206,153 +2131,163 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                     color_rgb = util_fcns.rgba2rgb(color)
                     x_ = [ia*10 + day_ix - 1, ia*10 + day_ix -0.5]
                     y_ =  [float(varr['zsc']), float(varr['zsc'])]
-                    axveff1.plot(x_, y_, '-', color=color_rgb)
-
-                
-                command_cnt[k[0], k[1]] += 1
-                vect_tot += 1
-
-                if sig_move_diffs is not None: 
-                    if list(k) in sig_move_diffs[animal, day_ix]:
-                        vect_tot_beh_sig += 1
-                else:
-                    vect_tot_beh_sig = np.nan
-            
-            if plot_sig_mov_comm_grid:
-                fsig.tight_layout()
-            
-            ####### Need at least 2 movemetns #####
-            ix_consider = np.nonzero(command_cnt.reshape(-1) >= 2)[0]
-            vect_tot = np.sum(command_cnt.reshape(-1)[ix_consider])
-            vect_sig = np.sum(commands_w_sig.reshape(-1)[ix_consider])
-            axv.plot(ia, float(vect_sig)/float(vect_tot), 'k.')
-            bar_dict['percCMsig'].append(float(vect_sig)/float(vect_tot))
-            
-            ### Need at least 1 sig 
-            ix1 = np.nonzero(commands_w_sig.reshape(-1)[ix_consider] >= 1)[0]
-            axv2.plot(ia, float(len(ix1))/float(len(ix_consider)), 'k.')
-            bar_dict['percCgte1Msig'].append(float(len(ix1))/float(len(ix_consider)))
+                    axpop_zsc_all.plot(x_, y_, '-', color=color_rgb)
             
             ### Distribution of population ###
-            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect, 'k', np.array([1., 1., 1., 0.]), axveff)
-            util_fcns.draw_plot(ia*10 + day_ix, zsc_diff,         'k', np.array([1., 1., 1., 0.]), axveff1)
-            axveff1.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
+            util_fcns.draw_plot(ia*10 + day_ix, sigCC_vect_frac_shuffmn, 'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_shuff)
+            util_fcns.draw_plot(ia*10 + day_ix, sigCC_vect_frac_condpool,'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_pool)
             
-            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect_frac, 'k', np.array([1., 1., 1., 0.]), axveff2)
-            util_fcns.draw_plot(ia*10 + day_ix, sig_hz_diff_vect_bsig, 'k', np.array([1., 1., 1., 0.]), axveff_bsig)
+            axpop_zsc_all.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
+            util_fcns.draw_plot(ia*10 + day_ix, zsc_diff, 'k', np.array([1., 1., 1., 0.]), axpop_zsc_all)
             
-            ### Plot the perc sig CM with sig diff from glboal 
-            tmp_frc = float(vect_sig_beh_sig) / float(vect_tot_beh_sig)
-            axsig_pop.plot(ia, tmp_frc, 'k.')
-            bar_dict['percCMsig_behsig'].append(tmp_frc)
-            #print('A %s, D %d, perc sig. tot %d/%d  =%.2f' %(animal, day_ix, vect_sig, vect_tot, float(vect_sig)/float(vect_tot)))
-            #try:
-            #    print('A %s, D %d, perc sig. of beh sig %d/%d  =%.2f' %(animal, day_ix, vect_sig_beh_sig, vect_tot_beh_sig, tmp_frc))
-            #except:
-            #    pass
 
-        ####### Single neuron summary for the day #####
-        ax.bar(ia, np.mean(bar_dict['percNCMsig']), width=.8,alpha=0.2, color='k')
-        ax2.bar(ia, np.mean(bar_dict['percNgte1CMsig']), width=.8, alpha=0.2, color='k')
-        axsig_su.bar(ia, np.mean(bar_dict['percNCMsig_behsig']), width=.8,alpha=0.2, color='k')
+            ##### SU ######
+            ################
+            #### keep track of distributions of SU and POP diffs; 
+            #### for both "all" and "sigCC" conditiosn             
+            nNeur = perc_sig[animal, day_ix, 'nneur']
 
-        ####### Vector  neuron summary for the day #####
-        axv.bar(ia, np.mean(bar_dict['percCMsig']), width=.8,alpha=0.2, color='k')
-        axv2.bar(ia, np.mean(bar_dict['percCgte1Msig']), width=.8, alpha=0.2, color='k')
-        axsig_pop.bar(ia, np.mean(bar_dict['percCMsig_behsig']), width=.8, alpha=0.2, color='k')
+            NCM_sig_hz_diff = []
+            NCM_sig_frac_diff = []
+            Zsc_su = []
+            sigCC_zsc_su = []
 
-    for axi in [ax, ax2, axv, axv2, axsig_su, axsig_pop]:
-        axi.set_xticks([0, 1, 2])
-        axi.set_xticklabels(['G', 'J', 'H'])
-        axi.set_xlim([-1, 3])
+            ###### Single neuron ########
+            ### For each k (mag, ang, mov) -- many neurons vstacked together (varr after vstack)
+            for i, (k, varr) in enumerate(perc_sig[animal, day_ix].items()):
+                
+                ### Pvalues ####
+                ### Varr --> PV || diff FR (hz) || diff FR /cond-pool || cond-pool mean || zscore ## 
+                if len(varr) > 0: 
+                    varr = np.vstack((varr)) ## nNeurons x 1 --> each entry is array w/ 5 entries ? 
+                    
+                    assert(varr.shape[0] == nNeur)
 
-    ax.set_ylabel('Frac NCM sig. diff \nfrom global (nshuff=1000)')
-    ax2.set_ylabel('Frac N with > 0 sig. CM \nfrom global (nshuff=1000)')
-    axsig_su.set_ylabel('Frac of NCM sig. diff \n if CM sig. diff from global')
-    axsig_pop.set_ylabel('Frac of CM sig. diff \n if Cm sig. diff from global')
+                    v = np.squeeze(varr['pv']) # nNeurons x 1 array? 
+                    assert(len(v) == nNeur)
 
-    axv.set_ylabel('Frac CM sig. diff \nfrom global (nshuff=1000)')
-    axv2.set_ylabel('Frac C > 0 sig. M \nfrom global (nshuff=1000)')
+                    for j, vi in enumerate(v): 
 
-    f.tight_layout()
-    f2.tight_layout()
-    fv.tight_layout()
-    fv2.tight_layout()
-    try:
-        fsig_su.tight_layout()
-        fsig_pop.tight_layout()
-    except:
-        pass
+                        if vi < 0.05:
+
+                            ### sig diff
+                            NCM_sig_hz_diff.append(float(varr['abs_diff_fr'][j]))
+
+                            ### PLot the dot if relevant ###
+                            if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
+                                color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
+                                if k[2] >= 10.:
+                                    color[-1] = 0.5
+                                else:
+                                    color[-1] = 1.0
+
+                                color_rgb = util_fcns.rgba2rgb(color)
+                                x_ = [day_ix + 10*ia - 1, day_ix + 10*ia - 0.5]
+                                y_ = [float(varr['abs_diff_fr'][j]), float(varr['abs_diff_fr'][j])]
+                                ax_su_diffhz_sig_NCC.plot(x_, y_, '-', color=color_rgb)
+
+                            ## For glob FRs w/ FR > 0.5 Hz; 
+                            if float(varr['glob_fr'][j]) >= min_fr_frac_neur_diff:
+                                NCM_sig_frac_diff.append(float(varr['frac_diff_fr'][j]))
+
+                                if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
+                                    x_ = [day_ix + 10*ia - 1, day_ix + 10*ia -0.5]
+                                    y_ = [float(varr['frac_diff_fr'][j]), float(varr['frac_diff_fr'][j])]
+                                    ax_su_frac_sig_NCC.plot(x_, y_, '-', color=color_rgb)
+                                
+
+                            assert(vi == varr['pv'][j])
+                            
+
+                        ### Plot colored plots for all dots --- zscore plot 
+                        if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7 and j == neur_ix: 
+                            color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
+                            if k[2] >= 10.:
+                                color[-1] = 0.5
+                            else:
+                                color[-1] = 1.0
+
+                            color_rgb = util_fcns.rgba2rgb(color)
+                            x_ = [day_ix + 10*ia - 1, day_ix + 10*ia - 0.5]
+                            y_1 = [float(varr['zsc'][j]), float(varr['zsc'][j])]
+                            ax_su_zsc_all.plot(x_, y_1, '-', color=color_rgb)
+                    
+                    ### Other stuff besides PV: 
+                    Zsc_su.append(np.squeeze(varr['zsc']))
+
+                    #### See if this is a sig command-condition 
+                    if tuple(k) in CC_sig: 
+                        sigCC_zsc_su.append(np.squeeze(varr['zsc']))
+
+                        if animal == 'grom' and day_ix == 0 and k[0] == 0 and k[1] == 7:
+                            color = np.array(analysis_config.pref_colors_rgb[ int(k[2]) % 10])
+                            if k[2] >= 10.:
+                                color[-1] = 0.5
+                            else:
+                                color[-1] = 1.0
+
+                            color_rgb = util_fcns.rgba2rgb(color)
+                            x_ = [day_ix + 10*ia - 1, day_ix + 10*ia - 0.5]
+                            y_1 = [float(varr['zsc'][neur_ix]), float(varr['zsc'][neur_ix])]
+                            ax_su_zsc_sig_cc.plot(x_, y_1, '-', color=color_rgb)
+
+                        
+
+            ####### Single Neuorns ######
+            ##### Plot the effect size #######
+            util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_hz_diff, 'k', np.array([1., 1., 1., 0.]), ax_su_diffhz_sig_NCC,
+                whisk_min = 2.5, whisk_max=97.5)
+
+            util_fcns.draw_plot(day_ix + 10*ia, NCM_sig_frac_diff, 'k', np.array([1., 1., 1., 0.]), ax_su_frac_sig_NCC,
+                whisk_min = 2.5, whisk_max=97.5)
+
+            ### Zscore - all --> plot horizontal line at 95th percentile (bc abs distances)
+            Zsc_su = np.hstack((Zsc_su))
+            util_fcns.draw_plot(day_ix + 10*ia, Zsc_su, 'k', np.array([1., 1., 1., 0.]), ax_su_zsc_all,
+                whisk_min = 2.5, whisk_max=97.5)
+            ax_su_zsc_all.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
+
+            sigCC_zsc_su = np.hstack((sigCC_zsc_su))
+            util_fcns.draw_plot(day_ix + 10*ia, sigCC_zsc_su, 'k', np.array([1., 1., 1., 0.]), ax_su_zsc_sig_cc,
+                whisk_min = 2.5, whisk_max=97.5)
+            ax_su_zsc_sig_cc.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
+            
+    ############## PLOTTING ############
+    ylim = {}
+    ylim['su_zsc_all'] = [-1.5, 8]
+    ylim['su_zsc_sig_cc'] = [-1.5, 8]
+    ylim['su_diff_hz'] = [0, 14]
+    ylim['su_frac'] = [0., 3.2]
     
+    ylim['pop_zsc'] = [-2., 12]
+    ylim['pop_frac_shuff'] = [1., 3.5]
+    ylim['pop_frac_pool'] = [0., .7]
 
-    util_fcns.savefig(f, 'frac_neur_comm_mov_sig_diff_from_global')
-    util_fcns.savefig(f2, 'frac_with_gte_0_sig_diff_from_global')
-    
-    util_fcns.savefig(fsig_su, 'frac_NCM_sig_diff_from_global_of_beh_diff')
-    util_fcns.savefig(fsig_pop, 'frac_CM_sig_diff_from_global_of_beh_diff')
-    
-    util_fcns.savefig(fv, 'frac_comm_mov_sig_diff_from_global')
-    util_fcns.savefig(fv2, 'frac_comm_with_gte_0_sig_diff_mov_from_global')
 
+    ylab = {}
+    ylab['su_zsc_all'] = 'SU distance, z-scored by shuff'
+    ylab['su_zsc_sig_cc'] = 'SU distance, z-scored by shuff (sig. CC)'
+    ylab['su_diff_hz'] = 'SU distance (Hz)'
+    ylab['su_frac'] = 'SU distance as frac. of cond-pool'
+
+    ylab['pop_zsc'] = 'Pop distance, z-scored by shuff'
+    ylab['pop_frac_shuff'] = 'Pop distance, frac of shuff mean'
+    ylab['pop_frac_pool'] = 'Pop distance, frac of cond. pool'
+    
     ###### Effect size plots #######
-    for ax_ in [axeff, axeff1, axeff2, axveff, axveff1, axveff2, axveff_bsig, axeff_bsig, axeff_bsig_frac]:
+    for _, (f_, ax_, key) in enumerate(zip([f_su_zsc_all, f_su_zsc_sig_cc, 
+                                        f_su_diffhz_sig_NCC, f_su_frac_sig_NCC, 
+                                        fpop_zsc_all, fpop_dist_frac_shuff, fpop_dist_frac_pool], 
+                                        [ax_su_zsc_all, ax_su_zsc_sig_cc, 
+                                        ax_su_diffhz_sig_NCC, ax_su_frac_sig_NCC, 
+                                        axpop_zsc_all, axpop_dist_frac_shuff, axpop_dist_frac_pool], 
+                                        ['su_zsc_all', 'su_zsc_sig_cc', 'su_diff_hz', 'su_frac', 'pop_zsc',
+                                         'pop_frac_shuff', 'pop_frac_pool'])):
+        
         ax_.set_xlim([-1, 13.5])
-    
-    axeff.set_ylim([0, 10.])
-    axeff.set_xlim([-1.5, 25.])
-    axeff_bsig.set_ylim([0., 10.])
-
-    axeff1.set_ylim([-1.5, 8.])
-
-    axeff2.set_ylim([0, 3.0])
-    axeff2.set_xlim([-1.5, 25])
-    axeff_bsig_frac.set_ylim([0., 3.])
-
-    axveff.set_ylim([0, .8])
-    axveff.set_xlim([-1.5, 25])
-
-    axveff1.set_ylim([-1.5, 12])
-    axveff1.set_xlim([-1.5, 13.5])
-
-    axveff2.set_ylim([0, .71])
-    axveff2.set_xlim([-1.5, 25])
-    axveff_bsig.set_ylim([0, .8])
-
-    axeff.set_ylabel('Activity Diff from Command  Act. Mean (Hz)')
-    axeff.set_title('Sig. Diff Neurons/Command/Move')
-    
-    axeff1.set_ylabel('Z-scored single neuron activity from condition-pooled mean \n with reference to shuffle')
-    axeff1.set_title('Neurons/Command/Move Zsc diffs')
-
-    axeff2.set_ylabel('Frac. Diff Activity from Command Act. Mean')
-    axeff2.set_title('Sig. Diff Neurons/Command/Move')
-
-    axveff.set_ylabel('Pop. Activity Diff from Command Act. Mean')
-    axveff2.set_ylabel('Frac. Diff Pop. Act. from Command Act. Mean')
-    #axveff.set_title('Sig. Diff. Command/Moves')
-    axveff_bsig.set_ylabel('Pop. Activity Diff for Beh Sig. ')
-
-    axveff1.set_ylabel('Z-scored pop. distance from condition-pooled mean \n with reference to shuffle')
-    axveff1.set_title('Command/Move Zsc diffs')
-
-
-    axeff_bsig.set_ylabel('beh sig: Act. Diff from Command Act. Mean (Hz)')
-    axeff_bsig_frac.set_ylabel('beh sig: Frac. Diff from Command Act. Mean')
-    #feff_bsig.tight_layout()
-    #feff_bsig_frac.tight_layout()
-
-    ######  #######
-    lab = ['hz_diff', 'frac_diff', 'hz_diff_bsig', 'frac_diff_bsig', 'vect_diff', 'frac_vect_diff', 'vect_diff_bsig']
-    F=[feff, feff2, feff_bsig, feff_bsig_frac, fveff, fveff2, fveff_bsig]
-    for i_, (f_, l_) in enumerate(zip(F, lab)):
-        pass
-        #util_fcns.savefig(f_, l_)
-    
-    lab = ['zsc_su', 'zsc_pop']
-    F=[feff1, fveff1]
-    for i_, (f_, l_) in enumerate(zip(F, lab)):
-        util_fcns.savefig(f_, l_, png=True)
-        util_fcns.savefig(f_, l_, png=False)
+        ax_.set_ylim(ylim[key])
+        ax_.set_ylabel(ylab[key], fontsize=8)
+        util_fcns.savefig(f_, key)
 
 def plot_perc_command_beh_sig_diff_than_global(nshuffs=1000, min_bin_indices=0, save=True,
     use_saved_move_command_sig = False):
