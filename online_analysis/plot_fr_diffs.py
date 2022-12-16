@@ -2134,11 +2134,11 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                     axpop_zsc_all.plot(x_, y_, '-', color=color_rgb)
             
             ### Distribution of population ###
-            util_fcns.draw_plot(ia*10 + day_ix, sigCC_vect_frac_shuffmn, 'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_shuff)
-            util_fcns.draw_plot(ia*10 + day_ix, sigCC_vect_frac_condpool,'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_pool)
+            util_fcns.draw_plot(ia*10 + day_ix, sigCC_vect_frac_shuffmn, 'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_shuff, whisk_min = 2.5, whisk_max=97.5)
+            util_fcns.draw_plot(ia*10 + day_ix, sigCC_vect_frac_condpool,'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_pool, whisk_min = 2.5, whisk_max=97.5)
             
             axpop_zsc_all.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
-            util_fcns.draw_plot(ia*10 + day_ix, zsc_diff, 'k', np.array([1., 1., 1., 0.]), axpop_zsc_all)
+            util_fcns.draw_plot(ia*10 + day_ix, zsc_diff, 'k', np.array([1., 1., 1., 0.]), axpop_zsc_all, whisk_min = 2.5, whisk_max=97.5)
             
 
             ##### SU ######
