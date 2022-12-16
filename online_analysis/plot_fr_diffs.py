@@ -11,7 +11,7 @@ import pandas as pd
 
 import pickle
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.0, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=.8, style='white')
 
 import statsmodels.api as sm
 
@@ -55,7 +55,7 @@ def return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal='g
 def distribution_match_global_mov(push_command_mov, push_command, psig=.05, 
                                   perc_drop = 0.05, plot=False, 
                                   match_pos = False, pos_mov = None, pos = None, 
-                                  ok_if_glob_lt_mov = False, 
+                                  ok_if_glob_lte_mov = False, 
                                   keep_mov_indices_in_pool = True,
                                   ix_mov=None, 
                                   plot_outcome = False):
@@ -75,7 +75,7 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
         match_pos (bool): whether to match position of global distribution in-step with command
         pos_mov (np.array): small dataset to match to --> cursor positions 
         pos (np.array): larger dataset to sample from --> cursor positions
-        ok_if_glob_lt_mov (bool, default == False): return empty ix_ok if global size falls << movement size 
+        ok_if_glob_lte_mov (bool, default == False): return empty ix_ok if global size falls <<= movement size 
         keep_mov_indices_in_pool (bool, default == True -- update as of 12/15/22: makes sure move-specific indices 
             stay in the pool)
         ix_mov: indices of push_command that correspond to push_command_mov
@@ -136,10 +136,10 @@ def distribution_match_global_mov(push_command_mov, push_command, psig=.05,
 
             return indices, niter
         
-        if ok_if_glob_lt_mov: 
+        if ok_if_glob_lte_mov: 
             pass 
         else: 
-            if len(indices) < nPushCom:
+            if len(indices) <= nPushCom:
                 complete = True
                 return np.array([]), niter
 
@@ -437,10 +437,9 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
     fpos, axpos = plt.subplots(figsize = (3, 3))
 
     ### Return indices for the command ### 
-    ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal=animal, 
+    ix_com_global = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, animal=animal, 
                             day_ix=day_ix, mag=mag, ang=ang, min_bin_num=min_bin_indices,
                             min_rev_bin_num=min_bin_indices)
-
     cnt = 0
     mFR = {}; 
     mFR_vect = {};
@@ -453,43 +452,56 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
 
     pos_mn_std = {}
 
+    ### Get null projection ### 
+    if animal == 'grom':
+        KG, _, _ = generate_models.get_KG_decoder_grom(day_ix)
+
+        ### low dim space 
+        KG_null_low = scipy.linalg.null_space(KG) # N x (N-2)
+    
+    elif animal == 'jeev':
+        KG, _, _ = generate_models.get_KG_decoder_jeev(day_ix)
+
+        ### low dim space 
+        KG_null_low = scipy.linalg.null_space(KG) # N x (N-2)
+
+    spks_null = np.dot(KG_null_low.T, spks.T).T
+    assert(spks_null.shape[0] == spks.shape[0])
+    assert(spks_null.shape[1] +2 == spks.shape[1])
+
+
     ### For all movements --> figure otu which ones to keep in the global distribution ###
     global_comm_indices = {}
-    ix_com_global = []
-    for mov in np.unique(move[ix_com]):
+    
+    for mov in np.unique(move[ix_com_global]):
 
         ### Movement specific command indices 
-        ix_mc = np.nonzero(move[ix_com] == mov)[0]
+        ix_mc = np.nonzero(move[ix_com_global] == mov)[0]
         
         ### Which global indices used for command/movement 
-        ix_mc_all = ix_com[ix_mc] 
+        ix_mc_all = ix_com_global[ix_mc] 
 
         ### If enough of these then proceed; 
         if len(ix_mc) >= 15:    
 
             global_comm_indices[mov] = ix_mc_all
-            ix_com_global.append(ix_mc_all)
-
-    if len(ix_com_global) > 0:
-        ix_com_global = np.hstack((ix_com_global))
-
-    ### Make sure command 
-    assert(np.all(np.array([i in ix_com for i in ix_com_global])))
 
     ### Make sure in the movements we want 
-    assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global])))
+    #### Not true anymore -- any condition can contribute to ix_com_global, even if not in global_com_indices
+    #assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global])))
 
     ### Only analyze for commands that have > 1 movement 
-    if len(global_comm_indices.keys()) > 1:
+    ### Update 12/15/22 -- can analyze if only 1 movement 
+    if len(global_comm_indices.keys()) > 0:
 
         #### now that have all the relevant movements - proceed 
-        for mov in global_comm_indices.keys(): 
+        for mov in global_comm_indices.keys():
 
             ### FR for neuron ### 
             ix_mc_all = global_comm_indices[mov]
 
-            FR = spks[ix_mc_all, neuron_ix]
-            FR_vect = spks[ix_mc_all, :]
+            FR_su = spks[ix_mc_all, neuron_ix] # one number 
+            FR_vect = spks_null[ix_mc_all, :]
 
             ### index move from global_comm_indices: 
             ix_mov = np.array([i for i, j in enumerate(ix_com_global) if j in ix_mc_all])
@@ -513,14 +525,19 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             #    niter, len(ix_ok), len(ix_mc_all), np.mean(spks[ix_com_global[ix_ok], neuron_ix], axis=0)))
             
             if len(ix_ok) > 0: 
+                
+                ### Make sure these are greater 
+                assert(len(ix_ok) > len(ix_mov))
+
                 ### which indices we can use in global distribution for this shuffle ----> #### 
                 ix_com_global_ok = ix_com_global[ix_ok] 
-                global_mean_vect = np.mean(spks[ix_com_global_ok, :], axis=0)
+                global_mean_vect = np.mean(spks_null[ix_com_global_ok, :], axis=0)
                 
+                ### make sure command is correct 
                 assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
                 assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
 
-                ### make sure both movmenets still represneted. 
+                ### make sure more than one movement represented -- ALL movement-commands plus 1 must be there; 
                 assert(len(np.unique(move[ix_com_global_ok])) > 1)
                 
                 Nglobal = len(ix_com_global_ok)
@@ -531,29 +548,33 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
                 ###  but may not be when controlling for position 
 
                 ###  Method for inlusion ## #
+                ### Again a check for greater than 
                 if Nglobal > factor_global_gt_mov*Ncommand_mov: 
 
                     ### Get matching global distribution 
                     mFR_shuffle[mov] = []
                     mFR_shuffle_vect[mov] = []
-                    mFR_dist[mov] = []
                     
                     for i_shuff in range(nshuffs):
                         ix_sub = np.random.permutation(Nglobal)[:Ncommand_mov]
                         mFR_shuffle[mov].append(np.mean(spks[ix_com_global_ok[ix_sub], neuron_ix]))
                         
-                        mshuff_vect = np.mean(spks[ix_com_global_ok[ix_sub], :], axis=0)
-                        mFR_shuffle_vect[mov].append(np.linalg.norm(mshuff_vect - global_mean_vect)/nneur)
-                    
+                        mshuff_vect = np.mean(spks_null[ix_com_global_ok[ix_sub], :], axis=0)
+                        m = np.linalg.norm(mshuff_vect - global_mean_vect)
+                        mFR_shuffle_vect[mov].append(m)
+
+                        
                     ### Save teh distribution ####
-                    mFR_dist[mov] = FR 
+                    mFR_dist[mov] = FR_su
 
                     ### Save teh shuffles 
-                    mFR[mov] = np.mean(FR)
-                    mFR_vect[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)/nneur
+                    mFR[mov] = np.mean(FR_su)
+
+                    mFR_vect[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)
+
                     mov_number.append(mov)
                    
-                    print('mov %.1f, N = %d, mFR = %.2f'% (mov, len(ix_mc), np.mean(FR)))
+                    print('mov %.1f, N = %d, mFR = %.2f'% (mov, len(ix_mc), np.mean(FR_su)))
 
                     ### save mpostions --> mov mean, mov std, global mean, global std ####
                     #if match_pos: 
@@ -581,7 +602,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             #### col rgb ######
             colrgb = util_fcns.rgba2rgb(colrgba)
 
-            #### SIngle neuron distribution ###
+            #### SIngle neuron distribution of FR ###
             util_fcns.draw_plot(x, mFR_dist[mov], colrgb, np.array([0., 0., 0., 0.]), axdist,
                 skip_median=True, whisk_min = 2.5, whisk_max=97.5)
             axdist.hlines(np.mean(mFR_dist[mov]), x-.25, x + .25, color=colrgb,
@@ -589,13 +610,19 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             axdist.hlines(np.mean(spks[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
                 linewidth=1., linestyle='dashed')
 
-            ### Single neuron --> sampling distribution 
+            ### Single neuron vs. shuffle 
             spk_mn = np.mean(spks[ix_com_global, neuron_ix]) # change from ix_com_global --> ix_com_global_ok
-            util_fcns.draw_plot(x, np.abs(mFR_shuffle[mov] ), 'gray', np.array([0., 0., 0., 0.]), ax, 
+            util_fcns.draw_plot(x, mFR_shuffle[mov], 'gray', np.array([0., 0., 0., 0.]), ax, 
                 whisk_min = 2.5, whisk_max=97.5)
-            ax.plot(x, np.abs(mFR[mov] ), '.', color=colrgb, markersize=20)
+            ax.plot(x, mFR[mov], '.', color=colrgb, markersize=20)
             ax.hlines(spk_mn, xlim[0], xlim[-1], color='gray',
                 linewidth=1., linestyle='dashed')
+
+            print('X = %d, Mov %.1f, Shuffle lims: [%.2f, %.2f], True: %.2f'%(x,
+                                                mov,
+                                                np.percentile(mFR_shuffle[mov], 2.5),
+                                                np.percentile(mFR_shuffle[mov], 97.5),
+                                                mFR[mov]))
             
             ###### Test out z-score thing : 8/2022 #######
             # ax.plot(x, np.mean(np.abs(mFR_shuffle[mov])), 'k.')
@@ -617,12 +644,20 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
 
 
             ### Population centered by shuffle mean 
+            ### Updated on 12/15/22 --> population DIVIDED by shuffle mean 
             mFR_shuffle_vect[mov] = np.hstack((mFR_shuffle_vect[mov]))
             mn_shuf = np.mean(mFR_shuffle_vect[mov])
-            util_fcns.draw_plot(x, mFR_shuffle_vect[mov] - mn_shuf, 'gray', np.array([0., 0., 0., 0.]), axvect,
+            util_fcns.draw_plot(x, mFR_shuffle_vect[mov]/mn_shuf, 'gray', np.array([0., 0., 0., 0.]), axvect,
                 whisk_min = 0, whisk_max=95)
-            axvect.plot(x, mFR_vect[mov] - mn_shuf, '.', color=colrgb, markersize=20)
+            axvect.plot(x, mFR_vect[mov]/mn_shuf, '.', color=colrgb, markersize=20)
         
+            print('POP: X = %d, Mov %.1f, Shuffle lims: [%.2f, %.2f], True: %.2f'%(x,
+                                                mov,
+                                                np.percentile(mFR_shuffle_vect[mov]/mn_shuf, 0),
+                                                np.percentile(mFR_shuffle_vect[mov]/mn_shuf, 95),
+                                                mFR_vect[mov]/mn_shuf))
+
+
             #if match_pos: 
             mn_mv, st_mv, mn_glb, st_glb = pos_mn_std[mov]
 
@@ -660,7 +695,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
             util_fcns.savefig(f, 'n%d_mag%d_ang%d_%s_d%d_min_bin%d_factor%d'%(neuron_ix, mag, ang, animal, day_ix, 
                 min_bin_indices, factor_global_gt_mov))
         
-        axvect.set_ylabel('Pop. Activity Dist. \n centered by shuffle mn (Hz) ')    
+        axvect.set_ylabel('population distance \n (fraction) ')    
         
         fvect.tight_layout()
         if save:
