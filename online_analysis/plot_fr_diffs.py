@@ -536,6 +536,16 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
                 ix_com_global_ok = ix_com_global[ix_ok] 
                 global_mean_vect = np.mean(spks_null[ix_com_global_ok, :], axis=0)
                 
+
+                ###### How many overlapping indices? 
+                cnt = 0; cnt_ov = 0; 
+                for i in ix_com_global_ok: 
+                    if i in ix_mc_all: 
+                        cnt_ov += 1
+                    cnt += 1
+                print('Mov %1.f, Frac OV in indices: %.1f, # Mov: %d, # Glob: %d'%(mov, 
+                    float(cnt_ov)/cnt, len(ix_mov), len(ix_com_global_ok)))
+
                 ### make sure command is correct 
                 assert(np.all(command_bins[ix_com_global_ok, 0] == mag))
                 assert(np.all(command_bins[ix_com_global_ok, 1] == ang))
@@ -577,7 +587,7 @@ def plot_example_neuron_comm(neuron_ix = 36, mag = 0, ang = 7, animal='grom', da
 
                     mov_number.append(mov)
                    
-                    print('mov %.1f, N = %d, mFR = %.2f'% (mov, len(ix_mc), np.mean(FR_su)))
+                    #print('mov %.1f, N = %d, mFR = %.2f'% (mov, len(ix_mc), np.mean(FR_su)))
 
                     ### save mpostions --> mov mean, mov std, global mean, global std ####
                     #if match_pos: 
@@ -967,7 +977,7 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                     ix_com_global = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, mag=mag, ang=ang,
                                            animal=animal, day_ix=day_ix, min_bin_num=min_bin_indices,
                                            min_rev_bin_num=min_bin_indices)
-                    mag_cnt += len(ix_com)
+                    mag_cnt += len(ix_com_global)
 
                     global_comm_indices = {}
                     com_mov_indices = {}
@@ -979,7 +989,7 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                         ix_mc = np.nonzero(move[ix_com_global] == mov0)[0]
 
                         #### Overall indices (overall) 
-                        ix_mc_all = ix_com[ix_mc]
+                        ix_mc_all = ix_com_global[ix_mc]
                         
                         ### If enough of these then proceed; 
                         if len(ix_mc) >= 15:    
@@ -1026,7 +1036,7 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                 if Ncommand_mov2 > Ncommand_mov: 
                                     ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all_og, [3, 5])], 
                                                              push[np.ix_(ix_mc_all2_og, [3, 5])], 
-                                                             ok_if_glob_lt_mov = True, 
+                                                             ok_if_glob_lte_mov = True, 
                                                              # don't need matched indices for all2_og to contain all_og
                                                              keep_mov_indices_in_pool = False) 
                                     if len(ix_ok) > 0: 
@@ -1038,7 +1048,7 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                 elif Ncommand_mov2 <= Ncommand_mov: 
                                     ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all2_og, [3, 5])], 
                                                              push[np.ix_(ix_mc_all_og, [3, 5])], 
-                                                             ok_if_glob_lt_mov = True, 
+                                                             ok_if_glob_lte_mov = True, 
                                                              # don't need matched indices for all2_og to contain all_og
                                                              keep_mov_indices_in_pool = False)
                                     if len(ix_ok) > 0: 
@@ -1081,8 +1091,10 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                             assert(not np.all(move[ix_com_global] == move[shuffle_ix_com]))
 
                                             ### they should be all the saem command tho 
-                                            assert(np.all(command_bins[ix_com_global, 0] == command_bins[shuffle_ix_com, 0] == mag))
-                                            assert(np.all(command_bins[ix_com_global, 1] == command_bins[shuffle_ix_com, 1] == ang))
+                                            assert(np.all(command_bins[ix_com_global, 0] == command_bins[shuffle_ix_com, 0]))
+                                            assert(np.all(command_bins[ix_com_global, 0] == mag))
+                                            assert(np.all(command_bins[ix_com_global, 1] == command_bins[shuffle_ix_com, 1]))
+                                            assert(np.all(command_bins[ix_com_global, 1] == ang))
 
                                             ######### Now get mov-spec 1 and mov-spec 2 
                                             ### com_mov_indices: Command movement indices (subset of ix_com_global) ### 
@@ -1094,14 +1106,14 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                             assert(np.all(move[ix_com_global[com_mov_indices[mov1]]] == mov1))
                                             assert(not np.all(move[ix_mc_all_og_shuff] == mov1))
 
-                                            assert(np.all(move[ix_com_global[com_mov_indices[mov1]]] == mov2))
-                                            assert(not np.all(move[ix_mc_all_og_shuff] == mov2))
+                                            assert(np.all(move[ix_com_global[com_mov_indices[mov2]]] == mov2))
+                                            assert(not np.all(move[ix_mc_all2_og_shuff] == mov2))
 
                                             ######### Now match these distributions ############
                                             if Ncommand_mov2 > Ncommand_mov: 
                                                 ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all_og_shuff, [3, 5])], 
                                                                          push[np.ix_(ix_mc_all2_og_shuff, [3, 5])], 
-                                                                         ok_if_glob_lt_mov = True, 
+                                                                         ok_if_glob_lte_mov = True, 
                                                                          # don't need matched indices for all2_og to contain all_og
                                                                          keep_mov_indices_in_pool = False)
                                                 if len(ix_ok) > 0: 
@@ -1113,7 +1125,7 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                             elif Ncommand_mov2 <= Ncommand_mov:  
                                                 ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all2_og_shuff, [3, 5])], 
                                                                          push[np.ix_(ix_mc_all_og_shuff, [3, 5])], 
-                                                                         ok_if_glob_lt_mov = True, 
+                                                                         ok_if_glob_lte_mov = True, 
                                                                          # don't need matched indices for all2_og to contain all_og
                                                                          keep_mov_indices_in_pool = False)
                                                 if len(ix_ok) > 0: 
