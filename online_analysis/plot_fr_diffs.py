@@ -870,9 +870,11 @@ def plot_example_beh_comm(mag = 0, ang = 7, animal='grom', day_ix = 0, nshuffs =
 ##### Main plotting functions to use in Figs 2 and 3 ########
 
 ### Added pairwise rebuttal --> 8/8/22
+### Updating pairwise --> 12/15/22 to use null distances and do the matching properly 
 def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, keep_bin_spk_zsc = False, 
     nsessions = None):
     """
+    min_bin_indices (int, optional): number of bins to remove from beginning AND end of the trial 
 
     Attempt to compare pairwise distances to one another: 
         Previous approach: 
@@ -902,7 +904,6 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
     perc_sig = {}; 
     perc_sig_vect = {}; 
 
-
     niter2match = {}
 
     pooled_stats = {}
@@ -916,6 +917,12 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
 
         for day_ix in range(nsess):
             
+            ### Get null decoder projection for null distances 
+            KG = util_fcns.get_decoder(animal, day_ix)
+            assert(KG.shape[0] == 2)
+            KG_null_low = scipy.linalg.null_space(KG) # N x (N-2)
+            assert(KG_null_low.shape[1] + 2 == KG_null_low.shape[0])
+
             ### Setup the dictionaries for this animal and date
             perc_sig[animal, day_ix] = {}
             perc_sig_vect[animal, day_ix] = {}
@@ -933,8 +940,13 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                 ### dont multipy by 10 if youve been zscored
             else:
                 spks = spks * 10
+
+            ### (n-2, n) * (n, T) --> (n-2, T) --> (T, n-2)
+            spks_null =  np.dot(KG_null_low.T, spks.T).T
     
             nneur = spks.shape[1]
+            assert(spks_null.shape[1] + 2 == nneur)
+
             command_bins = util_fcns.commands2bins([push], mag_boundaries, animal, day_ix, 
                                        vel_ix=[3, 5])[0]
 
@@ -946,51 +958,49 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
             ### For each command get: ###
             mag_cnt = 0
             for mag in range(4):
-                
                 for ang in range(8): 
 
                     print('%s, %d, mag %d, ang %d'%(animal, day_ix, mag, ang))
             
                     #### Common indices 
                     #### Get the indices for command ####
-                    ix_com = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, mag=mag, ang=ang,
+                    ix_com_global = return_command_indices(bin_num, rev_bin_num, push, mag_boundaries, mag=mag, ang=ang,
                                            animal=animal, day_ix=day_ix, min_bin_num=min_bin_indices,
                                            min_rev_bin_num=min_bin_indices)
                     mag_cnt += len(ix_com)
 
-                    ix_com_global = []
                     global_comm_indices = {}
                     com_mov_indices = {}
 
                     #### Go through the movements ####
-                    for mov0 in np.unique(move[ix_com]):
+                    for mov0 in np.unique(move[ix_com_global]):
                         
                         ### Movement specific command indices 
-                        ix_mc = np.nonzero(move[ix_com] == mov0)[0]
+                        ix_mc = np.nonzero(move[ix_com_global] == mov0)[0]
 
                         #### Overall indices (overall) 
                         ix_mc_all = ix_com[ix_mc]
                         
                         ### If enough of these then proceed; 
                         if len(ix_mc) >= 15:    
-                            ### Command movement indices (subset of ix_mc) ### 
+                            
+                            ### Command movement indices (subset of ix_com_global) ### 
                             com_mov_indices[mov0] = ix_mc
 
                             ### More global command indices ###
                             global_comm_indices[mov0] = ix_mc_all
 
-                            ### Stack together ###
-                            ix_com_global.append(ix_mc_all)
-
-                    if len(ix_com_global) > 0: 
-                        ix_com_global = np.hstack((ix_com_global))
+                    ### Since pairwise need at least 2 movements ### 
+                    if len(ix_com_global) > 0 and len(global_comm_indices.keys()) > 1: 
+                        #ix_com_global = np.hstack((ix_com_global))
 
                         ### Only command, only movs we want: ####
                         assert(np.all(command_bins[ix_com_global, 0] == mag))
                         assert(np.all(command_bins[ix_com_global, 1] == ang))
 
                         ### All indices correspond to the right movements 
-                        assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global])))
+                        ### Does not need to be the case -- 12/15/22
+                        #assert(np.all(np.array([move[i] in global_comm_indices.keys() for i in ix_com_global])))
 
                         ### Iterate through the moves we want 
                         movements = np.array(global_comm_indices.keys())
@@ -1016,17 +1026,21 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                 if Ncommand_mov2 > Ncommand_mov: 
                                     ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all_og, [3, 5])], 
                                                              push[np.ix_(ix_mc_all2_og, [3, 5])], 
-                                                             ok_if_glob_lt_mov = True)
+                                                             ok_if_glob_lt_mov = True, 
+                                                             # don't need matched indices for all2_og to contain all_og
+                                                             keep_mov_indices_in_pool = False) 
                                     if len(ix_ok) > 0: 
                                         ix_mc_all = ix_mc_all_og.copy()
                                         ix_mc_all2 = ix_mc_all2_og[ix_ok]
                                     else:
                                         pass
 
-                                else: 
+                                elif Ncommand_mov2 <= Ncommand_mov: 
                                     ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all2_og, [3, 5])], 
                                                              push[np.ix_(ix_mc_all_og, [3, 5])], 
-                                                             ok_if_glob_lt_mov = True)
+                                                             ok_if_glob_lt_mov = True, 
+                                                             # don't need matched indices for all2_og to contain all_og
+                                                             keep_mov_indices_in_pool = False)
                                     if len(ix_ok) > 0: 
                                         ix_mc_all = ix_mc_all_og[ix_ok]
                                         ix_mc_all2 = ix_mc_all2_og.copy()
@@ -1048,9 +1062,10 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
 
                                     ########## Mean diff FR ###############
                                     dmean_diff_fr = np.abs(np.mean(spks[ix_mc_all, :], axis=0) - np.mean(spks[ix_mc_all2, :], axis=0))
-
+                                    dmean_diff_fr_null = np.abs(np.mean(spks_null[ix_mc_all, :], axis=0) - np.mean(spks_null[ix_mc_all2, :], axis=0))
                                     abort = False
                                     dmFR_shuffle = []
+                                    dmFR_null_shuffle = []; 
 
                                     for i_shuff in range(nshuffs): 
                                         fail_shuffle = 0; 
@@ -1059,28 +1074,48 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                         
                                         while trying: 
                                             ########## Now do shuffle on command indices #######
-                                            shf = np.random.permutation(len(ix_com))
-                                            shuffle_ix_com = ix_com[shf]
+                                            shf = np.random.permutation(len(ix_com_global)) 
+                                            shuffle_ix_com = ix_com_global[shf] ## shuffled command indices 
+
+                                            ### These shouldnt' match bc shuffle command indices 
+                                            assert(not np.all(move[ix_com_global] == move[shuffle_ix_com]))
+
+                                            ### they should be all the saem command tho 
+                                            assert(np.all(command_bins[ix_com_global, 0] == command_bins[shuffle_ix_com, 0] == mag))
+                                            assert(np.all(command_bins[ix_com_global, 1] == command_bins[shuffle_ix_com, 1] == ang))
 
                                             ######### Now get mov-spec 1 and mov-spec 2 
+                                            ### com_mov_indices: Command movement indices (subset of ix_com_global) ### 
                                             ix_mc_all_og_shuff = shuffle_ix_com[com_mov_indices[mov1]]
                                             ix_mc_all2_og_shuff = shuffle_ix_com[com_mov_indices[mov2]]
+
+                                            #### These are now subsets of shuffle_ix_com -- check that originals match movements
+                                            ### Make sure shuffles DONT all match
+                                            assert(np.all(move[ix_com_global[com_mov_indices[mov1]]] == mov1))
+                                            assert(not np.all(move[ix_mc_all_og_shuff] == mov1))
+
+                                            assert(np.all(move[ix_com_global[com_mov_indices[mov1]]] == mov2))
+                                            assert(not np.all(move[ix_mc_all_og_shuff] == mov2))
 
                                             ######### Now match these distributions ############
                                             if Ncommand_mov2 > Ncommand_mov: 
                                                 ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all_og_shuff, [3, 5])], 
                                                                          push[np.ix_(ix_mc_all2_og_shuff, [3, 5])], 
-                                                                         ok_if_glob_lt_mov = True)
+                                                                         ok_if_glob_lt_mov = True, 
+                                                                         # don't need matched indices for all2_og to contain all_og
+                                                                         keep_mov_indices_in_pool = False)
                                                 if len(ix_ok) > 0: 
                                                     ix_mc_all = ix_mc_all_og_shuff
                                                     ix_mc_all2 = ix_mc_all2_og_shuff[ix_ok]
                                                 else: 
                                                     pass
 
-                                            else: 
+                                            elif Ncommand_mov2 <= Ncommand_mov:  
                                                 ix_ok, niter = distribution_match_global_mov(push[np.ix_(ix_mc_all2_og_shuff, [3, 5])], 
                                                                          push[np.ix_(ix_mc_all_og_shuff, [3, 5])], 
-                                                                         ok_if_glob_lt_mov = True)
+                                                                         ok_if_glob_lt_mov = True, 
+                                                                         # don't need matched indices for all2_og to contain all_og
+                                                                         keep_mov_indices_in_pool = False)
                                                 if len(ix_ok) > 0: 
                                                     ix_mc_all = ix_mc_all_og_shuff[ix_ok]
                                                     ix_mc_all2 = ix_mc_all2_og_shuff
@@ -1095,6 +1130,7 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                                 assert(np.all(command_bins[ix_mc_all2, 1] == ang))
                                                 assert(np.all(command_bins[ix_mc_all2, 0] == mag))
 
+                                                ### Not al lmovements should match     
                                                 assert(not np.all(move[ix_mc_all] == mov1))
                                                 assert(not np.all(move[ix_mc_all2] == mov2))
                                                 
@@ -1103,6 +1139,7 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
 
                                                     #### Check #### 
                                                     dmFR_shuffle.append(np.abs(np.mean(spks[ix_mc_all, :], axis=0) - np.mean(spks[ix_mc_all2, :], axis=0)))
+                                                    dmFR_null_shuffle.append(np.abs(np.mean(spks_null[ix_mc_all, :], axis=0) - np.mean(spks_null[ix_mc_all2, :], axis=0)))
                                                     succ_shuffle += 1
                                                     trying = False 
                                                 else: 
@@ -1122,11 +1159,14 @@ def perc_neuron_command_move_sig_PAIRWISE(nshuffs = 1000, min_bin_indices = 0, k
                                     else: 
                                         ### Stack ####
                                         dmFR_shuffle = np.vstack((dmFR_shuffle))
+                                        dmFR_null_shuffle = np.vstack((dmFR_null_shuffle))
                                         
                                         ### Add mag/ang/mov to this so later can pool over commands / conditions etc ####
                                         ### TRUE diff, SHUFFLE diff, mag , ang , mov1, mov2 
+                                        ### ### mean_FR_diffs || mean_FR_diffs_shuffle || mag || ang || mov1 || mov2 || mean_FR_diff_null || mean_FR_diff_null_shuff
+                                    
                                         #print('Adding mov1 %.1f, mov2 %.1f, mag %d, ang %d'%(mov1, mov2, mag, ang))
-                                        pooled_stats[animal, day_ix].append([dmean_diff_fr, dmFR_shuffle, mag, ang, mov1, mov2])
+                                        pooled_stats[animal, day_ix].append([dmean_diff_fr, dmFR_shuffle, mag, ang, mov1, mov2, dmean_diff_fr_null, dmFR_null_shuffle])
 
     return pooled_stats
 
@@ -1137,6 +1177,7 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
         1. fraction of command/condition-pairs sig. diff (population)
         2. fraction of commands           sig. diff (population, pooled over condition pairs)
         3. fraction of neurons            sig. diff (single neurons, pooled over command/condition pairs (sig.))
+        
         4. fraction distance from condition-pooled (population)
     '''
 
@@ -1178,6 +1219,7 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
 
             #### starting with command/conditions significant 
             ### dmean_FR, dmFR_shuffle, mag, ang, mov1, mov2
+            ### mean_FR_diffs || mean_FR_diffs_shuffle || mag || ang || mov1 || mov2 || mean_FR_diff_null || mean_FR_diff_null_shuff
             stats = pooled_stats[animal, day_ix] 
 
             command_sig = dict(); 
@@ -1191,15 +1233,20 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
             for i_nComCond in range(NComCond): 
 
                 ### unpack 
-                dmean_FR, dmFR_shuffle, mag, ang, mov1, mov2 = stats[i_nComCond]
+                dmean_FR, dmFR_shuffle, mag, ang, mov1, mov2, dmean_FR_null, dmFR_shuffle_null = stats[i_nComCond]
 
                 assert(Nshuffs == dmFR_shuffle.shape[0])
+                assert(Nshuffs == dmFR_shuffle_null.shape[0])
+
                 assert(len(dmean_FR) == dmFR_shuffle.shape[1] == Nneur)
+                assert(len(dmean_FR_null) == dmFR_shuffle_null.shape[1] == Nneur -2)
 
                 ### pv for command/conditions ### 
                 assert(len(np.linalg.norm(dmFR_shuffle, axis=1)) == Nshuffs)
+                assert(len(np.linalg.norm(dmFR_shuffle_null, axis=1)) == Nshuffs)
 
-                n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle, axis=1) >= np.linalg.norm(dmean_FR))[0])
+                #### population differences 
+                n_lte = len(np.nonzero(np.linalg.norm(dmFR_shuffle_null, axis=1) >= np.linalg.norm(dmean_FR_null))[0])
                 pv_cc = float(n_lte) / float(Nshuffs)
 
                 if pv_cc < 0.05:
@@ -1211,12 +1258,14 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
                     command_sig[tuple([mag, ang])] = dict(vals=[], shuffs=[])
                     commands_already.append([mag, ang])
 
-                command_sig[tuple([mag, ang])]['vals'].append(np.linalg.norm(dmean_FR))
-                command_sig[tuple([mag, ang])]['shuffs'].append(np.linalg.norm(dmFR_shuffle, axis=1))
+                ##### NULL values #####
+                command_sig[tuple([mag, ang])]['vals'].append(np.linalg.norm(dmean_FR_null))
+                command_sig[tuple([mag, ang])]['shuffs'].append(np.linalg.norm(dmFR_shuffle_null, axis=1))
                     
                 ##### Add to neuron values if signficant ### 
                 if pv_cc < 0.05: 
                     for nneur in range(Nneur):
+                        ### keep non-null for neuron distances
                         neuron_sig[nneur]['vals'].append(np.abs(dmean_FR[nneur]))
                         neuron_sig[nneur]['shuffs'].append(np.abs(dmFR_shuffle[:, nneur]))
                 
@@ -1227,10 +1276,10 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
             print('%s, %d, # of com-cond pairs analyzed %d, # pop. sig %d'%(animal, day_ix, 
                 nCC, nCC_sig))
             
-            ########## Frac commands with SOME sig deviations #########################
+            ########## Frac commands with SOME sig deviations -- null #########################
             for ic, com in enumerate(commands_already): 
-                vals = command_sig[tuple(com)]['vals']
-                shuf = command_sig[tuple(com)]['shuffs']
+                vals = command_sig[tuple(com)]['vals'] ### null 
+                shuf = command_sig[tuple(com)]['shuffs'] ### null 
                 
                 assert(len(vals) == len(shuf))
                 
@@ -1254,8 +1303,8 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
             bar_dict['fracCom'].append(float(nCom_sig)/float(nCom))
 
             ########## Number of neurons ####################################
-            for i_n in neuron_sig.keys():
-                vals = neuron_sig[i_n]['vals']
+            for i_n in neuron_sig.keys(): ### for each neuron 
+                vals = neuron_sig[i_n]['vals'] ### non-null 
                 shuf = neuron_sig[i_n]['shuffs']
                 assert(len(vals) == len(shuf))
 
@@ -1894,8 +1943,10 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
             ax_fracCC.plot(ia, float(nCC_sig)/float(nCC), 'k.')
             bar_dict['fracCC'].append(float(nCC_sig)/float(nCC))
             
-            # print('%s, %d, # of com-conds analyzed %d, # pop. sig %d'%(animal, day_ix, 
-            #     nCC, nCC_sig))
+            ## for reviewer comment 
+            print('%s, %d, # of com-conds analyzed %d, # pop. sig %d'%(animal, day_ix, 
+                nCC, nCC_sig))
+
             count['fracCC'].append(float(nCC_sig)/float(nCC))
             count['CC'].append(float(nCC))
 

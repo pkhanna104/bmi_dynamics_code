@@ -759,26 +759,26 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
     model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
     only_sig_cc=False, min_com_cond = 15, save = True):
     '''
-    goal: 
-        1. fraction of command/conditions sig. diff (population)
-        2. fraction of commands           sig. diff (population, pooled over conditions)
-        3. fraction of neurons            sig. diff (single neurons, pooled over command/conditions)
-        4. fraction distance from condition-pooled (population)
+    min_bin_indices --> minimum of bin index to include (default = 0), if more then willl exclude initial parts of trial 
+    only_sig_cc --> whether to use only sig CCs to assess sig. neuron distances // model R2 predictions 
+    NOTE: 12/17/22 --> single neuron distances are full actiivty distances whereas sig. CC and sig Commands are 
+        based on null distances 
+        Model r2 predictions are also based on null distances 
+    min_com_cond --> how many commadn conditions are needed to analyze a given command's condition
     '''
 
     #### Each plot ####
     f_fracCC, ax_fracCC = plt.subplots(figsize=(2, 3))
-
     f_fracCom, ax_fracCom = plt.subplots(figsize=(2, 3))
     f_fracN, ax_fracN = plt.subplots(figsize=(2, 3))
     f_r2, ax_r2 = plt.subplots(figsize=(2, 3))
     
     ylabels = dict()
-    ylabels['fracCC'] = 'frac. (command,condition) \nsig. predicted'
-    ylabels['fracCom']= 'frac. (command) \nsig. predicted'
-    ylabels['fracN']  = 'frac. (neuron)  \nsig. predicted'
-    ylabels['r2'] = 'r2 of condition-specific \ncomponent of command'
-    ylabels['r2_shuff'] = 'r2 of condition-specific \ncomponent of command'
+    ylabels['fracCC'] = 'frac. (command,condition) \nsig. predicted in null'
+    ylabels['fracCom']= 'frac. (command) \nsig. predicted in null'
+    ylabels['fracN']  = 'frac. (neuron)  \nsig. predicted in full'
+    ylabels['r2'] = 'r2 of condition-specific null \ncomponent of command'
+    ylabels['r2_shuff'] = 'r2 of condition-specific null \ncomponent of command'
 
     count = {}
     count['fracCC'] = []
@@ -795,6 +795,12 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
             day_stats_dict = dict(CC=[])
+            
+            ### Get KG_null 
+            KG = util_fcns.get_decoder(animal, day_ix)
+            assert(KG.shape[0] == 2)
+            KG_null_low = scipy.linalg.null_space(KG) # N x (N-2)
+            assert(KG_null_low.shape[1] + 2 == KG_null_low.shape[0])
 
             ################################
             ###### Extract real data #######
@@ -807,6 +813,8 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
 
             ### Get subsampled 
             spks_sub = spks0[tm0, :]
+            spks_null_sub = np.dot(KG_null_low.T, spks_sub.T).T 
+            
             push_sub = push0[tm0, :]
             move_sub = move0[tm0]
             bin_num_sub = bin_num0[tm0]
@@ -822,6 +830,9 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             pred_spks = 10*pred_spks; 
             cond_spks = 10*plot_generated_models.cond_act_on_psh(animal, day_ix)
 
+            pred_spks_null = np.dot(KG_null_low.T, pred_spks.T).T
+            cond_spks_null = np.dot(KG_null_low.T, cond_spks.T).T
+
             ### Make sure spks and sub_spks match -- using the same time indices ###
             assert(np.allclose(spks_sub, 10*model_dict[day_ix, 'spks']))
             assert(np.all(bin_num0[tm0] > 0))
@@ -831,8 +842,16 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             ###############################################
             pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
                 testing_mode = False)
-            pred_spks_shuffle = 10*pred_spks_shuffle; 
-        
+            pred_spks_shuffle = 10*pred_spks_shuffle; # time x neurons x shuffle ID 
+            
+            pred_spks_null_shuffle = []
+            for ns in range(nshuff): 
+                pred_spks_null_shuffle.append(np.dot(KG_null_low.T, pred_spks_shuffle[:, :, ns].T).T)
+            pred_spks_null_shuffle = np.dstack((pred_spks_null_shuffle))
+            assert(pred_spks_null_shuffle.shape[0]==pred_spks_shuffle.shape[0])
+            assert(pred_spks_null_shuffle.shape[1]==pred_spks_shuffle.shape[1]-2)
+            assert(pred_spks_null_shuffle.shape[2]==pred_spks_shuffle.shape[2])
+            
             ##############################################
             ########## SETUP the plots ###################
             ##############################################
@@ -849,7 +868,10 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             r2_ = []
             r2_shuff = []
 
+            #### full distances 
             neur_com_mov = dict(vals = [], shuffs = [])
+
+            ### null distances 
             mFR_for_r2 = []; mFR_for_r2_shuff = []
 
             for mag in range(4):
@@ -857,7 +879,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                 for ang in range(8): 
 
                     ### Return indices for the command ### 
-                    ix_com = plot_fr_diffs.return_command_indices(bin_num_sub, rev_bin_num_sub, push_sub, 
+                    ix_com_global = plot_fr_diffs.return_command_indices(bin_num_sub, rev_bin_num_sub, push_sub, 
                                             mag_boundaries, animal=animal, 
                                             day_ix=day_ix, mag=mag, ang=ang, min_bin_num=min_bin_indices,
                                             min_rev_bin_num=min_bin_indices)
@@ -867,24 +889,22 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                     ###############################################
                     ### For all movements --> figure otu which ones to keep in the global distribution ###
                     global_comm_indices = {}
-                    ix_com_global = []
 
-                    for mov in np.unique(move_sub[ix_com]):
+                    for mov in np.unique(move_sub[ix_com_global]):
 
                         ### Movement specific command indices 
-                        ix_mc = np.nonzero(move_sub[ix_com] == mov)[0]
+                        ix_mc = np.nonzero(move_sub[ix_com_global] == mov)[0]
                         
                         ### Which global indices used for command/movement 
-                        ix_mc_all = ix_com[ix_mc] 
+                        ix_mc_all = ix_com_global[ix_mc] 
 
                         ### If enough of these then proceed; 
                         if len(ix_mc) >= min_com_cond:    
                             global_comm_indices[mov] = ix_mc_all
-                            ix_com_global.append(ix_mc_all)
 
-                    if len(ix_com_global) > 0: 
+                    if len(global_comm_indices.keys()) > 0: 
 
-                        ix_com_global = np.hstack((ix_com_global))
+                        #ix_com_global = np.hstack((ix_com_global))
                         #global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
 
                         com_mov = dict(vals=[], shuffs=[])
@@ -895,30 +915,39 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                             ### FR for neuron ### 
                             ix_mc_all = global_comm_indices[mov]
 
-                            ### Match distribution 
-                             ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
+                            ### Update as of 12/17/22 --> keep movement indices in the pool: 
+                            ix_mov = np.array([i for i, j in enumerate(ix_com_global) if j in ix_mc_all])
+
+                            ### Match distribution --> including keeping movement indices in the pool 
+                            ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
                             ix_ok, niter = plot_fr_diffs.distribution_match_global_mov(push_sub[np.ix_(ix_mc_all, [3, 5])], 
-                                                                         push_sub[np.ix_(ix_com_global, [3, 5])])
-                            print('Mov %.1f, # Iters %d to match global'%(mov, niter))
+                                                                         push_sub[np.ix_(ix_com_global, [3, 5])], 
+                                                                         keep_mov_indices_in_pool = True, 
+                                                                         ix_mov = ix_mov)
+
+                            #print('Mov %.1f, # Iters %d to match global'%(mov, niter))
                             
                             ### which indices we can use in global distribution for this shuffle ----> #### 
                             ix_com_global_ok = ix_com_global[ix_ok] 
-                            global_mFR = np.mean(spks_sub[ix_com_global_ok, :], axis=0)
+                            
+                            global_mFR_null = np.mean(spks_null_sub[ix_com_global_ok, :], axis=0)
 
                             #### Get true FR ###
-                            mFR = np.mean(spks_sub[ix_mc_all, :], axis=0) # N x 1
-                            pred_mFR = np.mean(pred_spks[ix_mc_all, :], axis=0) # N x 1
-                            shuff_mFR = np.mean(pred_spks_shuffle[ix_mc_all, :, :], axis=0) # N x nshuffs
-                            cond_mFR = np.mean(cond_spks[ix_mc_all, :], axis=0)
+                            mFR_null = np.mean(spks_null_sub[ix_mc_all, :], axis=0) # N x 1
+                            pred_mFR_null = np.mean(pred_spks_null[ix_mc_all, :], axis=0) # N x 1
+                            
+                            pred_shuff_mFR_null = np.mean(pred_spks_null_shuffle[ix_mc_all, :, :], axis=0) # N x nshuffs
+                            cond_mFR_null = np.mean(cond_spks_null[ix_mc_all, :], axis=0)
 
-                            true_dist = np.linalg.norm(mFR - global_mFR)
-                            pred_dist = np.linalg.norm(pred_mFR - global_mFR)
-                            shuff_dist = np.linalg.norm(shuff_mFR - global_mFR[:, np.newaxis], axis=0)
+                            ##### many NULL distances: 
+                            #true_dist = np.linalg.norm(mFR_null - global_mFR_null)
+                            #pred_dist = np.linalg.norm(pred_mFR_null - global_mFR_null)
+                            #shuff_dist = np.linalg.norm(pred_shuff_mFR_null - global_mFR_null[:, np.newaxis], axis=0)
                             assert(len(shuff_dist) == nshuffs)
 
                             ##### test sig fo command/movement #####
-                            err_pred = np.linalg.norm(mFR - pred_mFR)
-                            err_shuff = np.linalg.norm(mFR[:, np.newaxis] - shuff_mFR, axis=0)
+                            err_pred = np.linalg.norm(mFR_null - pred_mFR_null)
+                            err_shuff = np.linalg.norm(mFR_null[:, np.newaxis] - pred_shuff_mFR_null, axis=0)
                             
                             ##### Test p-value of com/mov ####
                             n_err_lte = len(np.nonzero(err_shuff <= err_pred)[0])
@@ -928,72 +957,65 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                             nCC += 1
 
                             nnr = float(len(mFR))
-                            day_stats_dict['CC'].append([err_pred/nnr, err_shuff/nnr, mag, ang, mov])
+                            day_stats_dict['CC'].append([err_pred, err_shuff, mag, ang, mov])
                             
-                            if only_sig_cc: 
-                                if pv < 0.05: 
-                                    ##### Add to list ####
-                                    com_mov['vals'].append(err_pred)
-                                    com_mov['shuffs'].append(err_shuff)
+                            ### Add values : 
+                            add = True 
+                            if only_sig_cc and pv >= 0.05: 
+                                add = False
 
-                                    neur_com_mov['vals'].append(np.abs(mFR - pred_mFR))
-                                    neur_com_mov['shuffs'].append(np.abs(mFR[:, np.newaxis] - shuff_mFR))
-
-                                    #mFR_for_r2.append(util_fcns.get_R2(mFR, pred_mFR))
-                                    #r2_sh = []
-                                    #for s in range(nshuffs):
-                                        #r2_sh.append(util_fcns.get_R2(mFR, shuff_mFR[:, s]))
-                                        #r2_sh.append(shuff_mFR[:, s]))
-                                    mFR_for_r2.append([mFR-cond_mFR, pred_mFR-cond_mFR])
-                                    mFR_for_r2_shuff.append(shuff_mFR-cond_mFR[:, np.newaxis])                        
-                            else:
+                            if add: 
                                 ##### Add to list ####
                                 com_mov['vals'].append(err_pred)
                                 com_mov['shuffs'].append(err_shuff)
 
                                 neur_com_mov['vals'].append(np.abs(mFR - pred_mFR))
                                 neur_com_mov['shuffs'].append(np.abs(mFR[:, np.newaxis] - shuff_mFR))
-                                mFR_for_r2.append([mFR-cond_mFR, pred_mFR-cond_mFR])
-                                mFR_for_r2_shuff.append(shuff_mFR-cond_mFR[:, np.newaxis])  
-                                # mFR_for_r2.append(util_fcns.get_R2(mFR[np.newaxis, :], pred_mFR[np.newaxis, :]))
-                                # r2_sh = []
-                                # for s in range(nshuffs):
-                                #     r2_sh.append(util_fcns.get_R2(mFR, shuff_mFR[:, s]))
-                                # mFR_for_r2_shuff.append(np.mean(np.hstack((r2_sh))))
 
-
+                                ### NULL distances 
+                                mFR_for_r2.append([mFR_null-cond_mFR_null, pred_mFR_null-cond_mFR_null])
+                                mFR_for_r2_shuff.append(pred_shuff_mFR_null-cond_mFR_null[:, np.newaxis])                        
+                            
                         #### p-value of com/cond ####
-                        try:
+                        if len(com_mov['vals']) > 0: 
                             val_pool_mv = np.mean(com_mov['vals'])
                             shuf_pool_mv = np.mean(np.vstack((com_mov['shuffs'])), axis=0)
+                            
                             assert(len(shuf_pool_mv) == nshuffs)
+                            
                             n_err_lte = len(np.nonzero(shuf_pool_mv <= val_pool_mv)[0])
                             pv = float(n_err_lte)/float(nshuffs)
                             if pv < 0.05:
                                 nCom_sig += 1
                             nCom += 1
-                        except:
+                        
+                        else:
                             pass
                             print('PASSING ON COMMAND Mag %d Ang %d '%(mag, ang))
                             print("ANIMAL %s Day %d" %(animal, day_ix))
 
 
-            ######## Neuron sig #########
+            ######## Neuron sig --> all full distances #########
+            ### Ncom-cond x neurons 
             neur_com_mov_vals = np.vstack((neur_com_mov['vals']))
             assert(neur_com_mov_vals.shape[1] == nneur)
 
+            ### neurons x shuffs x Ncom-cond 
             neur_com_mov_shuffs = np.dstack((neur_com_mov['shuffs']))
             assert(neur_com_mov_shuffs.shape[0] == nneur)
-            assert(neur_com_mov_shuffs.shape[2] == neur_com_mov_vals.shape[0])
             assert(neur_com_mov_shuffs.shape[1] == nshuffs)
-
+            assert(neur_com_mov_shuffs.shape[2] == neur_com_mov_vals.shape[0])
+            
             if only_sig_cc: 
                 assert(neur_com_mov_vals.shape[0] == nCC_sig)
             else:
                 assert(neur_com_mov_vals.shape[0] == nCC)     
 
+            ######### Assess sig. of individual neurons #######
             VL = []
             SHF = []
+
+            ### For each neuron 
             for n in range(nneur): 
 
                 vls = np.mean(neur_com_mov_vals[:, n])
@@ -1014,7 +1036,6 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             bar_dict['fracCC'].append(float(nCC_sig)/float(nCC))
             count['fracCC'].append(float(nCC_sig)/float(nCC))
 
-
             ax_fracCom.plot(ia, float(nCom_sig)/float(nCom), 'k.')
             bar_dict['fracCom'].append(float(nCom_sig)/float(nCom))
             count['fracCom'].append(float(nCom_sig)/float(nCom))
@@ -1024,8 +1045,8 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             count['fracN'].append(float(nNeur_sig) / float(nNeur))
             
             ##### do r2 -- condition-varitions for a given command ####
-            mfr_true = np.vstack(([m[0] for m in mFR_for_r2]))
-            mfr_pred = np.vstack(([m[1] for m in mFR_for_r2]))
+            mfr_true = np.vstack(([m[0] for m in mFR_for_r2])) # True distance (null)
+            mfr_pred = np.vstack(([m[1] for m in mFR_for_r2])) # Predicted distance (null)
             r2_ = util_fcns.get_R2(mfr_true, mfr_pred)
 
             mFR_for_r2_shuff = np.dstack((mFR_for_r2_shuff)) # N x nshuff x nCC
@@ -1033,7 +1054,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             for s in range(nshuffs):
                 r2_sh.append(util_fcns.get_R2(mfr_true, mFR_for_r2_shuff[:, s, :].T))
             
-            print('Monk R2 %.3f, [%.3f, %.3f] mn | 95th perc' %(r2_, np.mean(r2_sh), np.percentile(r2_sh, 95)))
+            print('Monk R2 of cond-spec activity (null) %.3f, [%.3f, %.3f] mn | 95th perc' %(r2_, np.mean(r2_sh), np.percentile(r2_sh, 95)))
             stats_dict['R2'].append([r2_, r2_sh])
 
             ax_r2.plot(ia, r2_, 'k.', markersize=12)
@@ -1047,7 +1068,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
 
             
 
-            ######## Neur sig #########
+            ######## Pool over neurons and shuffles #########
             VL = np.mean(VL)
             SHF = np.mean(np.vstack((SHF)), axis=0)
             assert(nshuffs == len(SHF))
@@ -1055,16 +1076,16 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             print('NNeurons Monk %s, Day %d, pv %.5f'%(animal, day_ix, pv))
             stats_dict['Neur'].append([VL, SHF])
 
-            ####### Command condition Sig. ######
-            VL = np.mean(np.array([i[0] for i in day_stats_dict['CC']]))
-            SHF = np.mean(np.vstack(([i[1] for i in day_stats_dict['CC']])), axis=0)
+            ####### Pool over command-condition  ######
+            VL = np.mean(np.array([i[0] for i in day_stats_dict['CC']])) ## null 
+            SHF = np.mean(np.vstack(([i[1] for i in day_stats_dict['CC']])), axis=0) #Null 
             assert(nshuffs == len(SHF))
             pv = float(len(np.nonzero(SHF <= VL)[0]))/float(len(SHF))
             print('CCs Monk %s, Day %d, pv %.5f'%(animal, day_ix, pv))
             stats_dict['CC'].append([VL, SHF])
 
 
-        ####### POOLED STATS #########
+        ####### POOLED STATS over days #########
         vl = np.mean(np.array([i[0] for i in stats_dict['Neur']]))
         shf = np.mean(np.vstack((np.array([i[1] for i in stats_dict['Neur']]))), axis=0)
         assert(len(shf) == nshuffs)
