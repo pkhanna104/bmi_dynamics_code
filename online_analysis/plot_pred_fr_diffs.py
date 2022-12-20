@@ -346,6 +346,12 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     pref_colors = analysis_config.pref_colors
     pooled_stats = {}
 
+
+    KG = util_fcns.get_decoder(animal, day_ix)
+    assert(KG.shape[0] == 2)
+    KG_null_low = scipy.linalg.null_space(KG) # N x (N-2)
+    assert(KG_null_low.shape[1] + 2 == KG_null_low.shape[0])
+
     ################################
     ###### Extract real data #######
     ################################
@@ -405,7 +411,7 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     fvect_g, axvect_distgfr = plt.subplots(figsize=(4, 4))
 
     ### Return indices for the command ### 
-    ix_com = plot_fr_diffs.return_command_indices(bin_num_sub, rev_bin_num_sub, push_sub, mag_boundaries, animal=animal, 
+    ix_com_global = plot_fr_diffs.return_command_indices(bin_num_sub, rev_bin_num_sub, push_sub, mag_boundaries, animal=animal, 
                             day_ix=day_ix, mag=mag, ang=ang, min_bin_num=min_bin_indices,
                             min_rev_bin_num=min_bin_indices)
 
@@ -424,6 +430,7 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     shuff_mFR_vect = {}
     shuff_mFR = {};
 
+
     cond_mFR = {}; 
     cond_pop_FR = {}
     ###############################################
@@ -431,26 +438,22 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     ###############################################
     ### For all movements --> figure otu which ones to keep in the global distribution ###
     global_comm_indices = {}
-    ix_com_global = []
 
-    for mov in np.unique(move_sub[ix_com]):
+    for mov in np.unique(move_sub[ix_com_global]):
 
         ### Movement specific command indices 
-        ix_mc = np.nonzero(move_sub[ix_com] == mov)[0]
+        ix_mc = np.nonzero(move_sub[ix_com_global] == mov)[0]
         
         ### Which global indices used for command/movement 
-        ix_mc_all = ix_com[ix_mc] 
+        ix_mc_all = ix_com_global[ix_mc] 
 
         ### If enough of these then proceed; 
         if len(ix_mc) >= 15:    
             global_comm_indices[mov] = ix_mc_all
-            ix_com_global.append(ix_mc_all)
-
-    ix_com_global = np.hstack((ix_com_global))
 
     ############ subsample to match across all movements ################
-    global_comm_indices = plot_fr_diffs.distribution_match_mov_multi(global_comm_indices,
-        push_sub[:, [3, 5]], psig=0.05)
+    # global_comm_indices = plot_fr_diffs.distribution_match_mov_multi(global_comm_indices,
+    #     push_sub[:, [3, 5]], psig=0.05)
 
     #### now that have all the relevant movements - proceed 
     for mov in global_comm_indices.keys(): 
@@ -467,29 +470,39 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         pred_FR_vect = pred_spks[ix_mc_all, :]
         shuff_vector = pred_spks_shuffle[ix_mc_all, :, :]
 
+        #### calculate NULL distances 
+        ### Distance from true firing rate 
+        mn_pred_FR_null = np.squeeze(np.dot(KG_null_low.T, np.mean(pred_FR_vect, axis=0)[:, np.newaxis]))
+        mn_true_FR_null= np.squeeze(np.dot(KG_null_low.T, np.mean(FR_vect, axis=0)[:, np.newaxis]))
+        shuff_FR_null = np.dot(KG_null_low.T, np.mean(shuff_vector, axis=0)) #  N-2 x shuff
+
+        pred_vect_distmcfr[mov] = np.linalg.norm(mn_pred_FR_null - mn_true_FR_null)
+        shuff_vect_distmcfr[mov] = np.linalg.norm(shuff_FR_null - mn_true_FR_null[:, np.newaxis], axis=0)
+
+        ##### Save True for later 
         mFR_vect[mov] = np.mean(FR_vect, axis=0)
         pred_mFR_vect[mov] = np.mean(pred_FR_vect, axis=0)
-        shuff_mFR_vect[mov] = np.mean(shuff_vector, axis=0)
+        shuff_mFR_vect[mov] = np.mean(shuff_vector, axis=0) # neurons x shuffs? 
         cond_mFR[mov] = np.mean(cond_spks[ix_mc_all, neuron_ix], axis=0)
         cond_pop_FR[mov] = np.mean(cond_spks[ix_mc_all, :], axis=0)
 
         ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
+        ix_mov = np.array([i for i, j in enumerate(ix_com_global) if j in ix_mc_all])
         ix_ok, niter = plot_fr_diffs.distribution_match_global_mov(push_sub[np.ix_(ix_mc_all, [3, 5])], 
-                                                     push_sub[np.ix_(ix_com_global, [3, 5])])
+                                                     push_sub[np.ix_(ix_com_global, [3, 5])], 
+                                                     keep_mov_indices_in_pool = True,
+                                                     ix_mov=ix_mov)
         
         ### which indices we can use in global distribution for this shuffle ----> #### 
         ix_com_global_ok = ix_com_global[ix_ok] 
         global_mean_vect = np.mean(spks_sub[ix_com_global_ok, :], axis=0)
         
         ### Get matching global distribution 
-        mFR_vect_disggfr[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)/nneur
-        mean_FR_vect = np.mean(FR_vect, axis=0)
-        
-        pred_vect_distmcfr[mov] = np.linalg.norm(np.mean(pred_FR_vect, axis=0) - mean_FR_vect)/nneur
-        shuff_vect_distmcfr[mov] = np.linalg.norm(np.mean(shuff_vector, axis=0) - mean_FR_vect[:, np.newaxis], axis=0)/nneur
-        
-        pred_vect_distgfr[mov] = np.linalg.norm(np.mean(pred_FR_vect, axis=0) - global_mean_vect)/nneur
-        shuff_vect_distgfr[mov] = np.linalg.norm(np.mean(shuff_vector, axis=0) - global_mean_vect[:, np.newaxis], axis=0)/nneur
+        #mFR_vect_disggfr[mov] = np.linalg.norm(np.mean(FR_vect, axis=0) - global_mean_vect)/nneur
+
+        ### distance form global FR 
+        #pred_vect_distgfr[mov] = np.linalg.norm(np.mean(pred_FR_vect, axis=0) - global_mean_vect)/nneur
+        #shuff_vect_distgfr[mov] = np.linalg.norm(np.mean(shuff_vector, axis=0) - global_mean_vect[:, np.newaxis], axis=0)/nneur
         
     ##############################################
     #### Plot by target number ###################
@@ -517,10 +530,13 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         ########## PLOT TRUE DATA #################
         ###########################################
         ### Single neuron --> sampling distribution 
-        util_fcns.draw_plot(x, shuff_mFR[mov], 'k', np.array([1., 1., 1., 0]), axsu[1])
+        util_fcns.draw_plot(x, shuff_mFR[mov], 'k', np.array([1., 1., 1., 0]), axsu[1], whisk_min = 2.5, whisk_max=97.5)
         axsu[0].plot(x, mFR[mov], '.', color=colrgb, markersize=20)
         axsu[1].plot(x, pred_mFR[mov], '*', color=colrgb, markersize=20)
         axsu[1].plot(x, cond_mFR[mov], '^', color='gray')
+
+        print('SU -- Mov %.1f, Pos %d, [%.2f, %.2f], pred = %.2f,  true = %.2f'%(mov, x, np.percentile(shuff_mFR[mov], 2.5), 
+            np.percentile(shuff_mFR[mov], 97.5), pred_mFR[mov], mFR[mov]))
         # axsu[0].hlines(np.mean(spks_sub[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
         #      linewidth=1., linestyle='dashed')
         # axsu[1].hlines(np.mean(spks_sub[ix_com_global, neuron_ix]), xlim[0], xlim[-1], color='gray',
@@ -531,9 +547,14 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         axvect_distmcfr.plot(x, pred_vect_distmcfr[mov], '*', color=colrgb, markersize=20)
 
         ### Population distance from global FR
-        util_fcns.draw_plot(x, shuff_vect_distgfr[mov], 'k', np.array([1., 1., 1., 0]), axvect_distgfr)
-        axvect_distgfr.plot(x, pred_vect_distgfr[mov], '*', color=colrgb, markersize=20)
-        axvect_distgfr.plot(x, mFR_vect_disggfr[mov], '.', color=colrgb, markersize=20)
+        #util_fcns.draw_plot(x, shuff_vect_distgfr[mov], 'k', np.array([1., 1., 1., 0]), axvect_distgfr)
+        #axvect_distgfr.plot(x, pred_vect_distgfr[mov], '*', color=colrgb, markersize=20)
+        #axvect_distgfr.plot(x, mFR_vect_disggfr[mov], '.', color=colrgb, markersize=20)
+
+
+        print('POP -- Mov %.1f, Pos %d, [%.2f, %.2f], pred = %.2f distances'%(mov, x, np.percentile(shuff_vect_distmcfr[mov], 2.5), 
+            np.percentile(shuff_vect_distmcfr[mov], 97.5), pred_vect_distmcfr[mov]))
+
 
     ### Set the axes
     axsu[0].set_ylim([5, 40])
@@ -562,12 +583,13 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
 
     ##### PCA Plot ########
     ##### Find 2D PC axes that best capture true mFR_vect difference: 
+    #### EDIT 12/17/22 --> NULL SPACE plots instead
     mfr_mc = []; pred_mfr_mc = []; 
     for m in mFR_vect.keys():
-        mfr_mc.append(mFR_vect[m])
-        pred_mfr_mc.append(pred_mFR_vect[m])
+        mfr_mc.append(np.squeeze(np.dot(KG_null_low.T, mFR_vect[m][:, np.newaxis])))
+        pred_mfr_mc.append(np.squeeze(np.dot(KG_null_low.T, pred_mFR_vect[m][:, np.newaxis])))
 
-    mfr_mc = np.vstack((mfr_mc)) # conditions x neurons #
+    mfr_mc = np.vstack((mfr_mc)) # conditions x neurons - 2 #
     pred_mfr_mc = np.vstack((pred_mfr_mc)) 
 
     ### Get the pc model 
@@ -599,31 +621,32 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
     #for m in mFR_vect.keys(): 
 
         ### Project data and plot ###
-        trans_true = util_fcns.dat2PC(mFR_vect[m][np.newaxis, :], pc_model)
+        trans_true = util_fcns.dat2PC(np.dot(KG_null_low.T, mFR_vect[m][:, np.newaxis]).T, pc_model)
         #axpca[0].plot(trans_true[0, 0], trans_true[0, 1], '.', color=get_color(m), markersize=20)
-        axpca[0].plot(x, trans_true[0, 0] - mean_PC1, '.', color=get_color(m), markersize=20)
+        axpca[0].plot(x, -1*trans_true[0, 0] - mean_PC1, '.', color=get_color(m), markersize=20)
 
         ### PLot the predicted data : 
-        trans_pred = util_fcns.dat2PC(pred_mFR_vect[m][np.newaxis, :], pc_model)
-        axpca[1].plot(x, trans_pred[0, 0] - mean_pred_PC1, '*', color=get_color(m), markersize=20)
+        trans_pred = util_fcns.dat2PC(np.dot(KG_null_low.T, pred_mFR_vect[m][:, np.newaxis]).T, pc_model)
+        axpca[1].plot(x, -1*trans_pred[0, 0] - mean_pred_PC1, '*', color=get_color(m), markersize=20)
         
         #axpca[1].plot(trans_pred[0, 0], trans_pred[0, 1], '*', color=get_color(m), markersize=20)
         #axpca[0].plot([trans_true[0, 0], trans_pred[0, 0]], [trans_true[0, 1], trans_pred[0, 1]], '-', 
         #    color=get_color(m), linewidth=1.)
 
         ## Plot output only: 
-        trans_cond = util_fcns.dat2PC(cond_pop_FR[m][np.newaxis, :], pc_model)
-        axpca[1].plot(x, trans_cond[0, 0] - mean_pred_PC1, '^', color='gray')
+        trans_cond = util_fcns.dat2PC(np.dot(KG_null_low.T, cond_pop_FR[m][:, np.newaxis]).T, pc_model)
+        axpca[1].plot(x, -1*trans_cond[0, 0] - mean_pred_PC1, '^', color='gray')
 
         ### PLot the shuffled: Shuffles x 2 
-        trans_shuff = util_fcns.dat2PC(shuff_mFR_vect[m].T, pc_model)
+        trans_shuff = util_fcns.dat2PC(np.dot(KG_null_low.T, shuff_mFR_vect[m]).T, pc_model)
         #e = confidence_ellipse(trans_shuff[:, 0], trans_shuff[:, 1], axpca[1], n_std=3.0,
         #    facecolor = get_color(m, alpha=1.0))
-        util_fcns.draw_plot(x, trans_shuff[:, 0] - mean_pred_PC1, 'k', np.array([1., 1., 1., 0]), axpca[1])
+        util_fcns.draw_plot(x, -1*trans_shuff[:, 0] - mean_pred_PC1, 'k', np.array([1., 1., 1., 0]), axpca[1])
+
 
     ### Add the global FR command ####
-    global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
-    trans_global = util_fcns.dat2PC(global_mFR[np.newaxis, :], pc_model)
+    #global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
+    #trans_global = util_fcns.dat2PC(global_mFR[np.newaxis, :], pc_model)
 
     ## Dashed output ## 
     #axpca[0].hlines(trans_global[0, 0], -1, len(keys), linestyles='dashed')
@@ -636,72 +659,73 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         axpcai.set_xlim(xlim)
 
     ### UNCOMMENT TEMP ##
-    if mean_sub_PC: 
-        axpca[0].set_ylim([-25, 20])
-        axpca[1].set_ylim([-10, 8])
+    # if mean_sub_PC: 
+    #     axpca[0].set_ylim([-25, 20])
+    #     axpca[1].set_ylim([-10, 8])
 
-    else:
-        axpca[0].set_ylim([14, 57])
-        axpca[1].set_ylim([32, 48])
+    # else:
+    #     axpca[0].set_ylim([14, 57])
+    #     axpca[1].set_ylim([32, 48])
 
     fpca.tight_layout()
     util_fcns.savefig(fpca,'fig4_eg_pca')
 
-    fdyn, axdyn = plt.subplots(figsize=(6, 3), ncols = 2)
-    ### Make these axes teh dynamics axes 
-    #model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] 
-    model = model_dict[day_ix, model_nm, 0, 0, 'model']
+    ##### 12/17/22 -- deprecated 
+    # fdyn, axdyn = plt.subplots(figsize=(6, 3), ncols = 2)
+    # ### Make these axes teh dynamics axes 
+    # #model_data[i_d, model_nm, i_fold, type_of_model_index, 'model'] 
+    # model = model_dict[day_ix, model_nm, 0, 0, 'model']
 
-    A = model.coef_
-    b = model.intercept_
-    dim0 = 0; 
-    dim1 = 1; 
+    # A = model.coef_
+    # b = model.intercept_
+    # dim0 = 0; 
+    # dim1 = 1; 
 
-    ### High dim axis in dominant dynamics dimensions: 
-    assert(A.shape[0] == A.shape[1])
+    # ### High dim axis in dominant dynamics dimensions: 
+    # assert(A.shape[0] == A.shape[1])
     
-    ### Get the eigenvalue / eigenvectors: 
-    T, evs = lds_utils.get_sorted_realized_evs(A)
-    T_inv = np.linalg.pinv(T)
+    # ### Get the eigenvalue / eigenvectors: 
+    # T, evs = lds_utils.get_sorted_realized_evs(A)
+    # T_inv = np.linalg.pinv(T)
 
-    ### Linear transform of A matrix
-    Za = np.real(np.dot(T_inv, np.dot(A, T)))
+    # ### Linear transform of A matrix
+    # Za = np.real(np.dot(T_inv, np.dot(A, T)))
 
-    ### Which eigenvalues are these adn what are their properties? 
-    dt = 0.1
-    td = -1/np.log(np.abs(evs[[dim0, dim1]]))*dt; 
-    hz0 = np.angle(evs[dim0])/(2*np.pi*dt)
-    hz1 = np.angle(evs[dim1])/(2*np.pi*dt)
-    print('TIme decay %s'%(str(td)))
-    print('Hz %.3f, %.3f'%(hz0, hz1))
+    # ### Which eigenvalues are these adn what are their properties? 
+    # dt = 0.1
+    # td = -1/np.log(np.abs(evs[[dim0, dim1]]))*dt; 
+    # hz0 = np.angle(evs[dim0])/(2*np.pi*dt)
+    # hz1 = np.angle(evs[dim1])/(2*np.pi*dt)
+    # print('TIme decay %s'%(str(td)))
+    # print('Hz %.3f, %.3f'%(hz0, hz1))
 
-    #### For true data, plot the coordinates: 
-    for m in mFR_vect.keys(): 
+    # #### For true data, plot the coordinates: 
+    # for m in mFR_vect.keys(): 
 
-        ### Project data and plot ###
-        trans_true = np.dot(T_inv, mFR_vect[m][:, np.newaxis])
-        axdyn[0].plot(trans_true[0, 0], trans_true[1, 0], '.', color=get_color(m), markersize=20)
+    #     ### Project data and plot ###
+    #     trans_true = np.dot(T_inv, mFR_vect[m][:, np.newaxis])
+    #     axdyn[0].plot(trans_true[0, 0], trans_true[1, 0], '.', color=get_color(m), markersize=20)
 
-        ### PLot the predicted data : 
-        trans_pred = np.dot(T_inv, pred_mFR_vect[m][:, np.newaxis])
-        axdyn[1].plot(trans_pred[0, 0], trans_pred[1, 0], '*', color=get_color(m), markersize=20)
+    #     ### PLot the predicted data : 
+    #     trans_pred = np.dot(T_inv, pred_mFR_vect[m][:, np.newaxis])
+    #     axdyn[1].plot(trans_pred[0, 0], trans_pred[1, 0], '*', color=get_color(m), markersize=20)
         
-        ### PLot the shuffled: Shuffles x 2 
-        trans_shuff = np.dot(T_inv, shuff_mFR_vect[m])
-        e = confidence_ellipse(trans_shuff[0, :], trans_shuff[1, :], axdyn[1], n_std=3.0,
-            facecolor = get_color(m, alpha=1.0))
+    #     ### PLot the shuffled: Shuffles x 2 
+    #     trans_shuff = np.dot(T_inv, shuff_mFR_vect[m])
+    #     e = confidence_ellipse(trans_shuff[0, :], trans_shuff[1, :], axdyn[1], n_std=3.0,
+    #         facecolor = get_color(m, alpha=1.0))
     
-    ### Add the global FR command ####
-    global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
-    trans_global = np.dot(T_inv, global_mFR[:, np.newaxis])
-    #axdyn[0].plot(trans_global[0, 0], trans_global[1, 0], 'k.', markersize=10)
-    #axdyn[1].plot(trans_global[0, 0], trans_global[1, 0], 'k.', markersize=10)
+    # ### Add the global FR command ####
+    # global_mFR = np.mean(spks_sub[ix_com_global, :], axis=0)
+    # trans_global = np.dot(T_inv, global_mFR[:, np.newaxis])
+    # #axdyn[0].plot(trans_global[0, 0], trans_global[1, 0], 'k.', markersize=10)
+    # #axdyn[1].plot(trans_global[0, 0], trans_global[1, 0], 'k.', markersize=10)
     
-    for axi in axdyn:
-        axi.set_xlabel('Dim 1')
-        axi.set_ylabel('Dim 2')
-    fdyn.tight_layout()
-    util_fcns.savefig(fdyn,'fig4_eg_dyn')
+    # for axi in axdyn:
+    #     axi.set_xlabel('Dim 1')
+    #     axi.set_ylabel('Dim 2')
+    # fdyn.tight_layout()
+    # util_fcns.savefig(fdyn,'fig4_eg_dyn')
 
 def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
     """
@@ -845,7 +869,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
             pred_spks_shuffle = 10*pred_spks_shuffle; # time x neurons x shuffle ID 
             
             pred_spks_null_shuffle = []
-            for ns in range(nshuff): 
+            for ns in range(nshuffs): 
                 pred_spks_null_shuffle.append(np.dot(KG_null_low.T, pred_spks_shuffle[:, :, ns].T).T)
             pred_spks_null_shuffle = np.dstack((pred_spks_null_shuffle))
             assert(pred_spks_null_shuffle.shape[0]==pred_spks_shuffle.shape[0])
@@ -939,11 +963,15 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                             pred_shuff_mFR_null = np.mean(pred_spks_null_shuffle[ix_mc_all, :, :], axis=0) # N x nshuffs
                             cond_mFR_null = np.mean(cond_spks_null[ix_mc_all, :], axis=0)
 
-                            ##### many NULL distances: 
+                            mFR = np.mean(spks_sub[ix_mc_all, :], axis=0)
+                            pred_mFR = np.mean(pred_spks[ix_mc_all, :], axis=0)
+                            pred_shuff_mFR = np.mean(pred_spks_shuffle[ix_mc_all, :, :], axis=0) 
+
+                            ##### many NULL distances --> but dont seem to need thse 
                             #true_dist = np.linalg.norm(mFR_null - global_mFR_null)
                             #pred_dist = np.linalg.norm(pred_mFR_null - global_mFR_null)
                             #shuff_dist = np.linalg.norm(pred_shuff_mFR_null - global_mFR_null[:, np.newaxis], axis=0)
-                            assert(len(shuff_dist) == nshuffs)
+                            #assert(len(shuff_dist) == nshuffs)
 
                             ##### test sig fo command/movement #####
                             err_pred = np.linalg.norm(mFR_null - pred_mFR_null)
@@ -956,7 +984,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                                 nCC_sig += 1
                             nCC += 1
 
-                            nnr = float(len(mFR))
+                            #nnr = float(len(mFR))
                             day_stats_dict['CC'].append([err_pred, err_shuff, mag, ang, mov])
                             
                             ### Add values : 
@@ -970,7 +998,7 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
                                 com_mov['shuffs'].append(err_shuff)
 
                                 neur_com_mov['vals'].append(np.abs(mFR - pred_mFR))
-                                neur_com_mov['shuffs'].append(np.abs(mFR[:, np.newaxis] - shuff_mFR))
+                                neur_com_mov['shuffs'].append(np.abs(mFR[:, np.newaxis] - pred_shuff_mFR))
 
                                 ### NULL distances 
                                 mFR_for_r2.append([mFR_null-cond_mFR_null, pred_mFR_null-cond_mFR_null])
@@ -1097,12 +1125,13 @@ def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0,
         shf = np.mean(np.vstack((np.array([i[1] for i in stats_dict['CC']]))), axis=0)
         assert(len(shf) == nshuffs)
         pv = float(len(np.nonzero(shf <= vl)[0]))/float(len(shf))
-        print('CC Monk %s, POOLED, pv %.5f, mean = %.5f, [%.5f, %.5f]'%(animal, pv, vl, np.mean(shf), np.percentile(shf, 5)))
+        print('CC Monk %s, POOLED, pv %.5f, mean = %.5f, [%.5f, %.5f]'%(animal, pv, vl/np.mean(shf), np.mean(shf)/np.mean(shf), 
+            np.percentile(shf, 5)/np.mean(shf)))
         
         vl = np.mean(np.array([i[0] for i in stats_dict['R2']]))
         shf = np.mean(np.vstack((np.array([i[1] for i in stats_dict['R2']]))), axis=0)
         assert(len(shf) == nshuffs)
-        pv = float(len(np.nonzero(shf <= vl)[0]))/float(len(shf))
+        pv = float(len(np.nonzero(shf > vl)[0]))/float(len(shf))
         print('R2 Monk %s, POOLED, pv %.5f, mean = %.5f, [%.5f, %.5f]'%(animal, pv, vl, np.mean(shf), np.percentile(shf, 95)))
         
 
