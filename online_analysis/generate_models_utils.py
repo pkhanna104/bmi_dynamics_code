@@ -26,7 +26,7 @@ pref = analysis_config.config['grom_pref']
 n_entries_hdf = 800
 import scipy.io as sio
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.0, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=.8, style='white')
 
 import sys
 py_ver = sys.version
@@ -44,6 +44,68 @@ class Model_Table(tables.IsDescription):
     aic = tables.Float64Col(shape=(1,))
     bic = tables.Float64Col(shape=(1,))
     day_ix = tables.Float64Col(shape=(1,))
+
+#### Plot t2t ############
+
+def plot_t2t(): 
+    f, ax = plt.subplots(figsize = (2.5, 3))
+
+    for i_a, animal in enumerate(['grom', 'jeev']): 
+        order_dict = analysis_config.data_params['%s_ordered_input_type'%animal]
+        input_type = analysis_config.data_params['%s_input_type'%animal]
+
+        tsk_t2t = dict(co=[], obs=[])
+        
+        #### For each day 
+        for i_d, day in enumerate(input_type):
+        
+            order_d = order_dict[i_d]
+
+            history_bins_max = 0; 
+            within_bin_shuffle = False 
+            keep_bin_spk_zsc = False 
+            null = False 
+
+            data, data_temp, sub_spikes, sub_spk_temp_all, sub_push_all = get_spike_kinematics(animal,
+                day, order_d, history_bins_max, day_ix = i_d, within_bin_shuffle = within_bin_shuffle, 
+                keep_bin_spk_zsc = keep_bin_spk_zsc, null = null)
+            data['bin_num'] = np.hstack((data['bin_num']))
+
+            for i_tsk in [0, 1]: 
+
+                ### get task indices 
+                ix_tsk = np.nonzero(data['tsk'] == i_tsk)[0]
+
+                t2t = []; 
+
+                for i_trl in np.unique(data['trl'][ix_tsk]): 
+
+                    ix_trl = np.nonzero(data['trl']==i_trl)[0]
+                    
+                    i_trl_bins = np.nonzero(data['bin_num'][ix_trl])
+
+                    assert(data['bin_num'][ix_trl[0]] == 0)
+                    assert(data['bin_num'][ix_trl[-1]] == np.max(i_trl_bins))
+                    t2t.append(np.max(i_trl_bins)/10.) # 100ms bin counts 
+
+                ax.plot(i_a + .4*i_tsk, np.mean(t2t), 'k.')
+
+                if i_tsk == 0: 
+                    tsk_t2t['co'].append(np.mean(t2t))
+                elif i_tsk == 1: 
+                    tsk_t2t['obs'].append(np.mean(t2t))
+
+
+        ### Plot each animla 
+        ax.bar(i_a, np.mean(tsk_t2t['co']), width=.3, color='k', alpha=.2)
+        ax.bar(i_a+.4, np.mean(tsk_t2t['obs']), width=.3, color='k', alpha=.2)
+    
+    ax.set_title('T2T (sec)')
+    ax.set_xticks([0., .4, 1., 1.4])
+    ax.set_xticklabels(['co', 'obs', 'co', 'obs'])
+    ax.set_ylabel('Time to target (sec)')
+    f.tight_layout()
+    util_fcns.savefig(f, 'time to target')
 
 #### Methods to get data needed for spike models ####
 def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False, 
