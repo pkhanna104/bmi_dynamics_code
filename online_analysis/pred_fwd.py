@@ -363,8 +363,7 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
                             ix_ok, niter = plot_fr_diffs.distribution_match_global_mov(dataObj.push_tm1[np.ix_(ix_mov, [3, 5])], 
                                                                          dataObj.push_tm1[np.ix_(ix_com_global, [3, 5])], 
                                                                          keep_mov_indices_in_pool = True, 
-                                                                         ix_mov = ix_mov_sub,
-                                                                         psig=.5)
+                                                                         ix_mov = ix_mov_sub)
                             #ix_ok = np.arange(len(ix_com_global))
                             ### True vs. pred: 
                             ### Condition-pooled next action
@@ -662,15 +661,15 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
         ax.set_xticklabels(['G', 'J'])
         ax.hlines(0.05, -.5, 1.5, 'k', linewidth=.5, linestyle='dashed')
 
-
         if lab == 'perc_corrdir_next_comm': 
+            ax.set_ylim([.3, .8])
+            ax.set_yticks([.3, .4, .5, .6, .7, .8])
+            ax.set_yticklabels([.3, .4, .5, .6, .7, .8])            
+
+        elif lab == 'ang_err': 
             ax.set_ylim([0, 40])
             ax.set_yticks([0, 10, 20, 30, 40])
             ax.set_yticklabels([0, 10, 20, 30, 40])
-
-        elif lab == 'ang_err': 
-            ax.set_yticks([.3, .45, .6, .75, .9])
-            ax.set_yticklabels([.3, .45, .6, .75, .9])
             
         else:
             ax.set_ylim([0., 1.05])
