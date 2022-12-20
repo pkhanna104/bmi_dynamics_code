@@ -1397,7 +1397,7 @@ def perc_neuron_command_move_sig(nshuffs = 1000, min_bin_indices = 0, keep_bin_s
     
     Update: 3/31/21 --> now want to use the "pooling" method to assess if commands / neurons are sig. 
         -- report population significance; 
-        -- 
+    Updates: 12/17/22 --> fix matching , make pop distances null; 
     """
 
     ### Open mag boundaries 
