@@ -1612,9 +1612,9 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
                                 pred_cond_null = spks_est_cond_sub_null)
             
             if animal == 'grom' and day_ix == 0:             
+                
                 ######## Pairwise Plot Examples  ########
                 ax_ = [axpwsu, axpwpop]
-                dot_colors = [np.array([82, 184, 72])/255., np.array([237, 42, 145])/255.]
                 
                 for i_t, t in enumerate(['true']):#, 'shuff']):
                     for i_n, n in enumerate(['su', 'pop']): 
@@ -1786,55 +1786,66 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
     util_fcns.savefig(fax_p_err, 'err_pop_diffs')
     
 ####### Fig 4 Eigenvalue plots ########
-def get_data_EVs(keep_bin_spk_zsc = False): 
+def get_data_EVs(keep_bin_spk_zsc = False, plot_null_dynamics = False, ridge_dict = None): 
     model_set_number = 6
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'
 
     ### Want the true data ####
-    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+    if plot_null_dynamics: 
+        pass
+    else: 
+        ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
     
     fnum, axnum = plt.subplots(figsize = (3, 4))
     ffrac, axfrac = plt.subplots(figsize = (3, 4))
     fhz, axhz = plt.subplots(figsize = (3, 4))
 
 
-    for ia, animal in enumerate(['grom', 'jeev', 'home']):
+    for ia, animal in enumerate(['grom', 'jeev']):#, 'home']):
         num_eigs_td_gte_bin = []
         frac_eigs_td_gte_bin = []
         avg_freq_eigs_td_gte_bin = []
 
-        zstr = ''
-        if animal == 'home': 
-            if keep_bin_spk_zsc:
-                zstr = 'zsc'
-                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_%s.pkl' %(model_set_number, zstr), 'rb')); 
+        if plot_null_dynamics: 
+            pass
+        else: 
+            zstr = ''
+            if animal == 'home': 
+                if keep_bin_spk_zsc:
+                    zstr = 'zsc'
+                    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d_%s.pkl' %(model_set_number, zstr), 'rb')); 
+                else:
+                    ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %(model_set_number), 'rb')); 
             else:
-                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %(model_set_number), 'rb')); 
-        else:
-            ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
+                ridge_dict = pickle.load(open(analysis_config.config['grom_pref'] + 'max_alphas_ridge_model_set%d.pkl' %model_set_number, 'rb')); 
 
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
-            ### Get the saved shuffle data ####
-            if animal == 'home':
-                data = pickle.load(open(analysis_config.config['shuff_fig_dir'] + '%s_%d_%s_shuff_ix.pkl'%(animal, day_ix, zstr), 'rb'))
-            else:
-                data = pickle.load(open(analysis_config.config['shuff_fig_dir'] + '%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
-
-            ### Get X, Xtm1 ###
-            Data = data['Data']
-
-            ### Get the indices 
-            tm0, tm1 = generate_models.get_temp_spks_ix(Data)
-
             ### Get alpha ### 
-            alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
-            print('%s, %d alpha %.1f' %(animal, day_ix, alpha_spec))
-            ### Get Ridge; 
-            model = Ridge(alpha=alpha_spec, fit_intercept=True)
+            if plot_null_dynamics: 
+                model = ridge_dict[animal, day_ix]
+            
+            else: 
+                ### Get the saved shuffle data ####
+                if animal == 'home':
+                    data = pickle.load(open(analysis_config.config['shuff_fig_dir'] + '%s_%d_%s_shuff_ix.pkl'%(animal, day_ix, zstr), 'rb'))
+                else:
+                    data = pickle.load(open(analysis_config.config['shuff_fig_dir'] + '%s_%d_shuff_ix.pkl'%(animal, day_ix), 'rb'))
 
-            ### Fit the model: args = X, y
-            model.fit(Data['spks'][tm1, :], Data['spks'][tm0, :])
+                ### Get X, Xtm1 ###
+                Data = data['Data']
+
+                ### Get the indices 
+                tm0, tm1 = generate_models.get_temp_spks_ix(Data)
+
+                ### Refit dynamics 
+                alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
+                print('%s, %d alpha %.1f' %(animal, day_ix, alpha_spec))
+                ### Get Ridge; 
+                model = Ridge(alpha=alpha_spec, fit_intercept=True)
+
+                ### Fit the model: args = X, y
+                model.fit(Data['spks'][tm1, :], Data['spks'][tm0, :])
 
             ### Dynamics matrix; 
             A = model.coef_
@@ -1848,7 +1859,10 @@ def get_data_EVs(keep_bin_spk_zsc = False):
                 ax.set_ylim([-.1,5.05])
                 ax.vlines(.1, 0, 5.05, 'k', linestyle='dashed', linewidth=.5)
                 f.tight_layout()
-                #util_fcns.savefig(f, '%s_%d_eigs'%(animal, day_ix))
+                if plot_null_dynamics:
+                    util_fcns.savefig(f, '%s_%d_eigs_null'%(animal, day_ix))
+                else: 
+                    util_fcns.savefig(f, '%s_%d_eigs'%(animal, day_ix))
 
             #### Get stats; 
             ix_gte_bin = np.nonzero(decay >= 0.1)[0]
@@ -1865,20 +1879,25 @@ def get_data_EVs(keep_bin_spk_zsc = False):
         axhz.bar(ia, np.mean(avg_freq_eigs_td_gte_bin), width=0.8, color='k', alpha=.2)
     
     for axi in [axnum, axfrac, axhz]:
-        axi.set_xticks([0, 1, 2])
-        axi.set_xticklabels(['G', 'J', 'H'])
-        axi.set_xlim([-1, 3])
+        axi.set_xticks([0, 1])
+        axi.set_xticklabels(['G', 'J'])
+        axi.set_xlim([-1, 2])
 
     axnum.set_ylabel('# Eigs with td > 0.1 sec')
+    axnum.set_ylim([0., 5.])
     axfrac.set_ylabel('Frac. Eigs with td > 0.1 sec')
     axhz.set_ylabel('Avg. Freq.')
     axhz.set_ylim([-.1, 1.])
     for f in [fnum, ffrac, fhz]:
         f.tight_layout()
 
-    #util_fcns.savefig(fnum, 'num_eigs_gte_bin')
-    #util_fcns.savefig(ffrac, 'frac_eigs_gte_bin')
-    #util_fcns.savefig(fhz, 'avg_freq_of_eigs_gte_bin')
+    if plot_null_dynamics: 
+        null = '_null'
+    else:
+        null = ''
+    util_fcns.savefig(fnum, 'num_eigs_gte_bin%s'%null)
+    util_fcns.savefig(ffrac, 'frac_eigs_gte_bin%s'%null)
+    util_fcns.savefig(fhz, 'avg_freq_of_eigs_gte_bin%s'%null)
 
 def get_ang_td(A, plt_evs_gte=.99, dt=0.1): 
     ev, evect = np.linalg.eig(A)
@@ -2016,7 +2035,7 @@ def pw_eg_scatter(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_globa
                 shuff_mFR2 = np.mean(pred_spks_shuffle[ix_mov2, :, shuff_ix], axis=0)
 
                 pw_dict['su', 'true'].append(nby2arr(np.abs(mFR[neuron_ix] - mFR2[neuron_ix]), np.abs(pred_mFR[neuron_ix] - pred_mFR2[neuron_ix])))
-                pw_dict['su', 'shuff'].append(nby2arr(np.abs(mFR[neuron_ix] - mFR2[neuron_ix]),np.abs(shuff_mFR[neuron_ix] - shuff_mFR2[neuron_ix])))
+                #pw_dict['su', 'shuff'].append(nby2arr(np.abs(mFR[neuron_ix] - mFR2[neuron_ix]),np.abs(shuff_mFR[neuron_ix] - shuff_mFR2[neuron_ix])))
 
 #                pw_dict['su', 'true'].append(nby2arr(np.abs(mFR - mFR2), np.abs(pred_mFR - pred_mFR2)))
 #                pw_dict['su', 'shuff'].append(nby2arr(np.abs(mFR - mFR2), np.abs(shuff_mFR - shuff_mFR2)))
@@ -2033,7 +2052,7 @@ def pw_eg_scatter(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_globa
                 shuff_mFR2_n = np.mean(pred_spks_null_shuffle[ix_mov2, :, shuff_ix], axis=0)
 
                 pw_dict['pop', 'true'].append(nby2arr(nplanm(mFR_n, mFR2_n), nplanm(pred_mFR_n, pred_mFR2_n)))
-                pw_dict['pop', 'shuff'].append(nby2arr(nplanm(mFR_n, mFR2_n), nplanm(shuff_mFR_n, shuff_mFR2_n)))
+                #pw_dict['pop', 'shuff'].append(nby2arr(nplanm(mFR_n, mFR2_n), nplanm(shuff_mFR_n, shuff_mFR2_n)))
 
     return pw_dict
 
