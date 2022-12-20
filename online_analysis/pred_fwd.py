@@ -8,10 +8,11 @@ import numpy as np
 import scipy.stats
 import pickle
 from online_analysis import plot_actions
+import math 
 
 from collections import defaultdict
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.0, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=.75, style='white')
 
 def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 20, plot_action = False, nshuffs_roll = 100, keep_bin_spk_zsc = False):
@@ -205,24 +206,36 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
 
     fcc, axcc = plt.subplots(figsize=(2, 3))
     fcom, axcom = plt.subplots(figsize=(2, 3))
-    fccw, axccw= plt.subplots()
+    #fccw, axccw= plt.subplots()
     fccw2, axccw2= plt.subplots(figsize=(2, 3))
+
+    ### r2 of condition-specific change in angle vs. shuffle 
+    fpc, axr2 = plt.subplots()
+    axr2.set_ylabel('R2 of ang b/w \n cond-spec next command ang - cond-pool next command ang')
+
+    fpc, axpc = plt.subplots()
+    fpc_2, axpc_2 = plt.subplots(figsize=(2, 3))
+
+    fae, axae = plt.subplots()
+    fae_2, axae_2 = plt.subplots(figsize=(2, 3))
 
     count = {}
     count['nCC'] = []
     count['fracCC'] = []
     count['fracCom'] = []
 
+
     for i_a, animal in enumerate(['grom', 'jeev']):
         frac_sig_animal_cc = []
         frac_sig_animal_com = []
         frac_sig_dir = []
 
-        pooled_data = dict(err = [], shuff_err = [])
+        pooled_data = dict(err = [], shuff_err = [], r2 = [], shuff_r2 = [], pc=[], shuff_pc=[], ae = [], shuff_ae = [])
 
         for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
-            day_data = dict(err = [], shuff_err = [])
+            ### error in true next command vs. shuflfe next command 
+            day_data = dict(err = [], shuff_err = [], pc = [], shuff_pc = [], )
 
             ### Load data ###
             dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
@@ -230,73 +243,190 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
             dataObj.load()
             KG = util_fcns.get_decoder(animal, day_ix)
 
+            ### count significant command-conditions 
             sig_mc = 0; 
             all_mc = 0; 
 
+            ### count significant commands pooled over condition 
             sig_com = 0; 
             all_com = 0; 
 
-            cw_ccw_corr = 0; 
-            cw_ccw_all =0
+            ### Count percent correct of CW vs. CCW 
+            ### CW vs. CCW --> use to select commands w/ chance level in certain range
+            ### dir_opts[mag,ang] = [1, -1, 1, -1] etc. 
+            dir_opts = dict()
+            
+            ### Corrects vs. not 
+            ### cw_ccw_opts[mag, ang] = [1, 0, 0, 1] etc. 
+            #cw_ccw_corr = dict()
 
-            shuff_cw_ccw = {}
-            for n in range(nshuffs):
-                shuff_cw_ccw[n] = [0, 0]
+            ### Shuffle correct vs. not. 
+            #shuff_cw_ccw_corr = {}
+            #for n in range(nshuffs):
+                ### shuff_cw_ccw_corr[n][mag, ang] = [1, 0, 0, 1] etc 
+                #shuff_cw_ccw_corr[n] = dict()
+
+            ### Calc R2 of change in angle ### 
+            ### R2 of condition specific direciton 
+            R2_cond_spec_dir = dict(true=[], pred=[], shuff=[])
+
+            ### Plots of angle change 
+            # f, ax_ang = plt.subplots(ncols=2, figsize=(10, 5)) ### could restrict to change of direction of pi
+            # ax_ang[0].set_xlabel('True change in ang of next command \n(true cond-spec minus true cond-pooled)')
+            # ax_ang[0].set_ylabel('PRED change in ang of next command \n(pred cond-spec minus true cond-pooled)')
+            
+            # for axi in ax_ang: 
+            #     axi.vlines(0, -2*np.pi, 2*np.pi, 'k')
+            #     axi.hlines(0, -2*np.pi, 2*np.pi, 'k')
+            #     axi.plot([-2*np.pi, 2*np.pi], [-2*np.pi, 2*np.pi], 'k--')
+            
+            # cols = ['red', 'orange','teal', 'magenta']
+
+            # fgrid, axgrid = plt.subplots()
 
             ### For each move / command is pred closer than shuffle 
             for mag in range(4):
                 for ang in range(8): 
 
+                    #### Initialize dictionaries to hold data #### 
                     com_data = dict(err = [], shuff_err = [])
+
+                    ### Wheter to count this in sig. commands --> need at least one condition to qualify 
                     assess_command = False
                     
-                    for mov in np.unique(dataObj.move):
-                        ix = np.nonzero((dataObj.command_bins_tm1[:, 0] == mag) & (dataObj.command_bins_tm1[:, 1] == ang) & (dataObj.move_tm1 == mov))[0]
+                    #### Initialize dictionaries to hold data #### 
+                    #cw_ccw_corr[mag, ang] = []
+                    dir_opts[mag, ang] = []
+                    # for n in range(nshuffs): 
+                    #     shuff_cw_ccw_corr[n][mag, ang] =[]
 
-                        if len(ix) >= min_com_cond: 
+                    ### global = condition-pooled 
+                    ix_com_global = np.nonzero((dataObj.command_bins_tm1[:, 0] == mag) & (dataObj.command_bins_tm1[:, 1] == ang))[0]
+                        
+                    ### Cycle through conditions 
+                    for i_m, mov in enumerate(np.unique(dataObj.move)):
+
+                        ix_mov = np.nonzero((dataObj.command_bins_tm1[:, 0] == mag) & (dataObj.command_bins_tm1[:, 1] == ang) & (dataObj.move_tm1 == mov))[0]
+
+                        ### make sure next movements are the same
+                        assert(np.all(dataObj.move[ix_mov] == mov))
+
+                        if len(ix_mov) >= min_com_cond: 
                             assess_command = True
 
                             #### Get true next MC; 
-                            true_next_action = np.mean(np.dot(KG, dataObj.spks[ix, :].T).T, axis=0)
-                            pred_next_action = np.mean(np.dot(KG, dataObj.pred_spks[ix, :].T).T, axis=0)
+                            assert(dataObj.pred_spks.shape[0] == dataObj.spks.shape[0])
+                            assert(dataObj.pred_spks.shape[1] == dataObj.spks.shape[1])
 
+                            assert(dataObj.pred_spks_shuffle.shape[0] == dataObj.spks.shape[0])
+                            assert(dataObj.pred_spks_shuffle.shape[1] == dataObj.spks.shape[1])
+                            assert(dataObj.pred_spks_shuffle.shape[2] == nshuffs)
+
+                            ### condition-specific ### 
+                            true_next_action = np.mean(np.dot(KG, dataObj.spks[ix_mov, :].T).T, axis=0)
+                            pred_next_action = np.mean(np.dot(KG, dataObj.pred_spks[ix_mov, :].T).T, axis=0)
+
+                            ### Distance b/w actions 
                             pred_dist = np.linalg.norm(pred_next_action - true_next_action)
+                            day_data['err'].append(pred_dist)
+                            com_data['err'].append(pred_dist)
+
                             shuff_next_action_dist = []
                             for i in range(nshuffs): 
-                                tmp_act = np.mean(np.dot(KG, dataObj.pred_spks_shuffle[ix, :, i].T).T, axis=0)
+                                tmp_act = np.mean(np.dot(KG, dataObj.pred_spks_shuffle[ix_mov, :, i].T).T, axis=0)
                                 shuff_next_action_dist.append(np.linalg.norm(tmp_act - true_next_action))
 
                             ### Keep data; 
-                            day_data['err'].append(pred_dist)
                             day_data['shuff_err'].append(np.hstack((shuff_next_action_dist)))
-
-                            com_data['err'].append(pred_dist)
                             com_data['shuff_err'].append(np.hstack((shuff_next_action_dist)))
 
+                            ### How many shuffles are MORE accurate ? 
                             p = np.nonzero(shuff_next_action_dist <= pred_dist)[0]
                             pv = float(len(p))/float(nshuffs)
 
+                            ### Keep track of sig CCs
                             if pv < 0.05:
                                 sig_mc += 1
                             all_mc += 1
 
 
                             ######## CW/CCW assessment for significant command/conditions ############
-                            if pv < 0.05: 
-                                current_command = np.mean(np.dot(KG, dataObj.spks_tm1[ix, :].T).T, axis=0)
-                                cp_true = np.sign(np.cross(current_command, true_next_action))
-                                cp_pred = np.sign(np.cross(current_command, pred_next_action))
+                            #if pv < 0.05: 
+                            
+                            #### Match global distribution before assessing R2 
+                            ### Update as of 12/17/22 --> keep movement indices in the pool: 
+                            ix_mov_sub = np.array([i for i, j in enumerate(ix_com_global) if j in ix_mov])
 
-                                if cp_true == cp_pred: 
-                                    cw_ccw_corr += 1
-                                cw_ccw_all += 1
+                            ### Match distribution --> including keeping movement indices in the pool 
+                            ### Figure out which of the "ix_com" indices can be used for shuffling for this movement 
+                            assert(dataObj.push_tm1.shape[1] == 7)
+                            ix_ok, niter = plot_fr_diffs.distribution_match_global_mov(dataObj.push_tm1[np.ix_(ix_mov, [3, 5])], 
+                                                                         dataObj.push_tm1[np.ix_(ix_com_global, [3, 5])], 
+                                                                         keep_mov_indices_in_pool = True, 
+                                                                         ix_mov = ix_mov_sub,
+                                                                         psig=.5)
+                            #ix_ok = np.arange(len(ix_com_global))
+                            ### True vs. pred: 
+                            ### Condition-pooled next action
+                            if len(ix_ok) > 0: 
+                                next_com_cond_pooled = np.mean(np.dot(KG, dataObj.spks[ix_com_global[ix_ok], :].T).T, axis=0)
+                                
+                                dang_true = compute_angle_diff(next_com_cond_pooled, true_next_action)
 
+                                #if np.abs(dang_true) < 1000000:#np.pi/2: 
+                                dang_pred = compute_angle_diff(next_com_cond_pooled, pred_next_action, closeto=dang_true)
+                                
+                                ### PLot 
+                                next_com_cond_pooled_norm = next_com_cond_pooled / np.linalg.norm(next_com_cond_pooled)
+                                true_next_action_norm = true_next_action/np.linalg.norm(true_next_action)
+                                pred_next_action_norm = pred_next_action/np.linalg.norm(pred_next_action)
+
+                                # ax_ang[0].plot(dang_true, dang_pred, '.', color=cols[mag])
+                                # axgrid.arrow(mag*8 + ang, i_m, next_com_cond_pooled_norm[0], 
+                                #     next_com_cond_pooled_norm[1], color='k')
+                                # axgrid.arrow(mag*8 + ang, i_m, true_next_action_norm[0], 
+                                #     true_next_action_norm[1], color='b')
+                                # axgrid.arrow(mag*8 + ang, i_m, pred_next_action_norm[0], 
+                                #     pred_next_action_norm[1], color='r')
+                                # axgrid.set_xlim([-1, 33])
+                                # axgrid.set_ylim([-1, 26])
+
+                                ### save dAng
+                                R2_cond_spec_dir['true'].append(dang_true)
+                                R2_cond_spec_dir['pred'].append(dang_pred)
+                                
+                                ### Predictions --> condition-specific change from condition-pooled direction? 
+                                cp_true = np.sign(np.cross(next_com_cond_pooled, true_next_action))
+                                dir_opts[mag, ang].append(cp_true)
+                                #cp_pred = np.sign(np.cross(next_command, pred_next_action))
+
+                                #if cp_true == cp_pred: 
+                                #    cw_ccw_corr[mag, ang].append(1)
+                                #else: 
+                                #    cw_ccw_corr[mag, ang].append(0)
+
+                                #### Predict dAng from shuffle predicted spikes  
+                                dang_pred_shuff = []
                                 for i in range(nshuffs): 
-                                    tmp_act = np.mean(np.dot(KG, dataObj.pred_spks_shuffle[ix, :, i].T).T, axis=0)
-                                    cp_pred = np.sign(np.cross(current_command, tmp_act))
-                                    if cp_true == cp_pred: 
-                                        shuff_cw_ccw[i][0] += 1
-                                    shuff_cw_ccw[i][1] += 1
+                                    tmp_act = np.mean(np.dot(KG, dataObj.pred_spks_shuffle[ix_mov, :, i].T).T, axis=0)
+                                    dang_pred_shuff.append(compute_angle_diff(next_com_cond_pooled, tmp_act, closeto=dang_true))
+
+                                    # cp_pred = np.sign(np.cross(next_command, tmp_act))
+                                    # if cp_true == cp_pred: 
+                                    #     shuff_cw_ccw_corr[i][mag, ang].append(1)
+                                    # else: 
+                                    #     shuff_cw_ccw_corr[i][mag, ang].append(0)
+                                    if i == 0: 
+                                        #ax_ang[1].plot(dang_true, compute_angle_diff(next_com_cond_pooled, tmp_act, closeto=dang_true), '.', 
+                                        #color=cols[mag], alpha=.2)
+
+                                        tmp_act = tmp_act / np.linalg.norm(tmp_act)
+                                        #axgrid.arrow(mag*8 + ang, i_m, tmp_act[0], tmp_act[1], color='gray')
+
+                                assert(len(dang_pred_shuff) == nshuffs)
+                                
+                                ### Shuffle for R2; 
+                                R2_cond_spec_dir['shuff'].append(np.array(dang_pred_shuff))
 
                     if assess_command: 
                         #### test if command is sig; 
@@ -321,61 +451,251 @@ def frac_next_com_mov_sig(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_se
             axcom.plot(i_a, frac_sig, 'k.')
             count['fracCom'].append(frac_sig)
 
-            frac_corr = float(cw_ccw_corr)/float(cw_ccw_all)
-            shuff_frac_corr = []
-            for i in range(nshuffs):
-                shuff_frac_corr.append(float(shuff_cw_ccw[i][0])/float(shuff_cw_ccw[i][1]))
+            ########## DEAL w/ CW / CCW 
+            # cw_ccw_corr2 = 0; cw_ccw_all2 = 0; 
+            # shuff_cw_ccw2 = {}
+            # for shf in range(nshuffs): 
+            #     shuff_cw_ccw2[shf] = [0., 0.]
+
+            ### Calc max % corr by going in one direction
+            # max_pc = []
+            # for key in dir_opts.keys(): 
+            #     tmp = np.array(dir_opts[key])
+            #     if len(tmp) > 0: 
+            #         tmp2 = np.zeros_like(tmp)
+            #         frac_dir = float(len(np.nonzero(tmp==1)[0])) / float(len(tmp))
+            #         if frac_dir < .5: 
+            #             tmp2[tmp==-1] = 1. 
+            #         else: 
+            #             tmp2[tmp==1] = 1.
+            #         max_pc.append(tmp2)
+            # max_pc = np.hstack((max_pc))
+            #     ### Only assess if bias < 1/3 
+            #     if np.logical_and(frac_dir >= 0., frac_dir <= 1.): 
+            #     #if np.logical_and(frac_dir > 0., frac_dir < 1.): 
+
+            #         for tmp2 in cw_ccw_corr[key]: 
+            #             if tmp2 == 1: 
+            #                 cw_ccw_corr2 += 1
+            #             cw_ccw_all2 += 1
+
+            #         for shf in range(nshuffs): 
+            #             for tmp3 in shuff_cw_ccw_corr[shf][key]:
+            #                 if tmp3 == 1: 
+            #                     shuff_cw_ccw2[shf][0] += 1
+            #                 shuff_cw_ccw2[shf][1] += 1
+
+            # ### Now get fraction out
+            # if cw_ccw_all2 > 0: 
+            #     frac_corr = float(cw_ccw_corr2)/float(cw_ccw_all2)
+            #     shuff_frac_corr = []
+            #     for shf in range(nshuffs):
+            #         shuff_frac_corr.append(float(shuff_cw_ccw2[shf][0])/float(shuff_cw_ccw2[shf][1]))
+                
+            #     axccw.plot(i_a*10 + day_ix, frac_corr, 'r.')
+            #     util_fcns.draw_plot(i_a*10 + day_ix, shuff_frac_corr, 'k', np.array([1., 1., 1., 0.]), axccw, 
+            #         whisk_min = 0, whisk_max=100)
+
+            #     axccw2.plot(i_a, frac_corr, 'k.')
+            #     frac_sig_dir.append(frac_corr)
+
+
+            #################### R2 plot ###########################
+            assert(len(R2_cond_spec_dir['true']) == len(R2_cond_spec_dir['pred']) == len(R2_cond_spec_dir['shuff']))
+
+            ### Plot R2 of dAng 
+            r2_tru = util_fcns.get_R2(np.array(R2_cond_spec_dir['true']), np.array(R2_cond_spec_dir['pred']))
+            r2_shuff = []
+            for i in range(nshuffs): 
+                ### Take ith shuffle across all command-conditiosn 
+                shf = np.array([s[i] for s in R2_cond_spec_dir['shuff']])
+
+                ### make sure size is right 
+                assert(len(shf) == len(R2_cond_spec_dir['true']))
+                
+                ### Get shuffle r2 
+                r2_i = util_fcns.get_R2(np.array(R2_cond_spec_dir['true']), shf)
+                r2_shuff.append(r2_i)
+
+            ### Plot these  
+            axr2.plot(i_a*10 + day_ix, r2_tru, 'r.')
+            util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), axr2, 
+                    whisk_min = 0, whisk_max=100)
+
+            ### Save them for pooled stats 
+            ix = np.nonzero(r2_shuff >= r2_tru)[0]
+            pvr2 = float(len(ix))/float(nshuffs)
+            # print('R2 stats Animal %s, Day %d, pv = %.5f, r2 true %.3f, mn shuff %.3f, 95th shuff %.3f'%(animal,
+            #     day_ix, pvr2, r2_tru, np.mean(r2_shuff), np.percentile(r2_shuff, 95)))
+            pooled_data['r2'].append(r2_tru)
+            pooled_data['shuff_r2'].append(r2_shuff)
+
+
+            #################### PC plot ###########################
+            perc_corr_true = perc_corr_dir_dang(R2_cond_spec_dir['true'], R2_cond_spec_dir['pred'])
+            #ax_ang[0].set_title('%s, %d, r2 = %.2f, pc = %.2f'%(animal, day_ix, r2_tru, perc_corr_true))
+            pc_shuff = []
+            for i in range(nshuffs): 
+                ### Take ith shuffle across all command-conditiosn 
+                shf = np.array([s[i] for s in R2_cond_spec_dir['shuff']])
+
+                ### make sure size is right 
+                assert(len(shf) == len(R2_cond_spec_dir['true']))
+                
+                ### Get shuffle r2 
+                pc_i = perc_corr_dir_dang(R2_cond_spec_dir['true'], shf)
+                pc_shuff.append(pc_i)
+
+                #ax_ang[1].set_title('shuff 1 -- r2 = %.2f, pc = %.2f'%(r2_shuff[0], pc_i))
+
+            ### Plot these 
+
+            axpc.plot(i_a*10 + day_ix, perc_corr_true, 'r.')
+            util_fcns.draw_plot(i_a*10 + day_ix, pc_shuff, 'k', np.array([1., 1., 1., 0.]), axpc, 
+                    whisk_min = 0, whisk_max=100)
+            #axpc.plot(i_a*10 + day_ix, np.sum(max_pc) / float(len(max_pc)), 'b*')
+
+            ix = np.nonzero(pc_shuff > perc_corr_true)[0]
+            pv_pc = float(len(ix))/float(nshuffs)
+            print('PC stats Animal %s, Day %d, pv = %.5f, r2 true %.3f, mn shuff %.3f, 95th shuff %.3f'%(animal,
+                day_ix, pv_pc, perc_corr_true, np.mean(pc_shuff), np.percentile(pc_shuff, 95)))
+            pooled_data['pc'].append(perc_corr_true)
+            pooled_data['shuff_pc'].append(pc_shuff) 
+
+            ### Plot in summary plot 
+            axpc_2.plot(i_a, perc_corr_true, 'k.')
+            axpc_2.plot([i_a, i_a+.4], [perc_corr_true, np.mean(pc_shuff)], 'k-', linewidth=.25)
+            axpc_2.plot(i_a+.4, np.mean(pc_shuff), '.', color='w', mec='k', mew=1., markersize=12)
+
+
+            #################### Angular error plot ####################
+            ang_err = angular_error(R2_cond_spec_dir['true'], R2_cond_spec_dir['pred'])/np.pi*180
+            ang_err_shuff = []
+            for i in range(nshuffs): 
+                ### Take ith shuffle across all command-conditiosn 
+                shf = np.array([s[i] for s in R2_cond_spec_dir['shuff']])
+
+                ### make sure size is right 
+                assert(len(shf) == len(R2_cond_spec_dir['true']))
+                
+                ### Get shuffle r2 
+                ae_i = angular_error(R2_cond_spec_dir['true'], shf)
+                ang_err_shuff.append(ae_i/np.pi*180)
+
+            axae.plot(i_a*10 + day_ix, ang_err, 'r.')
+            util_fcns.draw_plot(i_a*10 + day_ix, ang_err_shuff, 'k', np.array([1., 1., 1., 0.]), axae, 
+                    whisk_min = 0, whisk_max=100)
+            axae_2.plot(i_a, ang_err, 'k.')
+            axae_2.plot([i_a, i_a+.4], [ang_err, np.mean(ang_err_shuff)], 'k-', linewidth=.25)
+            axae_2.plot(i_a+.4, np.mean(ang_err_shuff), '.', color='w', mec='k', mew=1., markersize=12)
+
+            pooled_data['ae'].append(ang_err)
+            pooled_data['shuff_ae'].append(np.array(ang_err_shuff))
+
+            ix = np.nonzero(np.array(ang_err_shuff) <= ang_err)[0]
+            pv_ae = float(len(ix))/float(nshuffs)
             
-            axccw.plot(i_a*10 + day_ix, frac_corr, 'r.')
-            util_fcns.draw_plot(i_a*10 + day_ix, shuff_frac_corr, 'k', np.array([1., 1., 1., 0.]), axccw)
-
-            axccw2.plot(i_a, frac_corr, 'k.')
-            frac_sig_dir.append(frac_corr)
-
-            ### stats pooled 
+            print('AE stats Animal %s, Day %d, pv = %.5f, AE true %.3f, mn shuff %.3f, 95th shuff %.3f'%(animal,
+                day_ix, pv_ae, ang_err, np.mean(ang_err_shuff), np.percentile(np.array(ang_err_shuff), 95)))
+            
+            #################### Stats pooled for error  ###########################
             mn_err = np.mean(day_data['err'])
             mn_shuf = np.mean(np.vstack((day_data['shuff_err'])), axis=0)
             assert(len(mn_shuf) == nshuffs)
             ix = np.nonzero(mn_shuf <= mn_err)[0]
             pv = float(len(ix))/float(len(mn_shuf))
-            print('Animal %s, Day %d, pv = %.5f, mn_err = %.3f, mn_shuf = [%.3f, %.3f]' %(animal, 
+            print('ERR: Animal %s, Day %d, pv = %.5f, mn_err = %.3f, mn_shuf = [%.3f, %.3f]' %(animal, 
                 day_ix, pv, mn_err, np.mean(mn_shuf), np.percentile(mn_shuf, 5)))
 
             pooled_data['err'].append(mn_err)
             pooled_data['shuff_err'].append(mn_shuf)
 
+
+        ############ BAR PLOTS ##################
         axcc.bar(i_a, np.mean(frac_sig_animal_cc), width=0.8, color='k', alpha=0.2)
         axcom.bar(i_a, np.mean(frac_sig_animal_com), width=0.8, color='k', alpha=0.2)
-        axccw2.bar(i_a, np.mean(frac_sig_dir), width=0.8, color='k', alpha=0.2)
+        
+        axpc_2.bar(i_a, np.mean(pooled_data['pc']), width=0.4, color='k', alpha=0.2)
+        #axpc_2.bar(i_a+.4, np.mean(pooled_data['shuff_pc']), width=0.4, color='k', alpha=0.0)
+        axpc_2.bar(i_a+.4, np.mean(pooled_data['shuff_pc']), width=0.4, color='white',
+                    linewidth=1., edgecolor='k')
 
-        mn_err = np.mean(pooled_data['err'])
-        mn_shuf = np.mean(np.vstack((pooled_data['shuff_err'])), axis=0)
-        assert(len(mn_shuf) == nshuffs)
-        ix = np.nonzero(mn_shuf <= mn_err)[0]
-        pv = float(len(ix))/float(len(mn_shuf))
-        print('Animal %s, POOLED: pv = %.5f, mn_err = %.3f, mn_shuf = [%.3f, %.3f]' %(animal, 
-            pv, mn_err, np.mean(mn_shuf), np.percentile(mn_shuf, 5)))
+        axae_2.bar(i_a, np.mean(pooled_data['ae']), width=0.4, color='k', alpha=0.2)
+        axae_2.bar(i_a+.4, np.mean(pooled_data['shuff_ae']), width=0.4, color='white', linewidth=1.,
+            edgecolor='k')
 
-    for _, (ax, f, ylab, lab) in enumerate(zip([axcc, axcom, axccw2], [fcc, fcom, fccw2], 
-        ['Frac (command, condition)\n with sig. pred. next command','Frac (command) with\nsig. pred. next command', ' (Com-cond) w sig. pred. next command\nfrac. corr. dir'], 
-        ['com_cond', 'com', 'sig_com_cond_frac_corr_dir'])): 
-        ax.set_xticks([0, 1])
-        ax.set_ylim([0., 1.05])
+        print(' ')
+        print(' ')
+        
+        for key in ['err', 'ae', 'pc']: 
+            mn = np.mean(pooled_data[key])
+
+            shf = np.vstack(( pooled_data['shuff_' + key] ))
+            assert(shf.shape[0] == len(pooled_data[key]))
+            assert(shf.shape[1] == nshuffs)
+
+            ### pool over days 
+            mn_shuf = np.mean(shf, axis=0)
+
+            if key in ['err','ae']: 
+                ix = np.nonzero(mn_shuf < mn)[0]
+            elif key in ['pc']: 
+                ix = np.nonzero(mn_shuf > mn)[0]
+            else: 
+                raise Exception
+
+            pv = float(len(ix))/float(len(mn_shuf))
+            print('POOLED Met %s, Animal %s, Pooled: pv = %.3f, mn_val = %.3f, [5th perc, mn, 95th perc] = [%.3f, %.3f, %.3f]'%(key, 
+                animal, pv, mn, np.percentile(mn_shuf, 5), np.mean(mn_shuf), np.percentile(mn_shuf, 95)))
+
+        print(' ')
+        print(' ')
+        
+    for _, (ax, f, ylab, lab) in enumerate(zip([axcc, axcom, axccw2, axpc_2, axae_2], [fcc, fcom, fccw2, fpc_2, fae_2], 
+        ['Frac (command, condition)\n with sig. pred. next command',
+            'Frac (command) with\nsig. pred. next command', 
+            ' (Com-cond) w sig. pred. next command\nfrac. corr. dir',
+            'Perc corr. dir pred com vs. pred cond-pool com',
+            'Ang. err pred com vs. pred cond-pool com'], 
+        ['com_cond', 'com', 'sig_com_cond_frac_corr_dir', 'perc_corrdir_next_comm', 'ang_err'])): 
+        ax.set_xticks([0, 1])        
         ax.set_xticklabels(['G', 'J'])
         ax.hlines(0.05, -.5, 1.5, 'k', linewidth=.5, linestyle='dashed')
-        ax.set_yticks([0., .25, .50, .75, 1.0])
-        ax.set_yticklabels([0., .25, .50, .75, 1.0])
-        ax.set_ylabel(ylab, fontsize=10)
+
+
+        if lab == 'perc_corrdir_next_comm': 
+            ax.set_ylim([0, 40])
+            ax.set_yticks([0, 10, 20, 30, 40])
+            ax.set_yticklabels([0, 10, 20, 30, 40])
+
+        elif lab == 'ang_err': 
+            ax.set_yticks([.3, .45, .6, .75, .9])
+            ax.set_yticklabels([.3, .45, .6, .75, .9])
+            
+        else:
+            ax.set_ylim([0., 1.05])
+            ax.set_yticks([0., .25, .50, .75, 1.0])
+            ax.set_yticklabels([0., .25, .50, .75, 1.0])
+        
+        ax.set_ylabel(ylab, fontsize=8)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
+
         f.tight_layout()
 
         if save: 
             util_fcns.savefig(f, 'frac_%s_w_sig_next_comm_pred'%lab)
 
-    axccw.set_xlim([-1, 14])
-    axccw.set_ylabel('Frac. sig. command-movs predicting \nnext command in correct direction ')
-    fccw.tight_layout()
+    # axccw.set_xlim([-1, 14])
+    # axccw.set_ylabel('Frac. sig. command-movs predicting \nnext command in correct direction ')
+    # fccw.tight_layout()
+
+    axpc.set_xlim([-1, 14])
+    axpc.set_ylabel('Perc corr. pred of cond spec \nangle vs. cond-pooled')
+    axr2.set_xlim([-1, 14])
+    axae.set_xlim([-1, 14])
+    axae.set_ylabel('Angular error (abs)')
+    #fr2.tight_layout()
 
     return count
 
@@ -835,9 +1155,61 @@ def perc_corr_ang_pw(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_num
     axang.set_xlim([-1, 14])
     axang.set_ylim([0., 1.])
 
+######### UTILS 
+def perc_corr_dir_dang(true, pred): 
+    tot = 0; cor = 0; 
+    assert(len(true) == len(pred))
+    for _, (t, p) in enumerate(zip(true, pred)): 
+        if np.sign(t) == np.sign(p): 
+            cor += 1
+        tot += 1
+    return float(cor)/float(tot)
 
-                                
+def compute_angle_diff(true, pred, closeto=None): 
+    '''
+    method to calculate angle difference between two vectors
+    
+    true: (2, ) array 
+    pred: (2, ) array 
+    closeto: if looking to match to an angle, select a value that is close to this
+    '''
 
+    true = true/np.linalg.norm(true)
+    pred = pred/np.linalg.norm(pred)
+
+    dang = np.arccos(np.dot(pred, true))
+    if np.sign(np.cross(true, pred)) < 0: 
+        dang*= -1
+
+    
+    if closeto is not None: 
+
+        dang_opts = np.array([dang - 2*np.pi, dang, dang + 2*np.pi])
+        ix_select = np.argmin(np.abs(dang_opts - closeto))
+        dang = dang_opts[ix_select]
+
+    return dang
+                
+def test_sign_cross_method():
+    ang0 = np.linspace(-1*np.pi, 1*np.pi, 15) 
+    ang1 = np.linspace(-1*np.pi, 1*np.pi, 30)
+    f, ax = plt.subplots()
+
+    for a0 in ang0: 
+        vect0 = np.array([np.cos(a0), np.sin(a0)])
+
+        for a1 in ang1: 
+            vect1 = np.array([np.cos(a1), np.sin(a1)])
+
+            d = np.sign(np.cross(vect0, vect1))
+
+            if d == 1: 
+                ax.plot(a0, a1, 'b.')
+            elif d == -1: 
+                ax.plot(a0, a1, 'r.')
+            else:
+                print(d)
+        
 def test_pw(mag_ang_map):
     angs = np.linspace(0, 2*np.pi, 9)
 
@@ -867,7 +1239,12 @@ def test_pw(mag_ang_map):
                     N += 1
     return corr, N
 
-
+def angular_error(true, pred): 
+    assert(len(true) == len(pred))
+    ae = []
+    for _, (t, p) in enumerate(zip(true, pred)): 
+        ae.append(np.abs(t-p))
+    return np.mean(ae)
 
 
 def assign_to_dict(current_command, tru_command, pred_command, dict_track):
