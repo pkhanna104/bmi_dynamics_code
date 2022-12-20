@@ -19,7 +19,7 @@ import matplotlib.transforms as transforms
 
 import scipy.io as sio
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=1.1, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=0.8, style='white')
 
 from brokenaxes import brokenaxes
 
@@ -1687,6 +1687,11 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
             ##### Decoder #######
             KG = util_fcns.get_decoder(animal, day_ix)
 
+            ### Get null part of KG: 
+            assert(KG.shape[0] == 2)
+            KG_null_low = scipy.linalg.null_space(KG) # N x (N-2)
+            assert(KG_null_low.shape[1] + 2 == KG_null_low.shape[0])
+
             ### Load the true data ###
             spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
                 day_ix, return_tm0=True)
@@ -1701,13 +1706,20 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
 
             nneur = spks_true.shape[1]
 
+            ### get null 
+            spks_null = np.dot(KG_null_low.T, spks_true.T).T
+
             print('Spks shape: %d, %d' %(spks_true.shape[0], spks_true.shape[1]))
 
             ### Load shuffled dynamics --> same as shuffled, not with left out shuffled #####
             ### Go through the items that have been held out: 
             left_outters = LOO_dict.keys()
 
-            MC_dict = dict(true = [], lo_pred = [], nlo_pred = [], shuff_pred = [], ix = [])
+            MC_dict = dict(true = [], true_null = [], 
+                lo_pred = [], lo_pred_null = [], 
+                nlo_pred = [], 
+                shuff_pred = [], shuff_pred_null = [], 
+                ix = [])
             
             for left_out in left_outters: 
 
@@ -1717,6 +1729,8 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
 
                     #### Get the thing that was left out ###
                     lo_pred = 10*LOO_dict[left_out][-1, -1, -1]
+                    lo_pred_null = np.dot(KG_null_low.T, lo_pred.T).T
+
                     lo_ix_og = LOO_dict[left_out][-1, -1, -1, 'ix']
 
                     ##### Crucial get the unique lo_ix #### 
@@ -1746,7 +1760,10 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
                             assert(np.all(com_true[lo_ix[mam_ix], 1] == angi))
 
                             MC_dict['true'].append(np.mean(spks_true[lo_ix[mam_ix], :], axis=0))
+                            MC_dict['true_null'].append(np.mean(spks_null[lo_ix[mam_ix], :], axis=0))
+                            
                             MC_dict['lo_pred'].append(np.mean(lo_pred[lo_keep_ix[mam_ix], :], axis=0))
+                            MC_dict['lo_pred_null'].append(np.mean(lo_pred_null[lo_keep_ix[mam_ix], :], axis=0))
                             #MC_dict['nlo_pred'].append(np.mean(spks_pred[lo_ix[mam_ix], :], axis=0))
                             MC_dict['ix'].append(lo_ix[mam_ix])
 
@@ -1764,7 +1781,7 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
             # test_ix = shuffle_data_file['test_ix']
             t0 = time.time()
 
-            shuffs = []
+            shuffs = []; shuffs_null = []
             for i in range(nshuffs):
                 #former_shuff_ix = shuffle_data_file[i]
 
@@ -1781,9 +1798,12 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
                 pred_spks_shuffle = pred_spks_shufflei[:nT, :]
                 assert(pred_spks_shuffle.shape == spks_true.shape)
                 shuffs.append(pred_spks_shuffle.copy())
+                shuffs_null.append(np.dot(KG_null_low.T, pred_spks_shuffle.T).T)
 
             #### nT x nN x 1000 ####
             shuffs = np.dstack((shuffs))
+            shuffs_null = np.dstack((shuffs_null))
+
             err = dict(su=[], pop=[], su_shuff = [], pop_shuff =[])
             err_su = dict()
             for n in range(nneur): 
@@ -1797,12 +1817,15 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
                 
                 ### True 
                 tr = MC_dict['true'][cmi]
+                tr_null = MC_dict['true_null'][cmi]
 
                 ### LO-pred 
                 lo = MC_dict['lo_pred'][cmi]
+                lo_null = MC_dict['lo_pred_null'][cmi]
 
                 ### shuff_pred 
                 shuff = np.mean(shuffs[cm_ix, :, :], axis=0)
+                shuff_null = np.mean(shuffs_null[cm_ix, :, :], axis=0)
 
                 for n in range(nneur):
 
@@ -1815,13 +1838,16 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
                     err_su[n]['err'].append(su)
                     err_su[n]['err_shuff'].append(sush)
 
+                    ##### frac (neuron, command, cond) sig
                     pv = len(np.nonzero(sush <= su)[0]) / float(len(sush))
                     if pv < 0.05:
                         fs['su_sig'] += 1
                     fs['su_tot'] += 1
 
-                pop = np.linalg.norm(tr-lo)/float(nneur)
-                popsh = np.linalg.norm(tr[:, np.newaxis] - shuff, axis=0)/float(nneur)
+                #pop = np.linalg.norm(tr-lo)/float(nneur)
+                #popsh = np.linalg.norm(tr[:, np.newaxis] - shuff, axis=0)/float(nneur)
+                pop = np.linalg.norm(tr_null - lo_null)
+                popsh = np.linalg.norm(tr_null[:, np.newaxis] - shuff_null, axis=0)
                 assert(len(popsh) == nshuffs)
                     
                 err['pop'].append(pop)
@@ -1861,7 +1887,7 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
             stats_dict['avg_pop_err'].append(mn_pop_err)
             stats_dict['avg_pop_shuff_err'].append(mn_pop_shuff)
 
-            ##### frac neurons ###
+            ##### frac neurons sig. given all commands ###
             frac_neur_sig = 0; 
             for n in range(nneur): 
                 mn_err = np.mean(np.array([s for s in err_su[n]['err']]))
@@ -1872,12 +1898,14 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
                 pv = float(len(ix))/float(nshuffs)
                 if pv < 0.05: 
                     frac_neur_sig += 1
+
             ax_fracN.plot(i_a, float(frac_neur_sig)/float(nneur), 'k.')
             frac_dict['neur_frac'].append(float(frac_neur_sig)/float(nneur))
         
         ### Plot the bars ###
         axsu.bar(i_a, np.mean(frac_dict['su_frac']), color='k', alpha=.5)
         axpop.bar(i_a, np.mean(frac_dict['pop_frac']), color='k', alpha=.5)
+
         ax_fracCC.bar(i_a, np.mean(frac_dict['pop_frac']), color='k', alpha=0.5)
         ax_fracN.bar(i_a, np.mean(frac_dict['neur_frac']), color='k', alpha=0.5)
 
