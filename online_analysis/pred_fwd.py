@@ -12,7 +12,7 @@ import math
 
 from collections import defaultdict
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=.75, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=.8, style='white')
 
 def plot_R2_model(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', model_set_number = 6,
     nshuffs = 20, plot_action = False, nshuffs_roll = 100, keep_bin_spk_zsc = False):
@@ -702,6 +702,8 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
     mag_eg=0, ang_eg=7):
 
     f_cc, ax_cc = plt.subplots(figsize=(2, 3))
+    ax_cc.set_ylabel('Corr coeff. of sessions', fontsize=8)
+
     f_er, ax_er = plt.subplots(figsize=(2, 3))
 
     f_pw, ax_pw = plt.subplots(figsize=(4, 5))
@@ -710,11 +712,11 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
 
     special_dots = []
 
-    for i_a, animal in enumerate(['grom']):#, 'jeev']):
+    for i_a, animal in enumerate(['grom', 'jeev']):
         cc_avg = []
         animal_data = []
 
-        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
 
 
             if animal in ['grom'] and day_ix in range(1):
@@ -722,7 +724,6 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
                 f_scat_shuff, ax_scatter_shuff = plt.subplots(figsize=(3, 3))
                 for axi in [ax_scatter, ax_scatter_shuff]:
                     axi.set_ylabel('Subj %s Day %d' %(animal, day_ix))
-
 
             ### Load data ###
             dataObj = DataExtract(animal, day_ix, model_nm = model_nm, 
@@ -811,12 +812,13 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
                                     ax_scatter.plot(true_pw_dist, pred_pw_dist, 'k.', markersize=5.)
 
                                     if mag == 0 and ang == 7:
+                                        ### colors changed on 12/22 --> confirmed in plot_pred_fr_diffs
                                         if mov1 == 1. and mov2 == 3.:
-                                            ax_scatter.plot(true_pw_dist, pred_pw_dist, '.', color = 'deeppink',
+                                            ax_scatter.plot(true_pw_dist, pred_pw_dist, '.', color = 'limegreen',
                                                 markersize=7.)
 
                                         elif mov1 == 1. and mov2 == 10.1:
-                                            ax_scatter.plot(true_pw_dist, pred_pw_dist, '.', color = 'limegreen',
+                                            ax_scatter.plot(true_pw_dist, pred_pw_dist, '.', color = 'deeppink',
                                                 markersize=7.)
 
                                     if animal == 'grom' and day_ix == 0 and mag == mag_eg and ang == ang_eg:
@@ -901,7 +903,7 @@ def pred_vs_true_next_command(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', mode
         ax_pw.plot(ii, PW_eg[i_s, 2], '.', color='k')
         ax_pw2.plot(ii, PW_eg[i_s, 3], '.', color='r')
         ax_pw.plot(ii, 0., '.', markersize=12, color=util_fcns.get_color(PW_eg[i_s, 0]))
-        ax_pw.plot(ii, -0.1, '.', markersize=12, color=util_fcns.get_color(PW_eg[i_s, 1]))
+        ax_pw.plot(ii, -0.03, '.', markersize=12, color=util_fcns.get_color(PW_eg[i_s, 1]))
 
     #     util_fcns.draw_plot(ii, PW_shuff[i_s], 'k', np.array([1., 1., 1., 0.]), ax_pw2)
     #     util_fcns.draw_plot(ii, PW_shuff_rol[i_s], 'deeppink', np.array([1.,1.,1.,0.]), ax_pw2)

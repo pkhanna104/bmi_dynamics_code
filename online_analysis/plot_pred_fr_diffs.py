@@ -229,6 +229,7 @@ def plot_suppfig4_R2_bars(ridge_norm = False, fraction = False, plts=False):
     #axerr[1].set_ylim([.05, .4])
     ferr.tight_layout()
     util_fcns.savefig(ferr, 'SU_POP_err_buildup')
+
 ###### Fig 4C r2 plot ########
 def plot_fig4c_R2(cond_on_act = True, plot_act = False, nshuffs=10, keep_bin_spk_zsc = False):
     if cond_on_act:
@@ -658,14 +659,14 @@ def plot_example_neuron_comm_predictions(neuron_ix = 36, mag = 0, ang = 7, anima
         axpcai.set_xlabel('Condition')
         axpcai.set_xlim(xlim)
 
-    ### UNCOMMENT TEMP ##
-    # if mean_sub_PC: 
-    #     axpca[0].set_ylim([-25, 20])
-    #     axpca[1].set_ylim([-10, 8])
+    ## UNCOMMENT TEMP ##
+    if mean_sub_PC: 
+        axpca[0].set_ylim([-25, 20])
+        axpca[1].set_ylim([-10, 8])
 
-    # else:
-    #     axpca[0].set_ylim([14, 57])
-    #     axpca[1].set_ylim([32, 48])
+    else:
+        axpca[0].set_ylim([14, 57])
+        axpca[1].set_ylim([32, 48])
 
     fpca.tight_layout()
     util_fcns.savefig(fpca,'fig4_eg_pca')
@@ -1498,16 +1499,24 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
             ################################
             ###### Extract real data #######
             ################################
+            ### Get out null KG decoder 
+            KG = util_fcns.get_decoder(animal, day_ix)
+            assert(KG.shape[0] == 2)
+            KG_null_low = scipy.linalg.null_space(KG) # N x (N-2)
+            assert(KG_null_low.shape[1] + 2 == KG_null_low.shape[0])
+
             spks0, push0, tsk0, trg0, bin_num0, rev_bin_num0, move0, dat = util_fcns.get_data_from_shuff(animal, day_ix)
             spks0 = 10*spks0; 
 
             spks_est_cond_sub = 10*plot_generated_models.cond_act_on_psh(animal, day_ix)
+            spks_est_cond_sub_null = np.dot(KG_null_low.T, spks_est_cond_sub.T).T
             
             #### Get subsampled
             tm0, _ = generate_models.get_temp_spks_ix(dat['Data'])
 
             ### Get subsampled 
             spks_sub = spks0[tm0, :]
+            spks_sub_null = np.dot(KG_null_low.T, spks_sub.T).T
             push_sub = push0[tm0, :]
             move_sub = move0[tm0]
             bin_num_sub = bin_num0[tm0]
@@ -1523,6 +1532,7 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
             model_dict = pickle.load(open(model_fname, 'rb'))
             pred_spks = model_dict[day_ix, model_nm]
             pred_spks = 10*pred_spks; 
+            pred_spks_null = np.dot(KG_null_low.T, pred_spks.T).T
 
             ### Make sure spks and sub_spks match -- using the same time indices ###
             assert(np.allclose(spks_sub, 10*model_dict[day_ix, 'spks']))
@@ -1534,6 +1544,11 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
             pred_spks_shuffle = plot_generated_models.get_shuffled_data_v2(animal, day_ix, model_nm, nshuffs = nshuffs, 
                 testing_mode = False)
             pred_spks_shuffle = 10*pred_spks_shuffle; 
+            
+            pred_spks_shuffle_null = []
+            for i in range(nshuffs): 
+                pred_spks_shuffle_null.append(np.dot(KG_null_low.T, pred_spks_shuffle[:, :, i].T).T)
+            pred_spks_shuffle_null = np.dstack((pred_spks_shuffle_null)) # T x Neurons -2 x shuffles? 
         
             ##############################################
             ########## SETUP the plots ###################
@@ -1579,15 +1594,22 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
                         ######## For this command, compute the PW diffs and use to plot the scatters #######
                         if animal == 'grom' and day_ix == 0:
                             pw_dict = pw_eg_scatter(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global, 
-                                global_comm_indices, pw_dict)
+                                global_comm_indices, pw_dict, spks_null_sub = spks_sub_null, pred_spks_null = pred_spks_null,
+                                pred_spks_null_shuffle = pred_spks_shuffle_null)
 
                         pw_dict_all = pw_calc(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global, 
-                                global_comm_indices, pw_dict_all, pred_cond = spks_est_cond_sub)
+                                global_comm_indices, pw_dict_all, pred_cond = spks_est_cond_sub, spks_null = spks_sub_null, 
+                                pred_spks_null = pred_spks_null,
+                                pred_spks_null_shuffle = pred_spks_shuffle_null, 
+                                pred_cond_null = spks_est_cond_sub_null)
 
                     ######## Example plots ##############
                     if mag == 0 and ang == 7 and animal == 'grom' and day_ix == 0:
                         special_dots = pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global, 
-                            global_comm_indices, pred_cond = spks_est_cond_sub)
+                            global_comm_indices, pred_cond = spks_est_cond_sub, spks_null = spks_sub_null, 
+                                pred_spks_null = pred_spks_null,
+                                pred_spks_null_shuffle = pred_spks_shuffle_null, 
+                                pred_cond_null = spks_est_cond_sub_null)
             
             if animal == 'grom' and day_ix == 0:             
                 ######## Pairwise Plot Examples  ########
@@ -1633,8 +1655,8 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
                     axi.set_ylim([-0, 10])
                 
                 for axi in axpwpop:
-                    axi.set_xlim([0, 1.2])
-                    axi.set_ylim([0, .6])
+                    axi.set_xlim([0, 8.])
+                    axi.set_ylim([0, 4.5])
 
                 faxpwsu.tight_layout()
                 faxpwpop.tight_layout()
@@ -1741,6 +1763,12 @@ def pw_comparison(nshuffs=1, min_bin_indices = 0,
     ax_p.set_ylabel('Corr. Coeff., Pop. Dist.', fontsize=10)
     ax_n_err.set_ylabel('Avg. Err. Neuron Dist.', fontsize=10)
     ax_p_err.set_ylabel('Avg. Err. Pop. Dist.', fontsize=10)
+
+    for axi in [ax_n_cc, ax_p_cc]:
+        axi.set_xticks([0, 1])
+        axi.set_xticklabels(['G', 'J'])
+    ax_n_cc.set_ylabel('Corr Coeff. (Neuron)')
+    ax_p_cc.set_ylabel('Corr Coeff. (Population)')
 
     fax_n_cc.tight_layout()
     fax_p_cc.tight_layout()
@@ -1954,7 +1982,8 @@ def plot_vaf_dist(axsus, axpop, axsus_cc, axpop_cc, animal, day_ix, vaf_all_dict
 
 ##### Fig 4 pairwise distance plots #######
 def pw_eg_scatter(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global, 
-    global_comm_indices, pw_dict, shuff_ix = 0, neuron_ix = 36): 
+    global_comm_indices, pw_dict, shuff_ix = 0, neuron_ix = 36, spks_null_sub = None, 
+    pred_spks_null = None, pred_spks_null_shuffle = None): 
 
     movements = np.hstack((global_comm_indices.keys()))
     mov_ix = np.argsort(movements % 10)
@@ -1967,11 +1996,12 @@ def pw_eg_scatter(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_globa
             ix1 = global_comm_indices[mov]
             ix2 = global_comm_indices[mov2]
 
-            #### Match indices 
+            #### Match indices by dropping from larger distribution: 
+            # distribution_match_mov_pairwise does this on its own :) 
             ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_sub[np.ix_(ix1, [3, 5])], push_sub[np.ix_(ix2, [3, 5])],
-                psig = 0.2)
+                psig = 0.05)
 
-            if len(ix1_1) == 0 or len(ix2_2) == 0:
+            if len(ix1_1) < 15 or len(ix2_2) < 15:
                 print('Skipping Movement PW %.1f, %.1f, Niter = %d' %(mov, mov2, niter)) 
             else:
                 ix_mov = ix1[ix1_1]
@@ -1990,14 +2020,27 @@ def pw_eg_scatter(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_globa
 
 #                pw_dict['su', 'true'].append(nby2arr(np.abs(mFR - mFR2), np.abs(pred_mFR - pred_mFR2)))
 #                pw_dict['su', 'shuff'].append(nby2arr(np.abs(mFR - mFR2), np.abs(shuff_mFR - shuff_mFR2)))
+                
 
-                pw_dict['pop', 'true'].append(nby2arr(nplanm(mFR, mFR2), nplanm(pred_mFR, pred_mFR2)))
-                pw_dict['pop', 'shuff'].append(nby2arr(nplanm(mFR, mFR2), nplanm(shuff_mFR, shuff_mFR2)))
+                ##### population distances now use null activity (12/20/22)
+                mFR_n = np.mean(spks_null_sub[ix_mov, :], axis=0)
+                mFR2_n = np.mean(spks_null_sub[ix_mov2, :], axis=0)
+
+                pred_mFR_n = np.mean(pred_spks_null[ix_mov, :], axis=0)
+                pred_mFR2_n = np.mean(pred_spks_null[ix_mov2, :], axis=0)
+                
+                shuff_mFR_n = np.mean(pred_spks_null_shuffle[ix_mov, :, shuff_ix], axis=0)
+                shuff_mFR2_n = np.mean(pred_spks_null_shuffle[ix_mov2, :, shuff_ix], axis=0)
+
+                pw_dict['pop', 'true'].append(nby2arr(nplanm(mFR_n, mFR2_n), nplanm(pred_mFR_n, pred_mFR2_n)))
+                pw_dict['pop', 'shuff'].append(nby2arr(nplanm(mFR_n, mFR2_n), nplanm(shuff_mFR_n, shuff_mFR2_n)))
 
     return pw_dict
 
 def pw_calc(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global, 
-    global_comm_indices, pw_dict, pred_cond = None): 
+    global_comm_indices, pw_dict, pred_cond = None, 
+    spks_null=None, pred_spks_null = None, 
+    pred_spks_null_shuffle=None, pred_cond_null = None): 
 
     movements = np.hstack((global_comm_indices.keys()))
     nshuffs = pred_spks_shuffle.shape[2]
@@ -2011,40 +2054,59 @@ def pw_calc(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
             ix2 = global_comm_indices[mov2]
 
             #### Match indices 
-            ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_sub[np.ix_(ix1, [3, 5])], push_sub[np.ix_(ix2, [3, 5])],
+            ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_sub[np.ix_(ix1, [3, 5])], 
+                push_sub[np.ix_(ix2, [3, 5])],
                 psig = 0.05)
 
-            if len(ix1_1) == 0 or len(ix2_2) == 0:
+            if len(ix1_1) < 15 or len(ix2_2) < 15:
                 pass
             else:
                 ix_mov = ix1[ix1_1]
                 ix_mov2 = ix2[ix2_2]
 
                 mFR = np.mean(spks_sub[ix_mov, :], axis=0)
+                mFR_n = np.mean(spks_null[ix_mov, :], axis=0)
+
                 pred_mFR = np.mean(pred_spks[ix_mov, :], axis=0)
+                pred_mFR_n = np.mean(pred_spks_null[ix_mov, :], axis=0) 
+
                 shuff_mFR = np.mean(pred_spks_shuffle[ix_mov, :, :], axis=0) 
+                shuff_mFR_n = np.mean(pred_spks_null_shuffle[ix_mov, :, :], axis=0)
 
                 mFR2 = np.mean(spks_sub[ix_mov2, :], axis=0)
+                mFR2_n = np.mean(spks_null[ix_mov2, :], axis=0)
+
                 pred_mFR2 = np.mean(pred_spks[ix_mov2, :], axis=0)
+                pred_mFR2_n = np.mean(pred_spks_null[ix_mov2, :], axis=0)
+
                 shuff_mFR2 = np.mean(pred_spks_shuffle[ix_mov2, :, :], axis=0)
+                shuff_mFR2_n = np.mean(pred_spks_null_shuffle[ix_mov2, :, :], axis=0)
 
                 pw_dict['su', 'true'].append(nby2arr(np.abs(mFR - mFR2), np.abs(pred_mFR - pred_mFR2)))
-                pw_dict['pop', 'true'].append(nby2arr(nplanm(mFR, mFR2), nplanm(pred_mFR, pred_mFR2)))
+                
+                pw_dict['pop', 'true'].append(nby2arr(nplanm(mFR_n, mFR2_n), nplanm(pred_mFR_n, pred_mFR2_n)))
                 
                 if pred_cond is not None:
-                    cond_mFR = np.mean(pred_cond[ix_mov, :], axis=0)      
+                    cond_mFR = np.mean(pred_cond[ix_mov, :], axis=0) 
+                    cond_mFR_n = np.mean(pred_cond_null[ix_mov, :], axis=0)
+
                     cond_mFR2 = np.mean(pred_cond[ix_mov2, :], axis=0)
+                    cond_mFR2_n = np.mean(pred_cond_null[ix_mov2, :], axis=0)
+
                     pw_dict['su', 'cond'].append(nby2arr(np.abs(mFR-mFR2), np.abs(cond_mFR-cond_mFR2)))
-                    pw_dict['pop', 'cond'].append(nby2arr(nplanm(mFR, mFR2), nplanm(cond_mFR, cond_mFR2)))
+                    pw_dict['pop', 'cond'].append(nby2arr(nplanm(mFR_n, mFR2_n), nplanm(cond_mFR_n, cond_mFR2_n)))
                         
                 for shuffix in range(nshuffs):
                     pw_dict['su', 'shuff', shuffix].append(nby2arr(np.abs(mFR - mFR2), np.abs(shuff_mFR[:, shuffix] - shuff_mFR2[:, shuffix])))
-                    pw_dict['pop', 'shuff', shuffix].append(nby2arr(nplanm(mFR, mFR2), nplanm(shuff_mFR[:, shuffix], shuff_mFR2[:, shuffix])))
+                    pw_dict['pop', 'shuff', shuffix].append(nby2arr(nplanm(mFR_n, mFR2_n), nplanm(shuff_mFR_n[:, shuffix], shuff_mFR2_n[:, shuffix])))
 
     return pw_dict
 
 def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global, 
-                            global_comm_indices, neuron_ix = 36, pred_cond = None): 
+                            global_comm_indices, neuron_ix = 36, pred_cond = None, spks_null = None, 
+                                pred_spks_null = None,
+                                pred_spks_null_shuffle = None, 
+                                pred_cond_null = None):
     '''
     Example plot for PW diffs 
     '''
@@ -2068,31 +2130,49 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
             ix2 = global_comm_indices[mov2]
 
             #### Match indices 
-            ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_sub[np.ix_(ix1, [3, 5])], push_sub[np.ix_(ix2, [3, 5])],
-                psig = .2)
-            
-            if len(ix1_1) == 0 or len(ix2_2) == 0:
+            ix1_1, ix2_2, niter = plot_fr_diffs.distribution_match_mov_pairwise(push_sub[np.ix_(ix1, [3, 5])], 
+                push_sub[np.ix_(ix2, [3, 5])],
+                psig = .05)
+
+            nneur = spks_sub.shape[1]
+
+            if len(ix1_1) < 15 or len(ix2_2) < 15:
                 print('Skipping Movement PW %.1f, %.1f, Niter = %d' %(mov, mov2, niter)) 
             else:
                 ix_mov = ix1[ix1_1]
                 ix_mov2 = ix2[ix2_2]
 
                 mFR = np.mean(spks_sub[ix_mov, :], axis=0)
+                mFR_n = np.mean(spks_null[ix_mov, :], axis=0)
+
                 pred_mFR = np.mean(pred_spks[ix_mov, :], axis=0)
+                pred_mFR_n = np.mean(pred_spks_null[ix_mov, :], axis=0)
+                
                 cond_mFR = np.mean(pred_cond[ix_mov, :], axis=0)
+                cond_mFR_n = np.mean(pred_cond_null[ix_mov, :], axis=0)
+
                 shuff_mFR = np.mean(pred_spks_shuffle[ix_mov, :, :], axis=0)       
+                shuff_mFR_n = np.mean(pred_spks_null_shuffle[ix_mov, :, :], axis=0)
 
                 mFR2 = np.mean(spks_sub[ix_mov2, :], axis=0)
+                mFR2_n = np.mean(spks_null[ix_mov2, :], axis=0)
+
                 pred_mFR2 = np.mean(pred_spks[ix_mov2, :], axis=0)
+                pred_mFR2_n = np.mean(pred_spks_null[ix_mov2, :], axis=0)
+                
                 cond_mFR2 = np.mean(pred_cond[ix_mov2, :], axis=0)
+                cond_mFR2_n = np.mean(pred_cond_null[ix_mov2, :], axis=0)
+
                 shuff_mFR2 = np.mean(pred_spks_shuffle[ix_mov2, :, :], axis=0)
+                shuff_mFR2_n = np.mean(pred_spks_null_shuffle[ix_mov2, :, :], axis=0)
 
                 X_lab.append([mov, mov2])
-                Y_val.append([np.abs(mFR[neuron_ix] - mFR2[neuron_ix]), nplanm(mFR, mFR2)])
-                Y_cond.append([np.abs(cond_mFR[neuron_ix] - cond_mFR2[neuron_ix]), nplanm(cond_mFR, cond_mFR2)])
-                Y_pred.append([np.abs(pred_mFR[neuron_ix] - pred_mFR2[neuron_ix]), nplanm(pred_mFR, pred_mFR2)])
+                
+                Y_val.append([np.abs(mFR[neuron_ix] - mFR2[neuron_ix]), nplanm(mFR_n, mFR2_n)])
+                Y_cond.append([np.abs(cond_mFR[neuron_ix] - cond_mFR2[neuron_ix]), nplanm(cond_mFR_n, cond_mFR2_n)])
+                Y_pred.append([np.abs(pred_mFR[neuron_ix] - pred_mFR2[neuron_ix]), nplanm(pred_mFR_n, pred_mFR2_n)])
                 Y_shuff.append([np.abs(shuff_mFR[neuron_ix, :] - shuff_mFR2[neuron_ix, :]), 
-                    np.linalg.norm(shuff_mFR - shuff_mFR2, axis=0)/float(nneur)])
+                    np.linalg.norm(shuff_mFR_n - shuff_mFR2_n, axis=0)/np.sqrt(nneur)])
 
     ################ Sort movement comparisons ################
     Y_val = np.vstack((Y_val)) # number of pw comparisons x [neuron diff and pop diff]
@@ -2102,6 +2182,7 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
     ################ Pairwise examples ########################
     fn_eg, axn_eg = plt.subplots(figsize =(5, 7))
     fpop_eg, axpop_eg = plt.subplots(figsize =(5, 7))
+    
     axn_eg.tick_params(axis='y', labelcolor='darkblue')
     axpop_eg.tick_params(axis='y', labelcolor='darkblue')
 
@@ -2114,7 +2195,7 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
 
         axn_eg2.plot(iv, Y_pred[vl_n][0], '*', color=analysis_config.blue_rgb)
         axn_eg2.plot(iv, Y_cond[vl_n][0], '^', color='gray')
-        #util_fcns.draw_plot(iv, Y_shuff[vl_n][0], 'k', np.array([1., 1., 1., 0]), axn_eg2)
+        
         axn_eg.plot(iv, -1, '.', color=get_color(X_lab[vl_n][0]), markersize=15)
         axn_eg.plot(iv, -1.5, '.', color=get_color(X_lab[vl_n][1]), markersize=15)
 
@@ -2127,17 +2208,21 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
         #util_fcns.draw_plot(iv, Y_shuff[vl_p][1], 'k', np.array([1., 1., 1., 0]), axpop_eg2)
         axpop_eg2.plot(iv, Y_cond[vl_p][1], '^', color='gray')
         axpop_eg.plot(iv, -.03, '.', color=get_color(X_lab[vl_p][0]), markersize=15)
-        axpop_eg.plot(iv, -.06, '.', color=get_color(X_lab[vl_p][1]), markersize=15)
+        axpop_eg.plot(iv, -.15, '.', color=get_color(X_lab[vl_p][1]), markersize=15)
+
+        #### just for double checking keys: 
+        # if X_lab[vl_p][0] == 1. and  X_lab[vl_p][1] == 10.1: ###### DEEP PINK --> confirmed on 12/20/22
+        #     axpop_eg.plot(iv, -.25, 'k*')
+        # elif X_lab[vl_p][0] == 1. and  X_lab[vl_p][1] == 3.0: ######## LIMEGREEEN  --> confirmed on 12/20/22
+        #     axpop_eg.plot(iv, -.25, 'g*')
         
         add = None
-        # if X_lab[iv][0] == 1. and X_lab[iv][1] == 10.1:
-        #     add = 'deeppink'
-        # elif  X_lab[iv][0] == 10.1 and X_lab[iv][1] == 15.:
-        #     add = 'limegreen'
+
+        ### Changed colors on 12/20/22 to match checks in lines 2213-2217
         if X_lab[vl_n][0] == 1. and X_lab[vl_n][1] == 3.0:
-            add = 'deeppink'
-        elif  X_lab[vl_n][0] == 1. and X_lab[vl_n][1] == 10.1:
             add = 'limegreen'
+        elif  X_lab[vl_n][0] == 1. and X_lab[vl_n][1] == 10.1:
+            add = 'deeppink'
         if add is None:
             pass
         else:
@@ -2146,9 +2231,9 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
 
         add = None
         if X_lab[vl_p][0] == 1. and X_lab[vl_p][1] == 3.0:
-            add = 'deeppink'
-        elif  X_lab[vl_p][0] == 1. and X_lab[vl_p][1] == 10.1:
             add = 'limegreen'
+        elif  X_lab[vl_p][0] == 1. and X_lab[vl_p][1] == 10.1:
+            add = 'deeppink'
         if add is None:
             pass
         else:
@@ -2169,8 +2254,8 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
     axn_eg.set_ylim([-2.86, 20.])
     axn_eg2.set_ylim([-1, 7])
 
-    axpop_eg2.set_ylim([-.037, .4])
-    axpop_eg.set_ylim([-.097, 1.05])
+    axpop_eg2.set_ylim([-.15, 2.6])
+    axpop_eg.set_ylim([-.4, 7.5])
 
     axn_eg.set_ylabel('Pairwise Neuron Diff. (Hz)', color='darkblue')
     axn_eg2.set_ylabel('Pred. Pairwise Neuron Diff. (Hz)', rotation=90, color=analysis_config.blue_rgb)
@@ -2182,9 +2267,9 @@ def pw_eg_plot(spks_sub, push_sub, pred_spks, pred_spks_shuffle, ix_com_global,
 
     for xia, axi in enumerate([axn_eg, axn_eg2, axpop_eg, axpop_eg2]):
         yl = axi.get_yticks()
-        if xia == 3:
-            yl = np.array([0.0, .1, .2, .3])
-            axi.set_yticks(yl)
+        #if xia == 3:
+        #    yl = np.array([0.0, .1, .2, .3])
+        #    axi.set_yticks(yl)
         axi.set_yticklabels(np.round(yl, 1), rotation=90)
     
     fn_eg.tight_layout()
@@ -2208,7 +2293,7 @@ def nby2arr(x,y):
 def nplanm(x, y): 
     assert(len(x) == len(y))
     assert(len(x.shape) == len(y.shape))
-    return np.linalg.norm(x - y)/float(len(x))
+    return np.linalg.norm(x - y)/np.sqrt(len(x))
 
 def mnerr(true, pred):
     '''
@@ -2228,15 +2313,23 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
 
     ##### Overall pooled over days #####
     f, ax = plt.subplots(figsize = (3, 3))
-    fperc_sig, axperc_sig = plt.subplots(figsize = (3, 3))
-    faxsig_dist, axsig_dist = plt.subplots(figsize = (3, 3))
+    
+    fperc_sig, axperc_sig = plt.subplots(figsize = (2, 3))
+    fperc_sig_pred, axperc_sig_pred = plt.subplots(figsize = (2, 3))
+
+    faxsig_dist, axsig_dist = plt.subplots(figsize = (2, 3))
+    faxsig_dist_pred, axsig_dist_pred = plt.subplots(figsize = (2, 3))
 
     ### Open mag boundaries 
     mag_boundaries = pickle.load(open(analysis_config.data_params['mag_bound_file']))
 
     for ia, animal in enumerate(['grom', 'jeev']):
         
-        perc_sig = [] 
+        perc_sig = []; ### fraction of sig correlations b/w behavior and neural data 
+        prec_sig_pred = []; ### fraction of sig correlations b/w behavior and PREDICTED neural data 
+        
+        cc_sig = []; 
+        cc_sig_pred = []; 
 
         animal_pooled_stats = []
 
@@ -2246,6 +2339,12 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
 
             ###### pooled correlation plot ######
             feg, axeg = plt.subplots(figsize=(3, 3))
+
+            #### Extract decoder
+            KG = util_fcns.get_decoder(animal, day_ix)
+            assert(KG.shape[0] == 2)
+            KG_null_low = scipy.linalg.null_space(KG) # N x (N-2)
+            assert(KG_null_low.shape[1] + 2 == KG_null_low.shape[0])
 
             ################################
             ###### Extract real data #######
@@ -2258,6 +2357,8 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
 
             ### Get subsampled 
             spks_sub = spks0[tm0, :]
+            spks_null = np.dot(KG_null_low.T, spks_sub.T).T
+
             push_sub = push0[tm0, :]
             move_sub = move0[tm0]
             bin_num_sub = bin_num0[tm0]
@@ -2275,6 +2376,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
             model_dict = pickle.load(open(model_fname, 'rb'))
             pred_spks = model_dict[day_ix, model_nm]
             pred_spks = 10*pred_spks; 
+            pred_spks_null = np.dot(KG_null_low.T, pred_spks.T).T
 
             ### Make sure spks and sub_spks match -- using the same time indices ###
             assert(np.allclose(spks_sub, 10*model_dict[day_ix, 'spks']))
@@ -2287,17 +2389,26 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
                 testing_mode = False)
             pred_spks_shuffle = 10*pred_spks_shuffle; 
 
+            ### get shuffle predictions in nullspace 
+            pred_spks_null_shuffle = []
+            for i in range(nshuffs): 
+                pred_spks_null_shuffle.append(np.dot(KG_null_low.T, pred_spks_shuffle[:, :, i].T).T)
+            pred_spks_null_shuffle = np.dstack((pred_spks_null_shuffle))
+            assert(pred_spks_null_shuffle.shape[0] == pred_spks_shuffle.shape[0])
+            assert(pred_spks_null_shuffle.shape[2] == pred_spks_shuffle.shape[2] == nshuffs)
+
             ##### Data pts to be used in the correlation 
             D_pool = []; 
-            D_pred = []; 
             D_shuff = {}
             for i in range(nshuffs):
                 D_shuff[i] = []
             D_grom0 = []
 
             Ncommands = 0
-            Ncommands_sig = 0
+            Ncommands_sig = 0 # sig corr b/w beh and true neural distance
+            Ncommands_sig_pred = 0 # sig corr b/w beh and pred neural distances 
             DistSigCommands = []
+            DistSigCommands_pred = []
 
             ###############################################
             ### For each command: #########################
@@ -2313,7 +2424,6 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
                                            min_rev_bin_num=min_bin_indices)
 
                     ##### Which movements go to the global? 
-                    ix_com_global = []
                     global_comm_indices = {}
 
                     if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
@@ -2336,11 +2446,9 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
                         if len(ix_mc) >= min_commands:    
 
                             global_comm_indices[mov] = ix_mc_all
-                            ix_com_global.append(ix_mc_all)
 
-                    if len(ix_com_global) > 0 and len(global_comm_indices.keys()) >= min_move_per_command:
+                    if len(global_comm_indices.keys()) >= min_move_per_command:
 
-                        ix_com_global = np.hstack((ix_com_global))
                         relevant_movs = np.array(global_comm_indices.keys())
 
                         ##### Get the movements that count; 
@@ -2373,18 +2481,26 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
 
                                     #### Proceed comparing these guys ##### 
                                     mov_mean_FR1 = np.mean(spks_sub[ix_mc_all[ix_ok1], :], axis=0)
+                                    mov_mean_FR1_n = np.mean(spks_null[ix_mc_all[ix_ok1], :], axis=0)
+
                                     mov_mean_FR2 = np.mean(spks_sub[ix_mc_all2[ix_ok2], :], axis=0)
+                                    mov_mean_FR2_n = np.mean(spks_null[ix_mc_all2[ix_ok2], :], axis=0)
 
                                     #### Proceed comparing these guys ##### 
                                     mov_pred_mean_FR1 = np.mean(pred_spks[ix_mc_all[ix_ok1], :], axis=0)
                                     mov_pred_mean_FR2 = np.mean(pred_spks[ix_mc_all2[ix_ok2], :], axis=0)
+                                    mov_pred_mean_FR1_n = np.mean(pred_spks_null[ix_mc_all[ix_ok1], :], axis=0)
+                                    mov_pred_mean_FR2_n = np.mean(pred_spks_null[ix_mc_all2[ix_ok2], :], axis=0)
 
                                     mov_shuf_mean_FR1 = np.mean(pred_spks_shuffle[ix_mc_all[ix_ok1], :, :], axis=0)
                                     mov_shuf_mean_FR2 = np.mean(pred_spks_shuffle[ix_mc_all2[ix_ok2], :, :], axis=0)
+                                    mov_shuf_mean_FR1_n = np.mean(pred_spks_null_shuffle[ix_mc_all[ix_ok1], :, :], axis=0)
+                                    mov_shuf_mean_FR2_n = np.mean(pred_spks_null_shuffle[ix_mc_all2[ix_ok2], :, :], axis=0)
 
-                                    #### This stays the same 
+                                    #### This stays the same -- behavioral PSTH
                                     mov_PSTH1 = plot_fr_diffs.get_PSTH(bin_num_sub, rev_bin_num_sub, push_sub, ix_mc_all[ix_ok1], num_bins=ncommands_psth,
                                         min_bin_set = 1)
+                                    
                                     mov_PSTH2 = plot_fr_diffs.get_PSTH(bin_num_sub, rev_bin_num_sub, push_sub, ix_mc_all2[ix_ok2], num_bins=ncommands_psth,
                                         min_bin_set = 1)
 
@@ -2396,14 +2512,14 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
                                         Nmov2 = len(ix_ok2)
 
                                         #### Matched dN and dB; 
-                                        dN = np.linalg.norm(mov_mean_FR1 -mov_mean_FR2)/nneur
-                                        dN_pred = np.linalg.norm(mov_pred_mean_FR1 -mov_pred_mean_FR2)/nneur
+                                        dN = np.linalg.norm(mov_mean_FR1_n -mov_mean_FR2_n)/np.sqrt(nneur)
+                                        dN_pred = np.linalg.norm(mov_pred_mean_FR1_n -mov_pred_mean_FR2_n)/np.sqrt(nneur)
                                         
                                         dB = np.linalg.norm(mov_PSTH1 - mov_PSTH2)
-                                        D_pred.append([dB, dN, dN_pred])
+
 
                                         for ishuff in range(nshuffs):
-                                            dN_pred_shuff = np.linalg.norm(mov_shuf_mean_FR1[:, ishuff] - mov_shuf_mean_FR2[:, ishuff])/nneur
+                                            dN_pred_shuff = np.linalg.norm(mov_shuf_mean_FR1_n[:, ishuff] - mov_shuf_mean_FR2_n[:, ishuff])/np.sqrt(nneur)
                                             D_shuff[ishuff].append([dB, dN_pred_shuff])
                                             D_comm_shuff[ishuff].append([dB, dN_pred_shuff])
 
@@ -2416,7 +2532,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
 
                                         if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
                                             axeg2.plot(dB, dN, '.', color='darkblue')
-                                            axeg22.plot(dB, dN_pred, '.', color=analysis_config.blue_rgb)
+                                            axeg22.plot(dB, dN_pred, '.', color=analysis_config.blue_rgb)                                               
                                                
                                     else:
                                         print('Skipping %s, %d, command %d %d mov %1.f mov2 %.1f -- psth fail :(' %(animal, day_ix,
@@ -2426,6 +2542,7 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
                         ######### For this command see if rv > shuffle ? #####
                         ##### Vertical stack command #####
                         D_comm = np.vstack((D_comm))
+                        _,_,rv_true,pv_true,_ = scipy.stats.linregress(D_comm[:, 0], D_comm[:, 1])
                         _,_,rv_pred,pv_pred,_ = scipy.stats.linregress(D_comm[:, 0], D_comm[:, 2])
 
                         # rv_shuff = []
@@ -2436,15 +2553,19 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
 
                         # ix = np.nonzero(rv_shuff>= rv_pred)[0]
                         # pv = float(len(ix)) / float(nshuffs)
-                        if pv_pred < 0.05: 
+                        if pv_true < 0.05: 
                             Ncommands_sig += 1
-                            DistSigCommands.append(rv_pred)
+                            DistSigCommands.append(rv_true)
+
+                        if pv_pred < 0.05: 
+                            Ncommands_sig_pred += 1
+                            DistSigCommands_pred.append(rv_pred)
                         Ncommands += 1
 
 
                     if animal == 'grom' and day_ix == 0 and mag == 0 and ang == 7:
                         D_comm = np.vstack((D_comm))
-                        slp1,int1,rv_true,_,_ = scipy.stats.linregress(D_comm[:, 0], D_comm[:, 1])
+                        slp1,int1,rv_true_special_eg,_,_ = scipy.stats.linregress(D_comm[:, 0], D_comm[:, 1])
                         slp2,int2,rv_pred_special_eg,_,_ = scipy.stats.linregress(D_comm[:, 0], D_comm[:, 2])
                         #axeg2.set_title('True %.3f, Pred %.3f'%(rv_true, rv_pred_special_eg), fontsize=8)
                         feg2.tight_layout()
@@ -2457,27 +2578,49 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
                         axeg2.plot(x_, y_true, '-', color='darkblue')
                         axeg22.plot(x_, y_pred, '-', color=analysis_config.blue_rgb)
 
-                        print('True slp %.3f, intc %.3f, rv %.3f, N = %d' %(slp1, int1, rv_true, D_comm.shape[0]))
+                        print('Grom day 0, mag = 0, ang = 7')
+                        print('True slp %.3f, intc %.3f, rv %.3f, N = %d' %(slp1, int1, rv_true_special_eg, D_comm.shape[0]))
                         print('Pred slp %.3f, intc %.3f, rv %.3f, N = %d' %(slp2, int2, rv_pred_special_eg, D_comm.shape[0]))
                         
+
+                        ##### PASTED FROM confirmed check above #########
+                        # if X_lab[vl_p][0] == 1. and  X_lab[vl_p][1] == 10.1: ###### DEEP PINK --> confirmed on 12/20/22
+                        #     axpop_eg.plot(iv, -.25, 'k*')
+                        # elif X_lab[vl_p][0] == 1. and  X_lab[vl_p][1] == 3.0: ######## LIMEGREEEN  --> confirmed on 12/20/22
+                        #     axpop_eg.plot(iv, -.25, 'g*')
+
                         for i in range(D_comm.shape[0]):
                             if D_comm[i, 3] == 1. and D_comm[i, 6] == 3.:
-                                axeg2.plot(D_comm[i, 0], D_comm[i, 1], '.', color='deeppink', markersize=15)
-                                axeg22.plot(D_comm[i, 0], D_comm[i, 2], '.', color='deeppink', markersize=15)
-                            elif D_comm[i, 3] == 1. and D_comm[i, 6] == 10.1:
-                                axeg2.plot(D_comm[i, 0], D_comm[i, 1], '.', color = 'limegreen', markersize=15)
+                                axeg2.plot(D_comm[i, 0], D_comm[i, 1], '.', color='limegreen', markersize=15)
                                 axeg22.plot(D_comm[i, 0], D_comm[i, 2], '.', color='limegreen', markersize=15)
+                            
+                            elif D_comm[i, 3] == 1. and D_comm[i, 6] == 10.1:
+                                axeg2.plot(D_comm[i, 0], D_comm[i, 1], '.', color = 'deeppink', markersize=15)
+                                axeg22.plot(D_comm[i, 0], D_comm[i, 2], '.', color='deeppink', markersize=15)
 
                         util_fcns.savefig(feg22, 'grom0_eg_w_pred_dbeh_vs_dneur_corr2')
                         util_fcns.savefig(feg2, 'grom0_eg_w_pred_dbeh_vs_dneur_corr')
 
             ######## Number of significant commands ####
             axperc_sig.plot(ia, float(Ncommands_sig)/float(Ncommands), 'k.')
-            perc_sig.append(float(Ncommands_sig)/float(Ncommands))
-            util_fcns.draw_plot(10*ia + day_ix, DistSigCommands, 'k', np.array([1., 1., 1., 0]), axsig_dist)
+            axperc_sig_pred.plot(ia, float(Ncommands_sig_pred)/float(Ncommands), 'k.')
 
-            if animal == 'grom' and day_ix == 0:
-                axsig_dist.plot(10*ia + day_ix, rv_pred_special_eg, '.', color=analysis_config.blue_rgb, markersize=10)
+            perc_sig.append(float(Ncommands_sig)/float(Ncommands))
+            prec_sig_pred.append(float(Ncommands_sig_pred)/float(Ncommands))
+
+            ##### 
+            #util_fcns.draw_plot(10*ia + day_ix, DistSigCommands, 'k', np.array([1., 1., 1., 0]), axsig_dist)
+            #util_fcns.draw_plot(10*ia + day_ix, DistSigCommands_pred, 'k', np.array([1., 1., 1., 0]), axsig_dist_pred)
+            axsig_dist.plot(ia, np.mean(DistSigCommands), 'k.')
+            axsig_dist_pred.plot(ia, np.mean(DistSigCommands_pred), 'k.')
+
+            cc_sig.append(np.mean(DistSigCommands))
+            cc_sig_pred.append(np.mean(DistSigCommands_pred))
+
+            # if animal == 'grom' and day_ix == 0:
+            #     axsig_dist_pred.plot(10*ia + day_ix, rv_pred_special_eg, '.', color=analysis_config.blue_rgb, markersize=10)
+            #     axsig_dist.plot(10*ia + day_ix, rv_true_special_eg, '.', color='darkblue', markersize=10)
+            
             ######### Commands for pooled plot  ########
             D_pool = np.vstack((D_pool))
             _,_,rv_eg,_,_ = scipy.stats.linregress(D_pool[:, 0], D_pool[:, 1])
@@ -2486,39 +2629,74 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
             #axsig_dist.plot(10*ia + day_ix, rv_pd, '.', color='gray', markersize = 10)
 
             ######### Overall plot of distribution vs. pred vs. true over days #####
-            D_pred = np.vstack((D_pred))
-            _,_,rv_true,_,_ = scipy.stats.linregress(D_pred[:, 0], D_pred[:, 1])
-            _,_,rv_pred,_,_ = scipy.stats.linregress(D_pred[:, 0], D_pred[:, 2])
-            ax.plot(ia*10 + day_ix, rv_true, '.', color='darkblue', markersize=10)
-            ax.plot(ia*10 + day_ix, rv_pred, '*', color=analysis_config.blue_rgb, markersize=10)
+            # D_pred = np.vstack((D_pred))
+            # _,_,rv_true,_,_ = scipy.stats.linregress(D_pred[:, 0], D_pred[:, 1])
+            # _,_,rv_pred,_,_ = scipy.stats.linregress(D_pred[:, 0], D_pred[:, 2])
+            # ax.plot(ia*10 + day_ix, rv_true, '.', color='darkblue', markersize=10)
+            # ax.plot(ia*10 + day_ix, rv_pred, '*', color=analysis_config.blue_rgb, markersize=10)
 
-            rv_shuff = []
-            for i_shuff in range(nshuffs):
-                D = np.vstack((D_shuff[i_shuff]))
-                _,_,rv,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
-                rv_shuff.append(rv)
-            util_fcns.draw_plot(ia*10 + day_ix, rv_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+            # rv_shuff = []
+            # for i_shuff in range(nshuffs):
+            #     D = np.vstack((D_shuff[i_shuff]))
+            #     _,_,rv,_,_ = scipy.stats.linregress(D[:, 0], D[:, 1])
+            #     rv_shuff.append(rv)
+            # util_fcns.draw_plot(ia*10 + day_ix, rv_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
         
             ###### linear mixed effect models: 
             lme_dict = {}
             lme_dict['dbeh'] = D_pool[:, 0]
+            lme_dict['dneur'] = D_pool[:, 1]
+            lme_dict['dgrp'] = D_pool[:, 3] # session and command
+
+            data = pd.DataFrame(lme_dict)
+            md = smf.mixedlm("dneur ~ dbeh", data, groups=lme_dict['dgrp'])
+            mdf = md.fit()
+            print('Animal %s, Day %d TRUE population ' %(animal, day_ix))
+            print(mdf.summary())
+
+            lme_dict = {}
+            lme_dict['dbeh'] = D_pool[:, 0]
             lme_dict['dneur_pred'] = D_pool[:, 2]
-            lme_dict['dgrp'] = D_pool[:, 3]
+            lme_dict['dgrp'] = D_pool[:, 3] # session and command
 
             data = pd.DataFrame(lme_dict)
             md = smf.mixedlm("dneur_pred ~ dbeh", data, groups=lme_dict['dgrp'])
             mdf = md.fit()
-            #print('Animal %s, Day %d' %(animal, day_ix))
-            #print(mdf.summary())
+            print(' ')
+            print('Animal %s, Day %d PREDICTED w DYNAMICS ' %(animal, day_ix))
+            print(mdf.summary())
 
             animal_pooled_stats.append(D_pool)
 
         ######### Bars for frac commands sig ####
-        axperc_sig.bar(ia, np.mean(perc_sig), color='k', width=.8, alpha=0.2)
+        axperc_sig.bar(ia, np.mean(perc_sig), color='k', alpha=0.4)
+        axperc_sig_pred.bar(ia, np.mean(prec_sig_pred), color='k', alpha=0.4)
         
+        axsig_dist.bar(ia, np.mean(cc_sig), color='k', alpha = 0.4)
+        axsig_dist_pred.bar(ia, np.mean(cc_sig_pred), color='k', alpha=0.4)
 
         ###### linear mixed effect models: 
-        print('Pooled % s' %(animal))
+        print(' ')
+        print(' ')
+        print(' ')
+
+        print('Pooled TRUE % s' %(animal))
+        D_pool = np.vstack((animal_pooled_stats))
+        lme_dict = {}
+        lme_dict['dbeh'] = D_pool[:, 0]
+        lme_dict['dneur'] = D_pool[:, 1]
+        lme_dict['dgrp'] = D_pool[:, 3]
+
+        data = pd.DataFrame(lme_dict)
+        md = smf.mixedlm("dneur ~ dbeh", data, groups=lme_dict['dgrp'])
+        mdf = md.fit()
+        print('Animal %s POOLED' %(animal))
+        print(mdf.summary())
+        print('Pv = %.5f')
+        print(mdf.pvalues)
+
+
+        print('Pooled PREDICTIONS % s' %(animal))
         D_pool = np.vstack((animal_pooled_stats))
         lme_dict = {}
         lme_dict['dbeh'] = D_pool[:, 0]
@@ -2536,27 +2714,50 @@ def neuraldiff_vs_behaviordiff_corr_pairwise_predictions(min_bin_indices=0, nshu
         animal_pooled_stats.append(D_pool)
 
 
-
-
-
-    for axi in [axsig_dist, ax]:
-        axi.set_xlim([-1, 14])
-        axi.set_xticks([])
+    # for axi in [axsig_dist, axsig_dist_pred, ax]:
+    #     axi.set_xlim([-1, 14])
+    #     axi.set_xticks([])
+    #     axi.set_ylabel('corr. coeffs of sig. comm-conds')
 
     ax.set_ylabel('Pooled Corr. Coeff.')
     f.tight_layout()
     feg.tight_layout()
-    faxsig_dist.tight_layout()
+    
+    # faxsig_dist.tight_layout()
+    # faxsig_dist_pred.tight_layout()
 
     util_fcns.savefig(f, 'pooled_cc_true_vs_pred_vs_shuff')
     util_fcns.savefig(feg, 'eg_session_cc_true_vs_pred_vs_shuff')
-    util_fcns.savefig(faxsig_dist, 'dist_cc_pred')
+    
+    # util_fcns.savefig(faxsig_dist, 'dist_sig_cc')
+    # util_fcns.savefig(faxsig_dist_pred, 'dist_sig_cc_pred')
 
-    axperc_sig.set_xticks([0, 1])
-    axperc_sig.set_xticklabels(['G', 'J'])
-    axperc_sig.set_ylabel('Frac. Commands\n with Sig. Correlation')
+    for axi in [axperc_sig, axperc_sig_pred, axsig_dist, axsig_dist_pred]: 
+        axi.set_xticks([0, 1])
+        axi.set_xticklabels(['G', 'J'])
+    
+    for axi in [axperc_sig, axperc_sig_pred, axsig_dist, axsig_dist_pred]: 
+        axi.set_yticks([0., .2, .4, .6, .8, 1.0])
+        axi.set_yticklabels([0., .2, .4, .6, .8, 1.0])
+        axi.set_ylim([0., 1.1])
+        
+
+    axperc_sig.set_ylabel('Frac. com -- sig corr')
+    axperc_sig_pred.set_ylabel('Frac. com -- sig pred corr')
+    axsig_dist.set_ylabel('CC of sig.')
+    axsig_dist_pred.set_ylabel('CC of sig. pred')    
+
     fperc_sig.tight_layout()
-    util_fcns.savefig(fperc_sig, 'frac_commands_sig_pred')
+    util_fcns.savefig(fperc_sig, 'frac_commands_sig')
+
+    fperc_sig_pred.tight_layout()
+    util_fcns.savefig(fperc_sig_pred, 'frac_commands_sig_pred')
+
+    faxsig_dist.tight_layout()
+    util_fcns.savefig(faxsig_dist, 'dist_sig_cc')
+
+    faxsig_dist_pred.tight_layout()
+    util_fcns.savefig(faxsig_dist_pred, 'dist_sig_cc_pred')
 
 ###### Def error functions for each #########
 def distGlobal_dirTrue(mFR, global_mFR, pred_mFR):
