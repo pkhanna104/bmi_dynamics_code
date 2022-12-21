@@ -1204,7 +1204,7 @@ def plot_pooled_stats_fig3_science_compression_PAIRWISE(pooled_stats, save=True,
     ylabels['fracCC'] = 'frac. (command,condition-pairs) \nw. sig. deviations'
     ylabels['fracCom']= 'frac. (command) \nw. sig. deviations'
     ylabels['fracN']  = 'frac. (neuron) w. sig. deviations \nfor sig. (command, condition-pairs)'
-    
+
     for ia, animal in enumerate(['grom', 'jeev']):
         bar_dict = dict(fracCC=[], fracCom=[], fracN=[])#, fracdist=[], fracdist_shuff=[], fracdist_sig=[], fracdist_shuff_sig=[])
         stats_dict = dict(fracCC=[], fracCom=[], fracN=[])#, fracdist_sig=[], fracdist_shuff_sig=[])
@@ -1795,7 +1795,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
     #### Each plot ####
     f_fracCC, ax_fracCC = plt.subplots(figsize=(2, 3))
     f_fracCom, ax_fracCom = plt.subplots(figsize=(2, 3))
-    f_fracN, ax_fracN = plt.subplots(figsize=(2, 3))
+    f_fracN, ax_fracN = plt.subplots(figsize=(2, 3)) ## Pooled over sig. command-condtiions 
+    f_fracN_all, ax_fracN_all = plt.subplots(figsize=(2, 3)) ## Pooled over ALL command-condtiions 
     
     f_fracdist, ax_fracdist = plt.subplots(figsize=(2, 3))
     f_fracdist_sig, ax_fracdist_sig = plt.subplots(figsize=(2, 3))
@@ -1808,6 +1809,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
     ylabels['fracCC'] = 'frac. (command,condition) \nw. sig. deviations'
     ylabels['fracCom']= 'frac. (command) \nw. sig. deviations'
     ylabels['fracN']  = 'frac. (neuron) w. sig. deviations \nfor sig. (command, conditions)'
+    ylabels['fracN_all']  = 'frac. (neuron) w. sig. deviations \nfor ALL (command, condition)'
+
     ylabels['fracdist'] = ''
     ylabels['fracdist_shuff']  = 'norm. pop. dist'
     ylabels['fracdist_sig'] = ''
@@ -1819,12 +1822,13 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
     count['fracCC'] = []
     count['fracCom'] = []
     count['fracN'] = []
+    count['fracN_all'] = []
     count['CC'] = []
     count['Cond_per_com'] = []
 
     for ia, animal in enumerate(['grom', 'jeev']):
         bar_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist=[], fracdist_shuff=[], fracdist_sig=[], fracdist_shuff_sig=[], 
-            fracdist_normshuff=[])
+            fracdist_normshuff=[], fracN_all=[])
         stats_dict = dict(fracCC=[], fracCom=[], fracN=[], fracdist_sig=[], fracdist_shuff_sig=[])
 
         if nsessions is None: 
@@ -1906,6 +1910,7 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
 
             nNeur = 0
             nNeur_sig = 0
+            nNeur_sig_all_ccs = 0
 
             #### starting with command/conditions signifiant 
             stats = pooled_stats[animal, day_ix] ### dmean_FR, dmFR_shuffle, mag, ang, mov
@@ -1916,6 +1921,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
 
             neuron_sig = dict()
             for n in range(Nneur): neuron_sig[n] = dict(vals=[], shuffs=[])
+            neuron_all = dict()
+            for n in range(Nneur): neuron_all[n] = dict(vals=[], shuffs=[])
 
             NComCond = len(stats)
             for i_nComCond in range(NComCond): 
@@ -1950,6 +1957,12 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
                     for nneur in range(Nneur):
                         neuron_sig[nneur]['vals'].append(np.abs(dmean_FR[nneur]))
                         neuron_sig[nneur]['shuffs'].append(np.abs(dmFR_shuffle[:, nneur]))
+
+                ##### Add to neuron all regardless if significant
+                for nneur in range(Nneur): 
+                    neuron_all[nneur]['vals'].append(np.abs(dmean_FR[nneur]))
+                    neuron_all[nneur]['shuffs'].append(np.abs(dmFR_shuffle[:, nneur]))
+
                 
             ########## Now we can plot frac of command/conditions sig #############
             ax_fracCC.plot(ia, float(nCC_sig)/float(nCC), 'k.')
@@ -1998,6 +2011,7 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
                 vals = neuron_sig[i_n]['vals']
                 shuf = neuron_sig[i_n]['shuffs']
                 assert(len(vals) == len(shuf))
+                
                 if len(vals) > 0: 
                     shuf = np.vstack((shuf))
                     assert(shuf.shape[0] == len(vals))
@@ -2026,6 +2040,27 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
                         nNeur_sig += 1
                     nNeur += 1
 
+                ### For neurons pooled based on ALL command-conditions 
+                vals2 = neuron_all[i_n]['vals']
+                shuf2 = neuron_all[i_n]['shuffs']
+
+                assert(len(vals2) == len(shuf2))
+
+                if len(vals2) > 0: 
+                    shuf2 = np.vstack((shuf2))
+                    assert(shuf2.shape[0] == len(vals2))
+                    assert(shuf2.shape[1] == Nshuffs)
+
+                    shuf2_mn = np.mean(shuf2, axis=0)
+                    val2_mn = np.mean(vals2)
+
+                    nshuff2_gte = len(np.nonzero(shuf2_mn >= val2_mn)[0])
+                    pv_neur2 = float(nshuff2_gte)/float(Nshuffs)
+
+                    if pv_neur2 < 0.05:
+                        nNeur_sig_all_ccs += 1
+
+
             ############# Plot sig neurons #################################
             # print('')
             # print('')
@@ -2037,14 +2072,18 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
             bar_dict['fracN'].append(float(nNeur_sig)/float(nNeur))
             count['fracN'].append(float(nNeur_sig)/float(nNeur))
 
+            ax_fracN_all.plot(ia, float(nNeur_sig_all_ccs)/float(nNeur), 'k.')
+            bar_dict['fracN_all'].append(float(nNeur_sig_all_ccs)/float(nNeur))
+            count['fracN_all'].append(float(nNeur_sig_all_ccs)/float(nNeur))
+
 
         #### Plot bar plots 
         for _, (key, ax, wid, offs, alpha) in enumerate(zip(
-            ['fracCC', 'fracCom', 'fracN', 'fracdist', 'fracdist_shuff', 'fracdist_sig', 'fracdist_shuff_sig', 'fracdist_normshuff'], 
-            [ax_fracCC, ax_fracCom, ax_fracN, ax_fracdist, ax_fracdist, ax_fracdist_sig, ax_fracdist_sig, ax_fracdistshuff], 
-            [.8, .8, .8, .4, .4, .4, .4, .8], 
-            [0,   0,  0,  0, .4,  0, .4,  0],
-            [.2, .2, .2, .2, 0., .2, 0., .2])):
+            ['fracCC', 'fracCom', 'fracN', 'fracN_all', 'fracdist', 'fracdist_shuff', 'fracdist_sig', 'fracdist_shuff_sig', 'fracdist_normshuff'], 
+            [ax_fracCC, ax_fracCom, ax_fracN, ax_fracN_all, ax_fracdist, ax_fracdist, ax_fracdist_sig, ax_fracdist_sig, ax_fracdistshuff], 
+            [.8, .8, .8, .8, .4, .4, .4, .4, .8], 
+            [0,   0,  0,  0,  0, .4,  0, .4,  0],
+            [.2, .2, .2, .2, .2, 0., .2, 0., .2])):
             
             if alpha == 0.:
                 ax.bar(ia+offs, np.mean(bar_dict[key]), width=wid, color='w', edgecolor='k',
@@ -2073,8 +2112,8 @@ def plot_pooled_stats_fig3_science_compression(pooled_stats, save=True, nsession
                 spine_side.set_visible(False)
 
         
-    for _, (f, yl) in enumerate(zip([f_fracCC, f_fracCom, f_fracN, f_fracdist, f_fracdist_sig, f_fracdistshuff],
-        ['fracCC', 'fracCom', 'fracN_sig', 'fracdist', 'fracdist_sig', 'fracdist_normshuff'])):
+    for _, (f, yl) in enumerate(zip([f_fracCC, f_fracCom, f_fracN, f_fracN_all, f_fracdist, f_fracdist_sig, f_fracdistshuff],
+        ['fracCC', 'fracCom', 'fracN_sig', 'fracN_w_all', 'fracdist', 'fracdist_sig', 'fracdist_normshuff'])):
         
         f.tight_layout()
         if save: 
@@ -2131,6 +2170,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     fpop_zsc_all, axpop_zsc_all= plt.subplots(figsize=(3, 3)) ### z-score distribution of population distances
     
     fpop_dist_frac_shuff, axpop_dist_frac_shuff = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov -- pop_dist/shuff
+    fpop_dist_frac_shuff_all, axpop_dist_frac_shuff_all = plt.subplots(figsize=(3, 3)) ### Effect size ALL command/mov -- pop_dist/shuff
     fpop_dist_frac_pool , axpop_dist_frac_pool  = plt.subplots(figsize=(3, 3)) ### Effect size sig. command/mov -- pop_dist/cond-pooled 
     
     #### For each animal 
@@ -2144,6 +2184,8 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
             #commands_w_sig = np.zeros((4, 8)) ### How many are sig? 
             #command_cnt = np.zeros((4, 8)) ### How many movements count? 
             sigCC_vect_frac_shuffmn = []
+            allCC_vect_frac_shuffmn = []
+
             sigCC_vect_frac_condpool = []
             zsc_diff = []
             CC_sig = []
@@ -2161,6 +2203,9 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                 v = float(varr['pv'])
 
                 zsc_diff.append(float(varr['zsc']))
+
+                ### don't care whether significant or not 
+                allCC_vect_frac_shuffmn.append(float(varr['dist_norm_shuffmn']))
 
                 if v < 0.05:
                     ### For commands / moves that are different what is the np.linalg.norm? 
@@ -2195,9 +2240,15 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
                     x_ = [ia*10 + day_ix - 1, ia*10 + day_ix -0.5]
                     y_ =  [float(varr['zsc']), float(varr['zsc'])]
                     axpop_zsc_all.plot(x_, y_, '-', color=color_rgb)
-            
+
+                    y2_ = [float(varr['dist_norm_shuffmn']), float(varr['dist_norm_shuffmn']), ]
+                    axpop_dist_frac_shuff_all.plot(x_, y2_, '-', color=color_rgb)
+
             ### Distribution of population ###
             util_fcns.draw_plot(ia*10 + day_ix, sigCC_vect_frac_shuffmn, 'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_shuff, whisk_min = 2.5, whisk_max=97.5)
+            util_fcns.draw_plot(ia*10 + day_ix, allCC_vect_frac_shuffmn, 'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_shuff_all, whisk_min = 2.5, whisk_max=97.5)
+            axpop_dist_frac_shuff_all.hlines(1.0, -0.5, 13.5, 'k', linestyle='dashed')
+
             util_fcns.draw_plot(ia*10 + day_ix, sigCC_vect_frac_condpool,'k', np.array([1., 1., 1., 0.]), axpop_dist_frac_pool, whisk_min = 2.5, whisk_max=97.5)
             
             axpop_zsc_all.hlines(1.645, -0.5, 13.5, 'k', linestyle='dashed')
@@ -2324,6 +2375,7 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     
     ylim['pop_zsc'] = [-2., 12]
     ylim['pop_frac_shuff'] = [1., 3.5]
+    ylim['pop_frac_shuff_all'] = [0.5, 3.5]
     ylim['pop_frac_pool'] = [0., .7]
 
 
@@ -2334,18 +2386,19 @@ def plot_su_pop_stats(perc_sig, perc_sig_vect, sig_move_diffs = None,
     ylab['su_frac'] = 'SU distance as frac. of cond-pool'
 
     ylab['pop_zsc'] = 'Pop distance, z-scored by shuff'
-    ylab['pop_frac_shuff'] = 'Pop distance, frac of shuff mean'
-    ylab['pop_frac_pool'] = 'Pop distance, frac of cond. pool'
+    ylab['pop_frac_shuff'] = 'Pop distance, frac of shuff mean (sig. CCs)'
+    ylab['pop_frac_shuff_all'] = 'Pop dist, frac of shuff mean (all CC)'
+    ylab['pop_frac_pool'] = 'Pop distance, frac of cond. pool (sig. CCs)'
     
     ###### Effect size plots #######
     for _, (f_, ax_, key) in enumerate(zip([f_su_zsc_all, f_su_zsc_sig_cc, 
                                         f_su_diffhz_sig_NCC, f_su_frac_sig_NCC, 
-                                        fpop_zsc_all, fpop_dist_frac_shuff, fpop_dist_frac_pool], 
+                                        fpop_zsc_all, fpop_dist_frac_shuff, fpop_dist_frac_pool, fpop_dist_frac_shuff_all], 
                                         [ax_su_zsc_all, ax_su_zsc_sig_cc, 
                                         ax_su_diffhz_sig_NCC, ax_su_frac_sig_NCC, 
-                                        axpop_zsc_all, axpop_dist_frac_shuff, axpop_dist_frac_pool], 
+                                        axpop_zsc_all, axpop_dist_frac_shuff, axpop_dist_frac_pool, axpop_dist_frac_shuff_all], 
                                         ['su_zsc_all', 'su_zsc_sig_cc', 'su_diff_hz', 'su_frac', 'pop_zsc',
-                                         'pop_frac_shuff', 'pop_frac_pool'])):
+                                         'pop_frac_shuff', 'pop_frac_pool', 'pop_frac_shuff_all'])):
         
         ax_.set_xlim([-1, 13.5])
         ax_.set_ylim(ylim[key])
