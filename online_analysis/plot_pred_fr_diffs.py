@@ -779,7 +779,6 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor='none', **kwargs):
 
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
-
 def frac_sig_science_compressions(nshuffs = 1000, min_bin_indices = 0, 
     model_set_number = 6, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
     only_sig_cc=False, min_com_cond = 15, save = True):
