@@ -99,6 +99,8 @@ def plot_t2t():
         ### Plot each animla 
         ax.bar(i_a, np.mean(tsk_t2t['co']), width=.3, color='k', alpha=.2)
         ax.bar(i_a+.4, np.mean(tsk_t2t['obs']), width=.3, color='k', alpha=.2)
+        print('Mean t2t animal %s: CO: %.3f, OBS %.3f, Mean of both: %.3f'%(animal, np.mean(tsk_t2t['co']), np.mean(tsk_t2t['obs']),
+            np.mean(np.hstack((tsk_t2t['obs'], tsk_t2t['co'])))))
     
     ax.set_title('T2T (sec)')
     ax.set_xticks([0., .4, 1., 1.4])
