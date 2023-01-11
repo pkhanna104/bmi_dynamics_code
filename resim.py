@@ -16,7 +16,7 @@ cmap_list = ['maroon', 'orangered', 'darkgoldenrod', 'olivedrab', 'teal',
 
 def test():
     tmbu = '/Users/preeyakhanna/Dropbox/TimeMachineBackups/grom2016/'
-    hdf = tables.openFile(tmbu+'grom20160307_04_te4411.hdf')
+    hdf = tables.open_file(tmbu+'grom20160307_04_te4411.hdf')
     dec = pickle.load(open(tmbu+'grom20160307_02_RMLC03071555.pkl'))
     R = RerunDecoding(hdf, dec, task='bmi_resetting')
 
@@ -61,10 +61,10 @@ class RerunDecoding(object):
         except:
             self.cursor_pos = hdf.root.task[:]['cursor']
             
-        try:
-            self.cursor_vel = hdf.root.task[:]['cursor_vel']
-        except:
-            self.cursor_vel = hdf.root.task[:]['internal_decoder_state'][:,[3,4,5]]
+        #try:
+        #    self.cursor_vel = hdf.root.task[:]['cursor_vel']
+        #except:
+        self.cursor_vel = hdf.root.task[:]['internal_decoder_state'][:,[3,4,5]]
 
         self.target = hdf.root.task[:]['target']
 
