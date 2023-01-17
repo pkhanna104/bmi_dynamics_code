@@ -1475,7 +1475,7 @@ def df_idx2da(df, idx, var):
     #RESULTS:
     return da
 
-def subsample_dataset_to_match_mean_target_dataset(match_var, d_ss, d_target, p_sig=0.05, frac_data_exclude_per_iter=0.05, min_frac_remain=0.1):
+def subsample_dataset_to_match_mean_target_dataset(match_var, d_ss, d_target, p_sig=0.05, frac_data_exclude_per_iter=0.05, min_frac_remain=0.1, dont_discard_idx=None):
     """
     This code subsamples data from dataset 'd_ss' to match its mean to dataset 'd_target' for all chosen variables 'match_var'
 
@@ -1584,6 +1584,12 @@ def subsample_dataset_to_match_mean_target_dataset(match_var, d_ss, d_target, p_
     d_ss_z = (d_list[0]-target_mean)/target_std.reshape((-1,1))
     cost = np.abs(d_ss_z).sum(dim='v')
 
+    if dont_discard_idx is not None:
+        #print('before', cost.loc[dict(observation=dont_discard_idx)])
+        cost.loc[dict(observation=dont_discard_idx)] = 0 #this ensures that these samples will never be dropped
+        #print(dont_discard_idx)
+        #print('after', cost.loc[dict(observation=dont_discard_idx)])
+        
     #iterate, removing samples, till you have a match: 
     complete = False
     success = False
@@ -2248,8 +2254,23 @@ def def_nk_AB(An, bn, Kn, F, num_neurons, num_kin):
     for m in A_list:
         if (m == 'n_null') or (m == 'n_d'):
             n_init_dic[m] = np.zeros(num_neurons)
-        if (m == 'n_do') or (m == 'n_o'):
-            n_init_dic[m] = np.array(bn).squeeze()
+        elif (m == 'n_do'):
+            x_star = est_dyn_fixed_pt(An, bn)
+            x_star = np.array(x_star).squeeze()
+            #print(x_star.shape)
+            n_init_dic[m] = x_star
+        elif (m=='n_o'):
+            x_star = est_dyn_fixed_pt(np.zeros(An.shape), bn)
+            x_star = np.array(x_star).squeeze()
+            #print(x_star.shape)
+            n_init_dic[m] = x_star
+
+        # if (m == 'n_do'): or (m == 'n_o'):
+        #     x_star = est_dyn_fixed_pt(An, bn)
+        #     x_star = np.array(x_star).squeeze()
+        #     #print(x_star.shape)
+        #     n_init_dic[m] = x_star
+        #     #n_init_dic[m] = np.array(bn).squeeze() #commented out on 12/8/2022
 
     #B matrix of inputs to neural dynamics:
     #B_top = eye(num_neurons)
@@ -2259,6 +2280,14 @@ def def_nk_AB(An, bn, Kn, F, num_neurons, num_kin):
 
     return A_list, A_dic, B, n_init_dic
 
+def est_dyn_fixed_pt(A,b,num_iter=1000):
+    A_accum = np.zeros(A.shape)
+    A_power = np.eye(A.shape[0])
+    for i in range(num_iter):
+        A_accum = A_power+A_accum
+        A_power = np.dot(A, A_power)
+    x_star = np.dot(A_accum, b)
+    return x_star #, A_power, A_accum
 
 
 def def_nk_lqr_models(inf_horizon, T, model_list, A_dic, B, Q, Q_f, R):

@@ -127,7 +127,7 @@ def main_compute_neural_command_diff(df, Kn, model_list, m_list, c_list, n_list,
 
 	#
 	model_cm = compute_command_sel(df, model_list, m_list, c_list)
-	model_cm = match_pool_activity_to_command_movement(model_cm, df, model_list, c_list, m_list, p_sig=p_sig_match)
+	model_cm = match_pool_activity_to_command_movement(model_cm, df, model_list, c_list, m_list, p_sig=p_sig_match, keep_condition_in_pool=True)
 	model_cm = def_shuffle_mat(model_cm, model_list, c_list, m_list, num_shuffle)
 	model_cm = compute_neural_command_diff(model_cm, df, Kn, model_list, m_list, c_list, n_list, shuffle_bool, num_shuffle)
 	
@@ -174,7 +174,7 @@ def compute_command_sel(df, model_list, m_list, c_list):
 	print(t_elapsed)
 	return model_cm
 
-def match_pool_activity_to_command_movement(model_cm, df, model_list, c_list, m_list, p_sig):
+def match_pool_activity_to_command_movement(model_cm, df, model_list, c_list, m_list, p_sig, keep_condition_in_pool=False):
 	#---------------------------------------------------------------------------------------------------------------------
 	t_start = timeit.default_timer()
 	#key: model,command | model,command,movement
@@ -188,21 +188,29 @@ def match_pool_activity_to_command_movement(model_cm, df, model_list, c_list, m_
 			sel_c = model_cm[model,c,'sel']
 			c_idx = df[sel_c].index.values
 			c_da = bmi_b.df_idx2da(df,c_idx,var)
+			model_cm[model,c,'c_idx'] = c_idx
 
 			for im, m in enumerate(m_list): #movement
 				#data array of var of interest
-				print(model, c, m)
+				#print(model, c, m)
 				sel_cm = model_cm[model,c,m,'sel']
 				cm_idx = df[sel_cm].index.values
 				cm_da = bmi_b.df_idx2da(df,cm_idx,var)
+				model_cm[model,c,m,'cm_idx'] = cm_idx
 
-				success, kept_list, discard_list, df_match, ttest_r, mean_r = \
-						bmi_b.subsample_dataset_to_match_mean_target_dataset(match_var, d_ss=c_da, d_target=cm_da, p_sig=p_sig, frac_data_exclude_per_iter=0.1, min_frac_remain=0.1) #frac_data_exclude_per_iter=0.05
+				if keep_condition_in_pool:
+					success, kept_list, discard_list, df_match, ttest_r, mean_r = \
+						bmi_b.subsample_dataset_to_match_mean_target_dataset(match_var, d_ss=c_da, d_target=cm_da, p_sig=p_sig, frac_data_exclude_per_iter=0.1, min_frac_remain=0.1, dont_discard_idx=cm_idx) 
+				else:
+					success, kept_list, discard_list, df_match, ttest_r, mean_r = \
+						bmi_b.subsample_dataset_to_match_mean_target_dataset(match_var, d_ss=c_da, d_target=cm_da, p_sig=p_sig, frac_data_exclude_per_iter=0.1, min_frac_remain=0.1, dont_discard_idx=None) #frac_data_exclude_per_iter=0.05
+				
 				model_cm[model,c,m,'pool_match_idx'] = kept_list[0]
 				model_cm[model,c,m,'pool_match_success'] = success
 				model_cm[model,c,m,'pool_match_discard'] = discard_list[0]
 				model_cm[model,c,m,'pool_match_ttest'] = ttest_r
-				model_cm[model,c,m,'pool_match_mean'] = mean_r                    
+				model_cm[model,c,m,'pool_match_mean'] = mean_r
+
 	t_elapsed = timeit.default_timer()-t_start 
 	print(t_elapsed)
 	return model_cm
@@ -317,7 +325,7 @@ def compute_neural_command_diff(model_cm, df, Kn, model_list, m_list, c_list, n_
 	
 	return model_cm
 
-def collect_neural_command_diff(model_cm, Kn, model_list, c_list, m_list, min_obs, shuffle_bool):
+def collect_neural_command_diff(model_cm, Kn, model_list, c_list, m_list, min_obs):
 	#---------------------------------------------------------------------------------------------------------------------
 	#loop over all conditions, collect a list of differences:
 
@@ -327,23 +335,29 @@ def collect_neural_command_diff(model_cm, Kn, model_list, c_list, m_list, min_ob
 	model_diff = {}
 	for model in model_list: #model
 		for proj in proj_list:
-			model_diff[model,proj] = {'obs':[], 's_mean':[], 's_std':[]}
+			model_diff[model,proj] = {'obs':[], 's_mean':[], 's_std':[], 'num_obs':[], 'num_pool':[]}
 
 			for ic, c in enumerate(c_list): #command    
 				for im, m in enumerate(m_list): #movement
 					pool_matched = model_cm[model,c,m,'pool_match_success']
-					obs_bool = model_cm[model,c,m,'num_obs'] > min_obs
+					obs_bool = model_cm[model,c,m,'num_obs'] >= min_obs
 					if pool_matched and obs_bool:  
-						print('was included', model,c,m)
+						#print('was included', model,c,m)
 
 						obs = model_cm[model,c,m,'n_diff_norm', 'obs', proj]
 						s_mean = model_cm[model,c,m,'n_diff_norm_mean', 's', proj]
 						s_std = model_cm[model,c,m,'n_diff_norm_std', 's', proj]
 
+						num_obs = model_cm[model,c,m,'num_obs']
+						num_pool = len(model_cm[model,c,m,'pool_match_idx'])
+
 						#assign:
 						model_diff[model,proj]['obs'].append(obs)
 						model_diff[model,proj]['s_mean'].append(s_mean)
 						model_diff[model,proj]['s_std'].append(s_std)
+
+						model_diff[model,proj]['num_obs'].append(num_obs)
+						model_diff[model,proj]['num_pool'].append(num_pool)
 					#else:
 						#print('not included', model,c,m)
 	return model_diff
