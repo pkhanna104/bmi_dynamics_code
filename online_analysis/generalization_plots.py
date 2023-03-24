@@ -19,7 +19,7 @@ import matplotlib.transforms as transforms
 
 import scipy.io as sio
 import seaborn
-seaborn.set(font='Arial',context='talk',font_scale=0.8, style='white')
+seaborn.set(font='Arial',context='talk',font_scale=1.2, style='white')
 
 from brokenaxes import brokenaxes
 
@@ -2038,8 +2038,10 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
 
 
 def overlap_dyn_axes_w_beh(nshuffs=10, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'):
+    
     ### Method to assess the overlap b/w dominant dynamics dimensions and the decoder for true dynamics vs. shuffle 
     ### cycle thoruhg animals 
+    
     from sklearn.linear_model import LinearRegression
     pref = analysis_config.config['shuff_fig_dir']
 
@@ -2111,7 +2113,73 @@ def overlap_dyn_axes_w_beh(nshuffs=10, model_nm = 'hist_1pos_0psh_2spksm_1_spksp
             ax.set_xlim([-1, ndims+1])
             f.tight_layout()
 
+def r2_by_dyn_axes(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', dim=15):
+    
+    ### Method to assess the variance explained in each dimension, sorted by r2; 
+    f, ax = plt.subplots(figsize = (4, 5))
+    colors = dict(grom='k', jeev='gray')
 
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        data = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6_.pkl'%animal), 'rb'))
+        r2i_dict = np.zeros((analysis_config.data_params['%s_ndays'%animal], 200)) + np.nan 
+
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            ### Get out true behavior 
+            spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
+                day_ix, return_tm0=True)
+
+            ### Now extract neural activity decomposed into main dynamics dimensions 
+            ### How much is true activity in each dimension correlated to behavior? 
+            model = data[day_ix, model_nm, 0., 0.0, 'model']
+            ev_acts_true = return_acts(model.coef_, spks_true)
+
+            spks_pred = 10*data[day_ix, model_nm].copy()
+            assert(np.allclose(spks_true.shape, spks_pred.shape))
+
+            ### Get eigenvalue activations for predicted spikes 
+            ev_acts_pred = return_acts(model.coef_, spks_pred)
+
+            ### shuffle models 
+            ### Get correlation of these activations w/ behavior 
+            ndims = spks_true.shape[1]
+
+            r2_all = []
+            for n in range(ndims): 
+
+                true_act = ev_acts_true[:, n]
+                assert(np.allclose(np.imag(true_act), 0.))
+                true_act = np.real(true_act)
+
+                true_pred = ev_acts_pred[:, n]
+                assert(np.allclose(np.imag(true_pred), 0.))
+                true_pred = np.real(true_pred)
+
+                ### R2 between 
+                r2i, _ = r2(true_act[:, np.newaxis], true_pred[:, np.newaxis])
+
+                ax.plot(n+0.4*(i_a) + 1, r2i, '.', color=colors[animal], markersize=3.)
+
+                r2_all.append(r2i)
+            r2_all = np.hstack((r2_all))
+            r2_all = np.sort(r2_all)[::-1] # Descending order 
+
+            ### Stack it up 
+            r2i_dict[day_ix, :len(r2_all)] = r2_all 
+
+        ### After all days, make box plots 
+        for n in range(dim): 
+            ### box plot 
+            util_fcns.draw_plot(n + 0.4*(i_a) + 1, r2i_dict[:, n], colors[animal], np.array([1., 1., 1., 0.]), ax, width = .4)
+
+    #ax.set_title('%s, %d'%(animal, day_ix))
+    ax.set_xlim([0., dim+2])
+    ax.set_xticks(np.arange(1, dim+1, 2))
+    ax.set_xticklabels(np.arange(1, dim+1, 2))
+    ax.set_xlabel(' Dimension')
+    ax.set_ylabel('R2')
+    f.tight_layout()
 
 def return_acts(A, spks_true): 
     ### Project activity into this dimension
