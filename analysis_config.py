@@ -137,17 +137,18 @@ def print_G_params(te=data_params['grom_input_type']):
 ########### number of eigenvalues w/ TD > 0.1 sec in each day ####
 ########## calculated in notebookes/sup-eigenvalues.ipynb: plot_pred_fr_diffs.get_data_EVs()
 num_dims = dict(grom=dict(), jeev=dict())
-num_dims['grom'][0] = 4
-num_dims['grom'][1] = 3
-num_dims['grom'][2] = 3
-num_dims['grom'][3] = 3
-num_dims['grom'][4] = 4
-num_dims['grom'][5] = 3
-num_dims['grom'][6] = 3
-num_dims['grom'][7] = 2
-num_dims['grom'][8] = 2
+pls = 0
+num_dims['grom'][0] = 4 + pls
+num_dims['grom'][1] = 3 + pls
+num_dims['grom'][2] = 3 + pls
+num_dims['grom'][3] = 3 + pls
+num_dims['grom'][4] = 4 + pls
+num_dims['grom'][5] = 3 + pls
+num_dims['grom'][6] = 3 + pls
+num_dims['grom'][7] = 2 + pls
+num_dims['grom'][8] = 2 + pls
 
-num_dims['jeev'][0] = 3
-num_dims['jeev'][1] = 3
-num_dims['jeev'][2] = 3
-num_dims['jeev'][3] = 2
+num_dims['jeev'][0] = 3 + pls
+num_dims['jeev'][1] = 3 + pls
+num_dims['jeev'][2] = 3 + pls
+num_dims['jeev'][3] = 2 + pls
