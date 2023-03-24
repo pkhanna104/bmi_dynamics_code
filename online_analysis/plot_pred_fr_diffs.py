@@ -1839,7 +1839,7 @@ def get_data_EVs(keep_bin_spk_zsc = False, plot_null_dynamics = False, ridge_dic
 
                 ### Refit dynamics 
                 alpha_spec = ridge_dict[animal][0][day_ix, model_nm]
-                print('%s, %d alpha %.1f' %(animal, day_ix, alpha_spec))
+                #print('%s, %d alpha %.1f' %(animal, day_ix, alpha_spec))
                 ### Get Ridge; 
                 model = Ridge(alpha=alpha_spec, fit_intercept=True)
 
@@ -1865,6 +1865,9 @@ def get_data_EVs(keep_bin_spk_zsc = False, plot_null_dynamics = False, ridge_dic
 
             #### Get stats; 
             ix_gte_bin = np.nonzero(decay >= 0.1)[0]
+            print('Animal %s: Day %d, Num dim %d'%(animal, day_ix, len(ix_gte_bin)))
+            print(hz[ix_gte_bin])
+            print('----')
             num_eigs_td_gte_bin.append(float(len(ix_gte_bin)))
             frac_eigs_td_gte_bin.append(float(len(ix_gte_bin))/float(len(decay)))
             avg_freq_eigs_td_gte_bin.append(np.mean(hz[ix_gte_bin]))

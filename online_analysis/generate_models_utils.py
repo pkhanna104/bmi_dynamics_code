@@ -301,7 +301,8 @@ def get_spike_kinematics(animal, day, order, history_bins, full_shuffle = False,
                 
             elif animal == 'jeev':
                 
-                bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, cursor_state, unbinned, exclude = ppf_pa.get_jeev_trials_from_task_data(te_num, include_pos=True, binsize=.1)
+                bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all, cursor_state, unbinned, exclude = ppf_pa.get_jeev_trials_from_task_data(te_num, 
+                    include_pos=True, binsize=.1)
                 cursor_pos = [curs[:, [0, 2]] for curs in cursor_state]
                 cursor_vel = [curs[:, [3, 5]] for curs in cursor_state]
 
