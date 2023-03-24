@@ -625,10 +625,76 @@ def dat2PC(X, pc_model):
     proj_mat= pc_model['proj_mat']
     return np.dot(proj_mat.T, X.T).T
 
+### Get realized eigenvectors of A
+def get_sorted_realized_evs(A):
+    '''
+    This method gives us the sorted eigenvalues/vectors that yields top dynamical dimensions
+    as the first dimensions. For complex eigenvalues it also sets the first complex conjugate equal 
+    to the real part and the second equal to the imaginary part. See https://www.youtube.com/watch?v=qlUr2Jc5O0g
+    for more details; 
+    ''' 
+
+    ## Make sure A is a square; 
+    assert(A.shape[0] == A.shape[1])
+    
+    ### Get eigenvalues / eigenvectors: 
+    ev, evects = np.linalg.eig(A)
+
+    ### Doesn't always give eigenvalues in order so sort them here: 
+    ix_order = np.argsort(np.abs(ev)) ## This sorts them in increasing order; 
+    ix_order_decreasing = ix_order[::-1]
+
+    ### Sorted in decreasing order
+    ev_sort = ev[ix_order_decreasing]
+    evects_sort = evects[:, ix_order_decreasing]
+
+    ### Make sure these eigenvectors/values still abide by Av = lv:
+    chk_ev_vect(ev_sort, evects_sort, A)
+
+    ### Now for imaginary eigenvalue, set the first part equal to the real, 
+    ## and second part equal to the imaginary: 
+    nD = A.shape[0]
+
+    # Skip indices if complex conjugate
+    skip_ix = [] 
+
+    ## Go through each eigenvalue
+    for i in range(nD):
+        if i not in skip_ix:
+            if np.imag(ev_sort[i]) != 0:
+                evects_sort[:, i] = np.real(evects_sort[:, i])
+
+                assert(np.real(ev_sort[i+1]) == np.real(ev_sort[i]))
+                assert(np.imag(ev_sort[i+1]) == -1*np.imag(ev_sort[i]))
+
+                evects_sort[:, i+1] = np.imag(evects_sort[:, i+1])
+                skip_ix.append(i+1)
+
+    return evects_sort, ev_sort
+
+def get_ang_td(A, plt_evs_gte=.99, dt=0.1): 
+    ev, evect = np.linalg.eig(A)
+
+    ### Only look at eigenvalues explaining > 
+    ix_sort = np.argsort(np.abs(ev))[::-1]
+    ev_sort = ev[ix_sort]
+    cumsum = np.cumsum(np.abs(ev_sort))/np.sum(np.abs(ev_sort))
+    ix_keep = np.nonzero(cumsum>plt_evs_gte)[0]
+    ev_sort_truc = ev_sort[:ix_keep[0]+1]
+
+    ### get frequency; 
+    angs = np.angle(ev_sort_truc) #np.array([ np.arctan2(np.imag(ev[i]), np.real(ev[i])) for i in range(len(ev))])
+    hz = np.abs(angs)/(2*np.pi*dt)
+    decay = -1./np.log(np.abs(ev_sort_truc))*dt # Time decay constant in ms
+    return hz, decay
+
 ### Double check that each eigenvlaue / vecotr is correct: 
 def chk_ev_vect(ev2, vect2, covX2):
     for i in range(len(ev2)):
         evi = ev2[i]
         vct = vect2[:, i]
         ## Do out the multiplication
-        assert(np.allclose(np.dot(covX2, vct[:, np.newaxis]), evi*vct[:, np.newaxis]))
+        if type(vct) is np.matrix: 
+            assert(np.allclose(np.dot(covX2, vct), evi*vct))
+        else: 
+            assert(np.allclose(np.dot(covX2, vct[:, np.newaxis]), evi*vct[:, np.newaxis]))
