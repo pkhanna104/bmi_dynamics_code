@@ -336,6 +336,95 @@ def plot_stars(ax, ymax, xval, pv):
     else:
         ax.text(xval, 1.2*np.max(ymax), 'n.s.', horizontalalignment='center')
 
+def dyn_const_r2(model, ndims, coef_not_model=False): 
+
+    if coef_not_model: 
+        A = model 
+    else: 
+        A = np.mat(model.coef_)
+
+        ### Sanity check 
+        x = np.random.randn(model.coef_.shape[0], 10)
+        pred = A*np.mat(x) + model.intercept_[:, np.newaxis]
+        pred2 = model.predict(x.T).T # nObs x nfeats --> nfeats x nObs
+        assert(np.allclose(pred, pred2))
+
+    ###### Used to double check the decomposition ####
+    # evect, ev = util_fcns.get_sorted_realized_evs(A) # ev = eigen
+    # ev_inv = np.linalg.pinv(evect)
+
+    # x_ev = np.dot(ev_inv, X)
+    # x12 = x_ev.copy()
+    # x12[2:] = 0.
+
+    # x34 = x_ev.copy()
+    # x34[:2] = 0.
+
+    # x12v = np.dot(evect, x12)
+    # x34v = np.dot(evect, x34)
+
+    # ### make sure these are all close 
+    # assert(np.allclose(np.real(np.dot(evect, np.dot(ev_inv, X))), np.real(x12v+x34v)))
+    # assert(np.allclose(np.real(np.dot(evect, np.dot(ev_inv, X))), X))
+    # assert(np.allclose(np.real(x12v+x34v), X))
+
+
+    ### Get eigenvectors 
+    evect, ev = util_fcns.get_sorted_realized_evs(A)
+    
+    ### Now get inverse 
+    ev_inv = np.linalg.pinv(evect)
+
+    def const_r2(y_true, y_pred, return_lowd=False): 
+        # Pred: obs x features 
+        # True: obs x features
+
+        ### eigenvalue coeffs  
+        true_ev = np.dot(ev_inv, y_true.T).T
+        pred_ev = np.dot(ev_inv, y_pred.T).T
+
+        highd_true = true_ev.copy()
+        highd_pred = pred_ev.copy()
+        highd_true[:, :ndims] = 0.
+        highd_pred[:, :ndims] = 0.
+        
+        ### Zero out non-relevant evs: 
+        true_ev[:, ndims:] = 0.
+        pred_ev[:, ndims:] = 0.
+
+        ### Re-inflate 
+        y_true_lowd = np.dot(evect, true_ev.T).T
+        y_pred_lowd = np.dot(evect, pred_ev.T).T
+
+        y_true_highd = np.dot(evect, highd_true.T).T
+        y_pred_highd = np.dot(evect, highd_pred.T).T
+
+        try: 
+            assert(np.allclose(y_true, y_true_lowd+y_true_highd))
+        except:
+            print('assertion viol TRUE')
+        try: 
+            assert(np.allclose(y_pred, y_pred_lowd+y_pred_highd))
+        except: 
+            print('assertion viol PRED')
+
+        ### Realize 
+        y_true_lowd = np.real(np.array(y_true_lowd))
+        y_pred_lowd = np.real(np.array(y_pred_lowd))
+        
+        if return_lowd: 
+            return r2(y_true_lowd, y_pred_lowd), y_true_lowd, y_pred_lowd
+        else: 
+            return r2(y_true_lowd, y_pred_lowd)
+
+    return const_r2
+
+
+
+def chk_ev(ev, evect, A): 
+    for i in range(len(ev)): 
+        assert(np.allclose(np.dot(A, evect[:, i]), ev[i]*evect[:, i]))
+
 def r2(y_true, y_pred):
     SSE = np.sum(np.square(y_true - y_pred))
     SST = np.sum(np.square(y_true - np.mean(y_true, axis=0)[np.newaxis, :]))
@@ -1946,6 +2035,360 @@ def plot_loo_frac_commands_sig(cat = 'com', nshuffs = 20,
         util_fcns.savefig(f_fracN, 'lo_%s_cm_frac_neruons_sig'%cat)
     return track_cm_analyzed
 
+
+
+def overlap_dyn_axes_w_beh(nshuffs=10, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0'):
+    ### Method to assess the overlap b/w dominant dynamics dimensions and the decoder for true dynamics vs. shuffle 
+    ### cycle thoruhg animals 
+    from sklearn.linear_model import LinearRegression
+    pref = analysis_config.config['shuff_fig_dir']
+
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        data = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6_.pkl'%animal), 'rb'))
+
+        for day_ix in range(1):#analysis_config.data_params['%s_ndays'%animal]):
+
+            f, ax = plt.subplots()
+
+            ### Get out true behavior 
+            spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
+                day_ix, return_tm0=True)
+
+            ### Now extract neural activity decomposed into main dynamics dimensions 
+            ### How much is true activity in each dimension correlated to behavior? 
+            model = data[day_ix, model_nm, 0., 0.0, 'model']
+            ev_acts_true = return_acts(model.coef_, spks_true)
+
+            ### shuffle models 
+            ev_acts_shuff = []    
+            for i in range(nshuffs): 
+                shuff_str = str(i)
+                shuff_str = shuff_str.zfill(3)
+                model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day_ix, shuff_str, model_nm))
+                A = model_file[str((0, 'coef_'))]
+                ev_acts_shuff.append(return_acts(A, spks_true))
+
+                #if i == 0: 
+                hz, decay = util_fcns.get_ang_td(A)
+                ix = np.nonzero(decay > 0.05)[0]
+                print('Shuff # %d eigs: %d'%(i, len(ix)))
+
+            ### Get correlation of these activations w/ behavior 
+            ndims = spks_true.shape[1]
+
+            for n in range(ndims): 
+
+                act = ev_acts_true[:, n]
+                assert(np.allclose(np.imag(act), 0.))
+                act = np.real(act)
+
+                ### Multiple linear regression 
+                reg = LinearRegression().fit(push_true[:, [3, 5]], act[:, np.newaxis])
+                pred_act = reg.predict(push_true[:, [3, 5]])
+                _, _, rv, _, _ = scipy.stats.linregress(act, pred_act[:, 0])
+
+                ax.plot(n, rv, '*', color='cyan')
+
+                ### Plot shuffles: 
+                shuff_rvs = []
+                for i in range(nshuffs): 
+                    sact = ev_acts_shuff[i]
+                    sact = sact[:, n]
+                    assert(np.allclose(np.imag(sact), 0.))
+                    sact = np.real(sact)
+                    
+                    ### linear regression 
+                    reg = LinearRegression().fit(push_true[:, [3, 5]], sact[:, np.newaxis])
+                    pred_act = reg.predict(push_true[:, [3, 5]])
+                    _, _, rv, _, _ = scipy.stats.linregress(sact, pred_act[:, 0])
+                    shuff_rvs.append(rv)
+
+                ### box plot 
+                util_fcns.draw_plot(n, shuff_rvs, 'k', np.array([1., 1., 1., 0.]), ax, width = .5)
+
+            ax.set_title('%s, %d'%(animal, day_ix))
+            ax.set_xlim([-1, ndims+1])
+            f.tight_layout()
+
+
+
+def return_acts(A, spks_true): 
+    ### Project activity into this dimension
+    evect, ev = util_fcns.get_sorted_realized_evs(A)
+    
+    ### Now get inverse 
+    ev_inv = np.linalg.pinv(evect)
+
+    ### True eigenvector activations 
+    ev_act = np.dot(ev_inv, spks_true.T).T # nObs x neigs 
+    return ev_act
+    
+    
+
+def plot_dyn_const_r2(cat='tsk', nshuffs = 1000, model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', 
+    return_trans_from_lo = False, save_dict = None, apply_full_axes_to_all = False):
+    '''
+    v2 of plot_loo_r2_overall -- but with dynamics constraints 
+    apply_full_axes_to_all --> use A matrix top dimensions for projecting data 
+    '''
+
+    # fig 4 -- keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo_mov', 'r2_pred_lo_com','r2_pred_full']
+    # fig 5 -- keys = ['r2_shuff', 'r2_null', 'r2_pred_lo_mov', 'r2_pred_lo_com', 'r2_pred_full']
+
+    # Null 
+    # null_opt='nulldyn', potent_addon=True, nulldyn_opt='alpha_opt',
+
+    if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0': 
+        if return_trans_from_lo:
+            pass
+        else:
+            raise Exception("Analysis for predicting next command from left out command should set return trans from lo!!!") 
+    
+    if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+        ext3 = ''
+
+    elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+        ext3 = '_nocond'
+
+    color = analysis_config.blue_rgb
+    pref = analysis_config.config['shuff_fig_dir']
+
+    f, ax = plt.subplots(figsize=(3, 3))
+
+    ### Save dict ######
+    if save_dict is None: 
+        save_bars_dict = {}
+    else: 
+        save_bars_dict = save_dict 
+
+    ### Cycle through animals #####
+    for i_a, animal in enumerate(['grom', 'jeev']):
+
+        if animal not in save_bars_dict.keys(): 
+            save_bars_dict[animal] = {}
+        
+        ##### stats to hold onto 
+        r2_stats = []
+        r2_stats_cyan = []
+        r2_stats_shuff = []
+        
+        ### Load -- all activity 
+        nonNULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6_.pkl'%animal), 'rb'))
+
+        ### Null activity -- alpha_opt
+        NULL_dict = pickle.load(open(os.path.join(analysis_config.config['%s_pref'%animal], 'tuning_models_%s_model_set6__null_alpha.pkl'%animal), 'rb'))
+
+        #### Cycle through days #####
+        for day_ix in range(analysis_config.data_params['%s_ndays'%animal]):
+
+            print('##################')
+            print('Starting Animal %s Day %d' %(animal, day_ix))
+            print('##################')
+            
+            ### True data 
+            ### Load the true data ###
+            spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
+                day_ix, return_tm0=True)            
+            
+            ### Load the category dictonary: 
+            LOO_dict = pickle.load(open(os.path.join(analysis_config.config['grom_pref'], 'loo_%s_%s_%d%s%s%s.pkl'%(cat, animal, day_ix, '', '', ext3)), 'rb'))
+
+            ### Only for matching commands ###
+            if 'analyze_indices' in LOO_dict.keys():
+                an_ind = LOO_dict['analyze_indices']
+            else:
+                an_ind = np.arange(len(spks_true))
+
+            ### full predictions 
+            full_spks_pred = 10*nonNULL_dict[day_ix, model_nm][an_ind, :].copy()
+            
+            # from generate_models
+            # model_data[i_d, model_nm, i_fold, type_of_model_index, 'model']
+            mod = nonNULL_dict[day_ix, model_nm, 0., 0.0, 'model']
+            yfcn_full = dyn_const_r2(mod, analysis_config.num_dims[animal][day_ix])
+
+            ###### null predictions 
+            if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                null_spks_pred = 10*NULL_dict[day_ix, model_nm] ## Predicted 
+                assert(null_spks_pred.shape[0] == spks_true.shape[0])
+
+                ### Get KG ###
+                #### Get true null spikes ####
+                if animal == 'grom':
+                    KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_grom(day_ix)
+                elif animal == 'jeev':
+                    KG, KG_null_proj, KG_potent_orth = generate_models.get_KG_decoder_jeev(day_ix)
+
+                assert(np.allclose(np.dot(KG, null_spks_pred.T).T, np.zeros_like(push_true[:, [3, 5]])))
+                null_spks_pred = null_spks_pred[an_ind, :]  
+
+                ### Get fcn 
+                # import pdb; pdb.set_trace()
+                # from generate_models
+                # model_data[i_d, model_nm, i_fold, type_of_model_index, 'model']
+                mod_null = NULL_dict[day_ix, model_nm, 0., 0.0, 'model']
+
+                if apply_full_axes_to_all: 
+                    yfcn_null = yfcn_full
+                else: 
+                    yfcn_null = dyn_const_r2(mod_null, analysis_config.num_dims[animal][day_ix])              
+
+            ######## add just conditioning ####
+            if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                spks_cond = 10*plot_generated_models.cond_act_on_psh(animal, day_ix)
+                spks_cond = spks_cond[an_ind, :]
+
+           ######## re index #####
+            spks_true = spks_true[an_ind, :]
+            com_true = com_true[an_ind, :]
+            com_true_tm1 = com_true_tm1[an_ind]
+            mov_true = mov_true[an_ind]
+
+            ### Load shuffled dynamics --> same as shuffled, not with left out shuffled #####
+            ### Go through the items that have been held out: 
+            left_outters = LOO_dict.keys()
+            left_outters = [l for l in left_outters if l != 'analyze_indices']
+
+            lo_ix_all = []
+            lo_true_all_lowd = []
+            lo_true_all = []
+            lo_pred_all_lowd = []
+            
+            cond_all = []
+            r2_stats_spec = []; 
+
+            # yfcn_lo_dict = {}
+            for left_out in left_outters: 
+
+                if len(LOO_dict[left_out].keys()) == 0:
+                    pass
+                else:
+                    
+                    #### Get the thing that was left out ###
+                    lo_pred = 10*LOO_dict[left_out][-1, -1, -1]
+                    lo_ix_og = LOO_dict[left_out][-1, -1, -1, 'ix']
+
+                    #### CRUCIAL : make sure this is np.unique(lo_ix)
+                    lo_ix = np.unique(lo_ix_og)
+                    tmp_lo_ix = list(lo_ix_og)
+                    lo_keep_ix = np.array([tmp_lo_ix.index(l) for l in lo_ix])
+                    assert(np.allclose(lo_ix, lo_ix_og[lo_keep_ix]))
+
+                    #### Check that these indices corresond to the left out thing; 
+                    lo_sub = check_ix_lo(lo_ix, com_true, com_true_tm1, mov_true, left_out, cat,
+                        return_trans_from_lo = return_trans_from_lo)
+                    
+                    #### Subselect -- only analyze the commands that transition to this command
+                    #### to avoid double counting; 
+                    lo_ix = lo_ix[lo_sub]
+                    lo_keep_ix = lo_keep_ix[lo_sub]
+                    lo_ix_all.append(lo_ix)
+
+                    ##### Get predicted spikes ###
+                    if apply_full_axes_to_all: 
+                        yfcn_lo = yfcn_full
+                    else: 
+                        yfcn_lo = dyn_const_r2(LOO_dict[left_out][0, 'coef_lo'], analysis_config.num_dims[animal][day_ix], coef_not_model=True)
+                    
+                    ### Which commands to check: 
+                    if return_trans_from_lo: 
+                        if cat == 'com':
+                            assert(np.all(com_true_tm1[lo_ix, 0]*8 + com_true_tm1[lo_ix, 1] == left_out))
+                    else:
+                        if cat == 'com':
+                            assert(np.all(com_true[lo_ix, 0]*8 + com_true[lo_ix, 1] == left_out))
+
+                    _, y_true, y_pred = yfcn_lo(spks_true[lo_ix, :], lo_pred[lo_keep_ix, :], return_lowd=True)
+
+                    lo_pred_all_lowd.append(y_pred)
+                    lo_true_all_lowd.append(y_true)
+                    lo_true_all.append(spks_true[lo_ix, :])
+
+                    if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                        cond_all.append(spks_cond[lo_ix, :])
+
+            ##### For this day, plot the R2 comparisons #####
+            lo_ix_all = np.hstack((lo_ix_all))
+            lo_true_all = np.vstack((lo_true_all))
+
+            assert(np.allclose(lo_true_all, spks_true[lo_ix_all, :]))
+
+            lo_true_all_lowd = np.vstack((lo_true_all_lowd))
+            lo_pred_all_lowd = np.vstack((lo_pred_all_lowd))
+            
+            ### Add null 
+            if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0': 
+                null_pred = null_spks_pred[lo_ix_all, :]
+                mean_pot = np.mean(np.dot(KG_potent_orth, lo_true_all.T).T, axis=0)
+                null_pred = null_pred + mean_pot[np.newaxis, :]; 
+                r2_null, null_true_lowd, null_pred_lowd = yfcn_null(lo_true_all, null_pred, return_lowd=True)
+                r2_null, _ = r2_null
+
+                ### Plot 
+                ax.plot(i_a*10 + day_ix, r2_null, '.', color='deeppink', markersize=10)
+                save_bars_dict[animal][day_ix, 'r2_null'] = r2_null
+            
+            elif model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                cond_all = np.vstack((cond_all))
+                r2_cond, _ = r2(lo_true_all, cond_all)
+                ax.plot(i_a*10 + day_ix, r2_cond, '^', color='gray', markersize=10)
+                save_bars_dict[animal][day_ix, 'r2_cond'] = r2_cond
+
+            ##### just use regular r2 bc already extracted dynamics dimensions 
+            r2_pred_lo, _ = r2(lo_true_all_lowd, lo_pred_all_lowd)
+
+            #### Full spikes
+            r2_pred_full, _, _ = yfcn_full(lo_true_all, full_spks_pred[lo_ix_all, :], return_lowd = True)
+            r2_pred_full, _ = r2_pred_full
+            
+            save_bars_dict[animal][day_ix, 'r2_pred_lo_'+cat] = r2_pred_lo
+            save_bars_dict[animal][day_ix, 'r2_pred_full'] = r2_pred_full
+
+            ax.plot(i_a*10 +day_ix-0.1, r2_pred_full, '.', color=color, markersize=10) ### Full model prediction (not data limited )
+            ax.plot(i_a*10 +day_ix+0.1, r2_pred_lo, '.', color='purple', markersize=10)### general ization 
+            print('r2 of full: %.4f, r2 of purple LO %.4f'%(r2_pred_full, r2_pred_lo))
+            
+
+            r2_shuff = []
+            for i in range(nshuffs):
+                #former_shuff_ix = shuffle_data_file[i]
+
+                # if np.mod(i, 100) == 0:
+                #     print('Shuff %d, tm = %.3f' %(i, time.time() - t0))
+                shuff_str = str(i)
+                shuff_str = shuff_str.zfill(3)
+
+                if model_nm == 'hist_1pos_0psh_2spksm_1_spksp_0':
+                    pred_spks_shufflei = plot_generated_models.get_shuffled_data_v2_super_stream(animal,
+                        day_ix, i)
+               
+                elif model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
+                    pred_spks_shufflei = plot_generated_models.get_shuffled_data_v2_super_stream_nocond(animal,
+                        day_ix, i)
+                
+                if apply_full_axes_to_all: 
+                    yfcn = yfcn_full
+                else: 
+                    model_file = sio.loadmat(pref + '%s_%d_shuff%s_%s_models.mat' %(animal, day_ix, shuff_str, model_nm))
+
+                    A = model_file[str((0, 'coef_'))]
+                    yfcn = dyn_const_r2(A, analysis_config.num_dims[animal][day_ix], coef_not_model=True)
+
+                pred_spks_shuffle = pred_spks_shufflei[an_ind, :]
+                assert(pred_spks_shuffle.shape[0] == spks_true.shape[0])
+                  
+                tmp,_ = yfcn(lo_true_all, pred_spks_shuffle[lo_ix_all, :])
+                r2_shuff.append(tmp)
+
+            ### Clean up memory 
+            gc.collect()
+
+            util_fcns.draw_plot(i_a*10 + day_ix, r2_shuff, 'k', np.array([1., 1., 1., 0.]), ax)
+            save_bars_dict[animal][day_ix, 'r2_shuff'] = r2_shuff
+
+    return save_bars_dict
+
 def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000, 
     model_nm = 'hist_1pos_0psh_2spksm_1_spksp_0', return_trans_from_lo = False,
     plot_r2_by_lo_cat = False, plot_action = False, null_opt = None, potent_addon = False,
@@ -2051,6 +2494,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             spks_true, com_true, mov_true, push_true, com_true_tm1, tm0ix, spks_sub_tm1, tempN = get_spks(animal, 
                 day_ix, return_tm0=True)
 
+            ###### initialize yfcn w/ model 
             if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
                 
                 if null_opt == 'nulldyn':
@@ -2126,6 +2570,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
                 print('done with estimating null spks')
 
             full_spks_pred = 10*nonNULL_dict[day_ix, model_nm][an_ind, :].copy()
+
             if plot_action:
                 full_spks_pred = np.dot(KG, 0.1*full_spks_pred.T).T
 
@@ -2153,14 +2598,18 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
             lo_true_all = []
             lo_pred_all = []
             nlo_pred_all = []
+            
             cond_all = []
             null_pred = []
             pot_pred_all = []
             null_true = []
+            
             shuff_pred_all = []
 
             r2_stats_spec = []; 
             r2_stats_spec_nlo = [];
+
+            yfcn_lo_dict = {}
             
             for left_out in left_outters: 
 
@@ -2170,6 +2619,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
                     
                     #### Get the thing that was left out ###
                     lo_pred = 10*LOO_dict[left_out][-1, -1, -1]
+                    
                     lo_ix_og = LOO_dict[left_out][-1, -1, -1, 'ix']
 
                     #### CRUCIAL : make sure this is np.unique(lo_ix)
@@ -2181,7 +2631,7 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
 
                     ##### Get predicted spikes ###
                     spks_pred = 10*NLOO_dict[left_out]['y_pred_nlo']
-                    #spks_pred = spks_pred - 
+                    
                     nneur = spks_pred.shape[1]
 
                     #### Check that these indices corresond to the left out thing; 
@@ -2206,8 +2656,8 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
                         lo_true_all.append(spks_true[lo_ix, :])
                         nlo_pred_all.append(spks_pred[lo_ix, :])
                         cond_all.append(spks_cond[lo_ix, :])
-                        #shuff_pred_all.append(pred_spks_shuffle[lo_ix, :, :])
                         
+                        #shuff_pred_all.append(pred_spks_shuffle[lo_ix, :, :])
                         #### r2 stats specific ####
                         tmp,_=yfcn(spks_true[lo_ix, :], spks_pred[lo_ix, :])
                         r2_stats_spec_nlo.append([left_out, tmp])
