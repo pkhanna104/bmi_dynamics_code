@@ -25,7 +25,7 @@ def plot_metric(input_type, animal='grom'):
                         co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
                         hdf = co_obs_dict[te_num, 'hdf']
                         hdfix = hdf.rfind('/')
-                        hdf = tables.openFile(analysis_config.config['grom_pref']+hdf[hdfix:])
+                        hdf = tables.open_file(analysis_config.config['grom_pref']+hdf[hdfix:])
 
                         dec = co_obs_dict[te_num, 'dec']
                         decix = dec.rfind('/')
@@ -86,42 +86,44 @@ def example_tarj(input_type):
         f.set_figwidth(10)
         
         for i_t, (tsk, nm) in enumerate(zip(day, ['CO', 'Obs'])):
-            te_co = tsk[0]
-    
-            ##### This dictionary has a list of HDF files / decoders mapping ########
-            co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
-            hdf = co_obs_dict[te_co, 'hdf']
-            hdfix = hdf.rfind('/')
 
-            hdf = tables.openFile(analysis_config.config['grom_pref']+hdf[hdfix:])
-            rew_ix = np.array([t[1] for it, t in enumerate(hdf.root.task_msgs[:]) if t[0]=='reward'])
-            drives_neurons_ix0 = 3
-            key = 'spike_counts'
-            
-            print('day %d, tsk %d' %(i_d, i_t))
-            print hdf.root.task.attrs.target_radius - hdf.root.task.attrs.cursor_radius, hdf.root.task.attrs.target_radius, hdf.root.task.attrs.cursor_radius
-            rad = hdf.root.task.attrs.target_radius - hdf.root.task.attrs.cursor_radius
+            for _, te_co in enumerate(tsk): 
+                #te_co = tsk[0]
+        
+                ##### This dictionary has a list of HDF files / decoders mapping ########
+                co_obs_dict = pickle.load(open(analysis_config.config['grom_pref']+'co_obs_file_dict.pkl'))
+                hdf = co_obs_dict[te_co, 'hdf']
+                hdfix = hdf.rfind('/')
 
-            ###### Main extraction code ########
-            bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all = pa.extract_trials_all(hdf, rew_ix, neural_bins = 100.,
-                drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
-                reach_tm_is_hdf_cursor_pos=True, reach_tm_is_kg_vel=False)
-
-            tm = np.linspace(0, 2*np.pi, 1000)
-            xtm = rad*np.cos(tm)
-            ytm = rad*np.sin(tm)
-
-            cnt = 0
-            for ib, bs in enumerate(decoder_all):
-                ### Get target 
-                trlix = np.nonzero(trial_ix_all == ib)[0]
-
-                ### First target 
-                tg_pos = targ_i_all[trlix, :][4, :]
-                ax[i_t].plot(tg_pos[0] + xtm, tg_pos[1] + ytm, '-', color = cmap_list[int(targ_ix[cnt])])
+                hdf = tables.open_file(analysis_config.config['grom_pref']+hdf[hdfix:])
+                rew_ix = np.array([t[1] for it, t in enumerate(hdf.root.task_msgs[:]) if t[0]=='reward'])
+                drives_neurons_ix0 = 3
+                key = 'spike_counts'
                 
-                if ib < 64:
-                    ax[i_t].plot(bs[:, 0], bs[:, 1], '.-', color=cmap_list[int(targ_ix[cnt])])
+                print('day %d, tsk %d' %(i_d, te_co))
+                print hdf.root.task.attrs.target_radius - hdf.root.task.attrs.cursor_radius, hdf.root.task.attrs.target_radius, hdf.root.task.attrs.cursor_radius
+                rad = hdf.root.task.attrs.target_radius - hdf.root.task.attrs.cursor_radius
+
+                ###### Main extraction code ########
+                bin_spk, targ_i_all, targ_ix, trial_ix_all, decoder_all = pa.extract_trials_all(hdf, rew_ix, neural_bins = 100.,
+                    drives_neurons_ix0=drives_neurons_ix0, hdf_key=key, keep_trials_sep=True,
+                    reach_tm_is_hdf_cursor_pos=True, reach_tm_is_kg_vel=False)
+
+                tm = np.linspace(0, 2*np.pi, 1000)
+                xtm = rad*np.cos(tm)
+                ytm = rad*np.sin(tm)
+
+                cnt = 0
+                for ib, bs in enumerate(decoder_all):
+                    ### Get target 
+                    trlix = np.nonzero(trial_ix_all == ib)[0]
+
+                    ### First target 
+                    tg_pos = targ_i_all[trlix, :][4, :]
+                    ax[i_t].plot(tg_pos[0] + xtm, tg_pos[1] + ytm, '-', color = cmap_list[int(targ_ix[cnt])])
+                    
+                    #if ib < 64:
+                    ax[i_t].plot(bs[:, 0], bs[:, 1], '-', color=cmap_list[int(targ_ix[cnt])])
                     cnt += len(bs)
                     ax[i_t].set_title(nm)
 
