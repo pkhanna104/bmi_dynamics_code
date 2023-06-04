@@ -2965,7 +2965,7 @@ def residual_PSTH(all_sessions = False):
         ax[0].set_ylim([6., 9.])
         #ax[1].set_xlim([0, 2.2])
         return
-        
+
     ax[0].set_ylim([3., 10.])
     ax[1].set_ylim([1.9, 3.9])
 
@@ -3042,3 +3042,53 @@ def residual_PSTH(all_sessions = False):
         ax[0].set_ylabel('norm(Resid.) / \nsqrt(# Neurons)')
     plt.tight_layout()
     util_fcns.savefig(f, 'bar_plots_early_vs_late_trial')
+
+    ###### R2 with time ########
+    ###### Early / late #####
+    LME2 = {}
+    LME2['animal_day'] = []
+    LME2['early_late'] = []
+    LME2['r2'] = []
+    f2, ax2 = plt.subplots(ncols = 2, figsize=(4, 3))
+    norm = True
+
+    ###### Plot R2 time ######
+    f, ax = plt.subplots()
+    color = dict(grom='k', jeev='gray')
+    for i_a, animal in enumerate(['grom', 'jeev']): 
+        T = animal_windows[animal][1][-1]
+        tmp_L = []
+        for i_d, d in enumerate(R2_time[animal]): 
+            d = np.array(d)
+            ax.plot(np.arange(T)/10., d[:T], '-', color=color[animal])
+        
+            LME2['animal_day'].append(i_a*10 + i_d)
+            LME2['early_late'].append(0)
+            E = np.mean(d[animal_windows[animal][0]])
+            LME2['r2'].append(E)
+            
+            LME2['animal_day'].append(i_a*10 + i_d)
+            LME2['early_late'].append(1)
+            L = np.mean(np.mean(d[animal_windows[animal][1]]))
+            LME2['r2'].append(L)
+            
+            ax2[i_a].plot(np.array([0, 1]) + i_a*3, [1, L/E])
+            tmp_L.append(L/E)
+            
+        ### Animal specific stats
+        print('Animal %s stats: '%animal)
+        util_fcns.run_LME(LME2['animal_day'], 
+                          LME2['early_late'],
+                          LME2['r2'])
+        print('')
+        print('')
+        print('')
+        
+        ax2[i_a].bar(0, 1, width=.8, alpha=.5)
+        ax2[i_a].bar(1, np.mean(np.hstack((tmp_L))), width=.8, alpha=.5)
+            
+            
+    ax.set_xlabel('seconds from trial start')
+    ax.set_ylabel('R2')
+    f.tight_layout()
+    util_fcns.savefig(f, 'r2_vs_trial_time')
