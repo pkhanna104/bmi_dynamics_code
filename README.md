@@ -1,6 +1,3 @@
-This is a cleaned up repository designed to contain code needed for analysis for preeya & vivek's BMI paper; 
-Older version of the repo is contained in "fa_analysis" on preeya's github. 
+This is a repository containing code needed for analysis for preeya & vivek's BMI paper Athalye, V*, Khanna, P*, Gowda S, Orsborn, AL, Costa RM**, Carmena, JC**, (2023) "Invariant neural dynamics drive commands to control different movements", https://www.biorxiv.org/content/10.1101/2021.08.27.457931v2. 
 
-
-Older analyses are in the original fa_analysis repo, one migrated over have been checked and ideally have test functions 
-or assertions within function to test for most capabilities; Absolute paths have been removed and replaced by the 'config' functionality
+Please refer to notebooks / "Guide to Current Biology Figures.ipynb" which contains code for all data figures in the paper. Some of these rely on preprocessing files (described at the top of the notebook), as well as raw data files (e.g. HDF and decoder files) that were not possible to add in their entirety to the public DANDI dataset. If you are interested in replicating the results of this study, please contact the lead author contact for the remainder of the relevant files. 
