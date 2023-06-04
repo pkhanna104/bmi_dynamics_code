@@ -2174,12 +2174,14 @@ def r2_by_dyn_axes(model_nm = 'hist_1pos_0psh_0spksm_1_spksp_0', dim=15):
             util_fcns.draw_plot(n + 0.4*(i_a) + 1, r2i_dict[:, n], colors[animal], np.array([1., 1., 1., 0.]), ax, width = .4)
 
     #ax.set_title('%s, %d'%(animal, day_ix))
-    ax.set_xlim([0., dim+2])
-    ax.set_xticks(np.arange(1, dim+1, 2))
-    ax.set_xticklabels(np.arange(1, dim+1, 2))
+    ax.set_xlim([0., dim+1])
+    ax.set_xticks(np.arange(1, dim, 2))
+    ax.set_xticklabels(np.arange(1, dim, 2))
     ax.set_xlabel(' Dimension')
     ax.set_ylabel('R2')
     f.tight_layout()
+
+    util_fcns.savefig(f, 'r2_vs_dyn_dim')
 
 def return_acts(A, spks_true): 
     ### Project activity into this dimension
@@ -2274,7 +2276,8 @@ def plot_dyn_const_r2(cat='tsk', nshuffs = 1000, model_nm = 'hist_1pos_0psh_2spk
             # from generate_models
             # model_data[i_d, model_nm, i_fold, type_of_model_index, 'model']
             mod = nonNULL_dict[day_ix, model_nm, 0., 0.0, 'model']
-            yfcn_full = dyn_const_r2(mod, analysis_config.num_dims[animal][day_ix])
+
+            yfcn_full = dyn_const_r2(mod, full_spks_pred.shape[1])
 
             ###### null predictions 
             if model_nm == 'hist_1pos_0psh_0spksm_1_spksp_0':
@@ -2973,7 +2976,13 @@ def plot_loo_r2_overall(cat='tsk', yval='r2', nshuffs = 1000,
         return save_bars_dict
 
 def bar_plot_loo_r2_overall(save_dict, title, other_color = analysis_config.blue_rgb,
-    fig4 = False, fig5 = True, shuff_norm = False, plot_command = False):
+    fig4 = False, fig5 = True, 
+    sfig4_lo_com = False, 
+    sfig4_lo_mov = False, 
+    sfig4_lo_com_ang = False, 
+    sfig4_lo_com_mag = False,
+    
+    shuff_norm = False, plot_command = False):
     
     f, ax = plt.subplots(figsize=(5, 4))
 
@@ -2999,6 +3008,38 @@ def bar_plot_loo_r2_overall(save_dict, title, other_color = analysis_config.blue
             keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo_mov', 'r2_pred_lo_com','r2_pred_full']
             labels = ['output', 'shuffle', 'cond-lo', 'com-lo', 'full' ]
             colors = ['gray',   'k',       'purple', 'purple', other_color]
+            ylim = dict()
+            ylim[False] = [0., .36]
+            ylim[True] = [.9, 1.7]
+
+        elif sfig4_lo_com: 
+            keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo_com', 'r2_pred_full']
+            labels = ['output', 'shuffle', 'com-lo', 'full' ]
+            colors = ['gray',   'k',       'purple', other_color]
+            ylim = dict()
+            ylim[False] = [0., .36]
+            ylim[True] = [.9, 1.7]
+
+        elif sfig4_lo_mov: 
+            keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo_mov', 'r2_pred_full']
+            labels = ['output', 'shuffle', 'cond-lo', 'full' ]
+            colors = ['gray',   'k',       'purple', other_color]
+            ylim = dict()
+            ylim[False] = [0., .36]
+            ylim[True] = [.9, 1.7]
+
+        elif sfig4_lo_com_ang: 
+            keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo_com_ang', 'r2_pred_full']
+            labels = ['output', 'shuffle', 'com-ang-lo', 'full' ]
+            colors = ['gray',   'k',       'purple', other_color]
+            ylim = dict()
+            ylim[False] = [0., .36]
+            ylim[True] = [.9, 1.7]
+
+        elif sfig4_lo_com_mag: 
+            keys = ['r2_cond', 'r2_shuff', 'r2_pred_lo_com_mag', 'r2_pred_full']
+            labels = ['output', 'shuffle', 'com-mag-lo', 'full' ]
+            colors = ['gray',   'k',       'purple', other_color]
             ylim = dict()
             ylim[False] = [0., .36]
             ylim[True] = [.9, 1.7]
