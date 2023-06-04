@@ -2716,6 +2716,84 @@ def print_pv_from_pooled_stats(stats):
     mn_shuff = np.mean(shuff)
     return pv_day, dpsth/mn_shuff, shuff/mn_shuff
 
+### Fig S2
+def populate_matrix(dat): 
+    x = np.zeros((32, 24)) 
+    x[:, :] = np.nan
+    
+    for i_d, dt in enumerate(dat): 
+        dmean_FR, dmFR_shuffle, mag, ang, mov, global_FR, _, _, _ = dt; 
+    
+        ### number of neurons ##
+        nneuron = float(len(dmean_FR))
+
+        ### Distance from global FR ### 
+        dmn = np.linalg.norm(dmean_FR)
+
+        ### Already subtracted global FR (abs(shuff - global))
+        dmn_shuff = np.linalg.norm(dmFR_shuffle, axis=1)
+
+        ## Angle zero is actually pointing to target 3; 
+        ## Angle 1 is target 4, etc; 
+        ang_adj = np.mod(ang + 3, 8)
+        com_ix = ang_adj*4 + mag
+
+        ### Move ID 
+        mov_id = assign_mov([mov]) 
+
+        x[com_ix, mov_id] = dmn/np.mean(dmn_shuff)
+    
+    return x
+
+def plot_x(x, vmin = 0, vmax = .2, title=''): 
+    f, ax = plt.subplots(figsize=(5, 4))
+    cax = ax.pcolormesh(x.T, vmin=vmin, vmax=vmax, cmap='viridis', edgecolors='w', linewidths=.51)
+    xticks = []; xlabs = []; 
+    for mag in range(4): 
+        for ang in range(8): 
+            xticks.append(ang*4+mag+.5)
+
+            xlabs.append('Ang %d, Mag %d'%(ang, mag))
+
+    yticks = []; ylabs = []; 
+    for tg in range(8): 
+        yticks.append((3*tg)+.5)
+        ylabs.append('Tg %d, CO'%tg)
+
+        yticks.append((3*tg) + 1.5)
+        ylabs.append('Tg %d, Obs CW'%tg)
+
+        yticks.append(3*tg + 2.5)
+        ylabs.append('Tg %d, Obs CCW'%tg)
+
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(xlabs, fontsize=8, rotation=90)
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(ylabs, fontsize=8, rotation=0)
+    ax.set_title(title, fontsize=10)
+    plt.colorbar(cax, ax=ax)
+    plt.tight_layout()
+    return f
+
+def assign_mov(movs): 
+    
+    ### Iterate through movements ###
+    mov_ids = []
+    for mov in movs: 
+
+        ### get mov index
+        tg = np.floor(mov) 
+        if mov > 10: 
+            dt = np.round(mov - tg, 1)
+            if dt == 0: 
+                mov_id = 3*(int(tg) - 10) + 1
+            elif dt == .1: 
+                mov_id = 3*(int(tg) - 10) + 2
+        else: 
+            mov_id = 3*int(mov)
+        mov_ids.append(mov_id)
+    return np.array(mov_ids)
+    
 def plot_distribution_of_nmov_per_command(min_obs = 15): 
     """
     Plot distribution of number of movements per command as boxplot
